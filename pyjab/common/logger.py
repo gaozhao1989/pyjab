@@ -1,0 +1,44 @@
+import logging
+import coloredlogs
+
+
+class Logger(object):
+    LOGGER_INFO = logging.INFO
+    LOGGER_DEBUG = logging.DEBUG
+    LOGGER_WARN = logging.WARN
+    LOGGER_ERROR = logging.ERROR
+    LOGGER_CRITICAL = logging.CRITICAL
+
+    def __init__(self, name=None, level=logging.INFO):
+        self.FORMAT = "%(asctime)-15s %(levelname)s %(name)s %(message)s"
+        self.log = logging.getLogger(name)
+        logging.basicConfig(format=self.FORMAT, level=level)
+        coloredlogs.install(level="INFO")
+        coloredlogs.install(level="DEBUG")
+        coloredlogs.install(level="WARN")
+        coloredlogs.install(level="ERROR")
+        coloredlogs.install(level="CRITICAL")
+
+    def info(self, msg, *args, **kwargs):
+        self.log.info(msg, *args, **kwargs)
+
+    def debug(self, msg, *args, **kwargs):
+        self.log.debug(msg, *args, **kwargs)
+
+    def warning(self, msg, *args, **kwargs):
+        self.log.warning(msg, *args, **kwargs)
+
+    def error(self, msg, *args, **kwargs):
+        self.log.error(msg, *args, **kwargs)
+
+    def critical(self, msg, *args, **kwargs):
+        self.log.critical(msg, *args, **kwargs)
+
+    def select_logger(self, msg: str, level: int = LOGGER_INFO, *args, **kwargs):
+        _ = {
+            self.LOGGER_INFO: self.info,
+            self.LOGGER_DEBUG: self.debug,
+            self.LOGGER_WARN: self.warning,
+            self.LOGGER_ERROR: self.error,
+            self.LOGGER_CRITICAL: self.critical,
+        }[level](msg, *args, **kwargs)
