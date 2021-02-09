@@ -1,70 +1,23 @@
-from ctypes import c_long
+from ctypes import byref, c_int, c_int64, c_long
 from ctypes.wintypes import HWND
-from pyjab.common.logger import Logger
-from pyjab.jabhandler import JABHandler
-from pyjab.common.types import JOBJECT64
-
 from pyjab.globalargs import BRIDGE
-from pyjab.globalargs import VMIDS_OF_HWND
+from typing import TypeVar
+from pyjab.common.logger import Logger
+
+accessible_context = TypeVar("accessible_context", bound="JABContext")
 
 
-class JABContext(object):
+class JABContext(c_int64):
     def __init__(
         self,
         hwnd: HWND = None,
         vmid: c_long = None,
-        accessible_context: JOBJECT64 = None,
+        ac: accessible_context = None,
     ) -> None:
         self.log = Logger(self.__class__.__name__)
-        self.jab_handler = JABHandler(BRIDGE)
-        if hwnd and not vmid:
-            vmid = c_long()
-            accessible_context = JOBJECT64()
-            self.jab_handler.get_accessible_context_from_hwnd(
-                hwnd, vmid, accessible_context
-            )
-            vmid = vmid.value
-            global VMIDS_OF_HWND
-            VMIDS_OF_HWND[vmid] = hwnd
-        elif vmid and not hwnd:
-            hwnd = self.jab_handler.get_hwnd_from_accessible_context(
-                vmid, accessible_context
-            )
-        if BRIDGE is None:
-            global BRIDGE
-            BRIDGE = self.jab_handler.bridge
         self._hwnd = hwnd
         self._vmid = vmid
-        self._accessible_context = accessible_context
-
-    def __del__(self) -> None:
-        if BRIDGE:
-            self.jab_handler.release_java_object(self.vmid, self.accessible_context)
-
-    def __eq__(self, jabcontext) -> bool:
-        is_eligible = (
-            self.vmid == jabcontext.vmid
-            and self.jab_handler.is_same_object(
-                self.vmid,
-                self.accessible_context,
-                jabcontext.accessible_context,
-            )
-        )
-        return is_eligible
-
-    def __hash__(self) -> int:
-        return super().__hash__()
-
-    def __ne__(self, jabcontext) -> bool:
-        is_eligible = (
-            self.vmid != jabcontext.vmid
-            or not self.jab_handler.is_same_object(
-                self.vmid,
-                self.accessible_context,
-                jabcontext.accessible_context,
-            )
-        )
-        return is_eligible
+        self._ac = ac
 
     @property
     def hwnd(self) -> HWND:
@@ -83,9 +36,32 @@ class JABContext(object):
         self._vmid = vmid
 
     @property
-    def accessible_context(self) -> JOBJECT64:
-        return self._accessible_context
+    def ac(self) -> accessible_context:
+        return self._ac
 
-    @accessible_context.setter
-    def accessible_context(self, accessible_context: JOBJECT64) -> None:
-        self._accessible_context = accessible_context
+    @ac.setter
+    def ac(self, ac: accessible_context) -> None:
+        self._ac = ac
+
+    def __del__(self) -> None:
+        if BRIDGE:
+            BRIDGE.releaseJavaObject(self.vmid, self.ac)
+
+    def __eq__(self, ac: accessible_context) -> bool:
+        is_eligible = self.vmid == ac.vmid and BRIDGE.isSameObject(
+            self.vmid,
+            self.ac,
+            ac.ac,
+        )
+        return is_eligible
+
+    def __hash__(self) -> int:
+        return super().__hash__()
+
+    def __ne__(self, ac: accessible_context) -> bool:
+        is_eligible = self.vmid != ac.vmid or not BRIDGE.isSameObject(
+            self.vmid,
+            self.ac,
+            ac.ac,
+        )
+        return is_eligible

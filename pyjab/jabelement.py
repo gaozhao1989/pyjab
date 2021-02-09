@@ -1,5 +1,10 @@
 from ctypes.wintypes import HWND
+from pyjab.globalargs import BRIDGE
+from pyjab.jabhandler import JABHandler
+from pyjab.common.logger import Logger
+from pyjab.accessibleinfo import AccessibleContextInfo, AccessibleTextInfo
 from pyjab.jabcontext import JABContext
+
 
 class JABElement(object):
 
@@ -79,8 +84,25 @@ class JABElement(object):
     JAB_STATES_UNKNOWN = "unknown"
 
     def __init__(self, hwnd: HWND = None, jab_context: JABContext = None) -> None:
-        self.hwnd = hwnd if hwnd else jab_context.hwnd
-        self.jab_context = jab_context
+        self.log = Logger(self.__class__.__name__)
+        self.handler = JABHandler(BRIDGE)
+        if jab_context is None:
+            self.handler.init_jab_context()
+        self.ac = JABContext(jab_context.hwnd, jab_context.vmid, jab_context.ac)
         self._role = None
+        super(JABElement, self).__init__(hwnd=hwnd)
+        self.ac_info = self._get_accessible_context_info()
     
-    def get_role(self)
+    @property
+    def role(self)->str:
+        return self._role
+    
+    @role.setter
+    def role(self, role:str)->str:
+        self._role = role
+
+    def _get_accessible_context_info(self) -> AccessibleContextInfo:
+        return self.handler.get_accessible_context_info()
+    
+    def _get_text_info(self)-> AccessibleTextInfo:
+        is_eligible =  self.ac_info.accessibleText and self.role

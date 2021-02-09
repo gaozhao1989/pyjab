@@ -14,6 +14,7 @@ MAX_RELATION_TARGETS = 25
 MAX_RELATIONS = 5
 MAX_ACTION_INFO = 256
 MAX_ACTIONS_TO_DO = 32
+MAX_HYPERLINKS = 64
 
 
 class AccessBridgeVersionInfo(Structure):
@@ -172,3 +173,19 @@ class AccessibleKeyBindings(Structure):
         ("keyBindingsCount", c_int),
         ("keyBindingInfo", AccessibleKeyBindingInfo * MAX_KEY_BINDINGS),
     ]
+
+class AccessibleHyperlinkInfo(Structure):
+    _fields_ = [
+        ("text", WCHAR * SHORT_STRING_SIZE),
+        ("startIndex", c_int),
+        ("endIndex", c_int),
+        ("accessibleHyperlink", JOBJECT64),
+    ]
+
+class AccessibleHypertextInfo(Structure):
+    _fields_ = [
+        ("linkCount", c_int),
+        ("links", AccessibleHyperlinkInfo * MAX_HYPERLINKS),
+        ("accessibleHypertext", JOBJECT64),
+    ]
+
