@@ -1,0 +1,2 @@
+class JABText():
+    pass

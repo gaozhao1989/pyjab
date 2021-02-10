@@ -5,16 +5,17 @@ from ctypes import c_wchar
 from ctypes import c_bool
 from ctypes.wintypes import BOOL
 from ctypes.wintypes import WCHAR
+from pyjab.config import (
+    MAX_ACTIONS_TO_DO,
+    MAX_ACTION_INFO,
+    MAX_HYPERLINKS,
+    MAX_KEY_BINDINGS,
+    MAX_RELATIONS,
+    MAX_RELATION_TARGETS,
+    MAX_STRING_SIZE,
+    SHORT_STRING_SIZE,
+)
 from pyjab.common.types import JOBJECT64
-
-MAX_STRING_SIZE = 1024
-SHORT_STRING_SIZE = 256
-MAX_KEY_BINDINGS = 50
-MAX_RELATION_TARGETS = 25
-MAX_RELATIONS = 5
-MAX_ACTION_INFO = 256
-MAX_ACTIONS_TO_DO = 32
-MAX_HYPERLINKS = 64
 
 
 class AccessBridgeVersionInfo(Structure):
@@ -174,6 +175,7 @@ class AccessibleKeyBindings(Structure):
         ("keyBindingInfo", AccessibleKeyBindingInfo * MAX_KEY_BINDINGS),
     ]
 
+
 class AccessibleHyperlinkInfo(Structure):
     _fields_ = [
         ("text", WCHAR * SHORT_STRING_SIZE),
@@ -182,10 +184,10 @@ class AccessibleHyperlinkInfo(Structure):
         ("accessibleHyperlink", JOBJECT64),
     ]
 
+
 class AccessibleHypertextInfo(Structure):
     _fields_ = [
         ("linkCount", c_int),
         ("links", AccessibleHyperlinkInfo * MAX_HYPERLINKS),
         ("accessibleHypertext", JOBJECT64),
     ]
-

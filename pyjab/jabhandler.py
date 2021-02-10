@@ -19,7 +19,7 @@ from pyjab.accessibleinfo import (
     AccessibleTextSelectionInfo,
 )
 from pyjab.apicallbacks import focus_gained_fp
-from pyjab.jabelement import JABElement
+from pyjab.jabrole import JABElement
 from pyjab.common.eventhandler import EvenetHandler
 from pyjab.common.winuser import WinUser
 from pyjab.common.logger import Logger
