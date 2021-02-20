@@ -1,0 +1,2 @@
+class AccessibleContext:
+    pass

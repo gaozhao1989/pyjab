@@ -45,7 +45,7 @@ class AccessibleContextInfo(Structure):
         ("accessibleAction", BOOL),
         ("accessibleSelection", BOOL),
         ("accessibleText", BOOL),
-        ("accessibleValue", BOOL),
+        ("accessibleInterfaces", BOOL),
     ]
 
 

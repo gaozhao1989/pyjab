@@ -196,11 +196,41 @@ class JABElement(object):
         width = self.ac_info.Width
         height = self.ac_info.Height
         return {"x": x, "y": y, "width": width, "height": height}
-    
+
     def _get_children_count(self) -> int:
         return self.ac_info.childrenCount
-    
+
     def _get_index_in_parent(self) -> int:
         return self.ac_info.indexInParent
+
+    def _get_accessible_component_support(self) -> bool:
+        return self.ac_info.accessibleComponent
+
+    def _get_accessible_action_support(self) -> bool:
+        return self.ac_info.accessibleAction
+
+    def _get_accessible_selection_support(self) -> bool:
+        return self.ac_info.accessibleSelection
+
+    def _get_accessible_text_support(self) -> bool:
+        return self.ac_info.accessibleText
+
+    def _get_accessible_interfaces_support(self) -> bool:
+        return self.ac_info.accessibleInterfaces
     
-    
+    def _get_value(self)->str:
+        is_eligible = self.role not in [JAB_ROLE_CHECK_BOX, JAB_ROLE_MENU, JAB_ROLE_MENU_ITEM,JAB_ROLE_RADIO_BUTTON, JAB_ROLE_PUSH_BUTTON] and not self.ac_info.accessibleText
+        if is_eligible:
+            return self.handler.get_current_accessible_value_from_context()
+        
+    def _has_focus(self)->bool:
+        return JAB_STATES_FOCUSED in self.states
+
+    def _get_position_info(self):
+        info = super(JABElement, self).position_info or {}
+        # If tree view item, try to retrieve the level via JABElement
+        if self.role == JAB_ROLE_TREE:
+            tree = self.handler.get_parent_with_role(JAB_ROLE_TREE)
+            if tree:
+                tree_depth = tree.get_object_depth()
+                self_depth = self.ac.get_object_depth()
