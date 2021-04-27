@@ -9,10 +9,12 @@ from pyjab.config import (
     MAX_ACTIONS_TO_DO,
     MAX_ACTION_INFO,
     MAX_HYPERLINKS,
+    MAX_ICON_INFO,
     MAX_KEY_BINDINGS,
     MAX_RELATIONS,
     MAX_RELATION_TARGETS,
     MAX_STRING_SIZE,
+    MAX_VISIBLE_CHILDREN,
     SHORT_STRING_SIZE,
 )
 from pyjab.common.types import JOBJECT64
@@ -106,39 +108,6 @@ class AccessibleTextAttributesInfo(Structure):
     ]
 
 
-class AccessibleRelationInfo(Structure):
-    _fields_ = [
-        ("key", WCHAR * SHORT_STRING_SIZE),
-        ("targetCount", c_int),
-        ("targets", JOBJECT64 * MAX_RELATION_TARGETS),
-    ]
-
-
-class AccessibleRelationSetInfo(Structure):
-    _fields_ = [
-        ("relationCount", c_int),
-        ("relations", AccessibleRelationInfo * MAX_RELATIONS),
-    ]
-
-
-class AccessibleActionInfo(Structure):
-    _fields_ = (("name", c_wchar * SHORT_STRING_SIZE),)
-
-
-class AccessibleActions(Structure):
-    _fields_ = (
-        ("actionsCount", c_int),
-        ("actionInfo", AccessibleActionInfo * MAX_ACTION_INFO),
-    )
-
-
-class AccessibleActionsToDo(Structure):
-    _fields_ = (
-        ("actionsCount", c_int),
-        ("actions", AccessibleActionInfo * MAX_ACTIONS_TO_DO),
-    )
-
-
 class AccessibleTableInfo(Structure):
     _fields_ = [
         ("caption", JOBJECT64),
@@ -162,17 +131,18 @@ class AccessibleTableCellInfo(Structure):
     ]
 
 
-class AccessibleKeyBindingInfo(Structure):
+class AccessibleRelationInfo(Structure):
     _fields_ = [
-        ("character", c_wchar),
-        ("modifiers", c_int),
+        ("key", WCHAR * SHORT_STRING_SIZE),
+        ("targetCount", c_int),
+        ("targets", JOBJECT64 * MAX_RELATION_TARGETS),
     ]
 
 
-class AccessibleKeyBindings(Structure):
+class AccessibleRelationSetInfo(Structure):
     _fields_ = [
-        ("keyBindingsCount", c_int),
-        ("keyBindingInfo", AccessibleKeyBindingInfo * MAX_KEY_BINDINGS),
+        ("relationCount", c_int),
+        ("relations", AccessibleRelationInfo * MAX_RELATIONS),
     ]
 
 
@@ -190,4 +160,57 @@ class AccessibleHypertextInfo(Structure):
         ("linkCount", c_int),
         ("links", AccessibleHyperlinkInfo * MAX_HYPERLINKS),
         ("accessibleHypertext", JOBJECT64),
+    ]
+
+
+class AccessibleKeyBindingInfo(Structure):
+    _fields_ = [
+        ("character", c_wchar),
+        ("modifiers", c_int),
+    ]
+
+
+class AccessibleKeyBindings(Structure):
+    _fields_ = [
+        ("keyBindingsCount", c_int),
+        ("keyBindingInfo", AccessibleKeyBindingInfo * MAX_KEY_BINDINGS),
+    ]
+
+
+class AccessibleIconInfo(Structure):
+    _fields_ = [
+        ("description", WCHAR * SHORT_STRING_SIZE),
+        ("height", c_int),
+        ("width", c_int),
+    ]
+
+
+class AccessibleIcons(Structure):
+    _fields_ = [("iconsCount", c_int), ("iconInfo", AccessibleIconInfo * MAX_ICON_INFO)]
+
+
+class AccessibleActionInfo(Structure):
+    _fields_ = [
+        ("name", WCHAR * SHORT_STRING_SIZE),
+    ]
+
+
+class AccessibleActions(Structure):
+    _fields_ = [
+        ("actionsCount", c_int),
+        ("actionInfo", AccessibleActionInfo * MAX_ACTION_INFO),
+    ]
+
+
+class AccessibleActionsToDo(Structure):
+    _fields_ = [
+        ("actionsCount", c_int),
+        ("actions", AccessibleActionInfo * MAX_ACTIONS_TO_DO),
+    ]
+
+
+class VisibleChildenInfo(Structure):
+    _fields_ = [
+        ("returnedChildrenCount", c_int),
+        ("children", AccessibleContextInfo * MAX_VISIBLE_CHILDREN),
     ]

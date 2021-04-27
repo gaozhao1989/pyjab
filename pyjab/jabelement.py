@@ -10,7 +10,6 @@ from pyjab.config import (
     ACCESSIBLE_META_KEYSTROKE,
     ACCESSIBLE_SHIFT_KEYSTROKE,
 )
-from pyjab.jabtext import JABText
 from pyjab.globalargs import BRIDGE
 from pyjab.jabhandler import JABHandler
 from pyjab.common.logger import Logger

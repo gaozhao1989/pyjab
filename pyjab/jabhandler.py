@@ -9,20 +9,15 @@ from ctypes import (
 )
 from ctypes import byref
 from ctypes.wintypes import HWND
-from pyjab.accessibles.selection import AccessibleSelection
-from pyjab.accessibles.value import AccessibleValue
 from pyjab.config import SHORT_STRING_SIZE
-from pyjab.common.exceptions import JavaAccessBridgeInternalException
-from pyjab.accessibles.actionstodo import AccessibleActionsToDo
-from pyjab.accessibles.icons import AccessibleIcons
-from pyjab.accessibles.context import AccessibleContext
-from pyjab.accessibles.hypertext import AccessibleHypertext
-from pyjab.accessibles.hyperlink import AccessibleHyperlink
+from pyjab.common.exceptions import JABException
 from pyjab.jabcontext import JABContext
-from typing import Optional, Tuple
+from typing import Dict, List
 from pyjab.accessibleinfo import (
     AccessBridgeVersionInfo,
+    AccessibleActionInfo,
     AccessibleActions,
+    AccessibleActionsToDo,
     AccessibleContextInfo,
     AccessibleHyperlinkInfo,
     AccessibleHypertextInfo,
@@ -36,14 +31,12 @@ from pyjab.accessibleinfo import (
     AccessibleTextRectInfo,
     AccessibleTextSelectionInfo,
 )
-from pyjab.apicallbacks import focus_gained_fp
-from pyjab.jabelement import JABElement
+
 from pyjab.common.eventhandler import EvenetHandler
 from pyjab.common.winuser import WinUser
 from pyjab.common.logger import Logger
 from pyjab.common.service import Service
 from pyjab.common.types import JOBJECT64, jint
-from pyjab.jabcontext import JABContext
 from pyjab.globalargs import VMIDS_OF_HWND
 
 
@@ -51,11 +44,9 @@ class JABHandler(object):
     def __init__(self, bridge: CDLL = None) -> None:
         self.log = Logger(self.__class__.__name__)
         self._bridge = bridge if isinstance(bridge, CDLL) else Service().load_library()
-        self.user = WinUser()
-        self.handler = EvenetHandler()
-        # TODO: set hwnd or vmid at least for AccessibleContext
-        self.ac = JABContext()
-        self.init_jab_context(self.ac)
+        self._jab_context = JABContext()
+        self.init_jab_context(self.jab_context)
+        self.int_func_err_msg = "Java Access Bridge func '{}' error"
 
     @property
     def bridge(self) -> CDLL:
@@ -65,55 +56,96 @@ class JABHandler(object):
     def bridge(self, bridge: CDLL) -> None:
         self._bridge = bridge
 
-    def init_jab_context(self, ac: JABContext) -> None:
-        hwnd = ac.hwnd
-        vmid = ac.vmid
-        ac = ac.ac
+    @property
+    def jab_context(self) -> JABContext:
+        return self._jab_context
+
+    @jab_context.setter
+    def jab_context(self, jab_context) -> None:
+        self._jab_context = jab_context
+
+    def init_jab_context(self, jab_context: JABContext) -> None:
+        hwnd = jab_context.hwnd
+        vmid = jab_context.vmid
+        accessible_context = jab_context.accessible_context
         if hwnd and not vmid:
             vmid = c_long()
-            ac = JOBJECT64()
-            self.get_accessible_context_from_hwnd(hwnd, vmid, ac)
+            accessible_context = JOBJECT64()
+            self.get_accessible_context_from_hwnd(hwnd, vmid, accessible_context)
             vmid = vmid.value
             global VMIDS_OF_HWND
             VMIDS_OF_HWND[vmid] = hwnd
         elif vmid and not hwnd:
-            hwnd = self._get_hwnd_from_accessible_context(vmid, ac)
-        ac.hwnd = hwnd
-        ac.vmid = vmid
-        ac.ac = ac
+            hwnd = self.get_hwnd_from_accessible_context(vmid, accessible_context)
+        self.jab_context.hwnd = HWND(hwnd)
+        self.jab_context.vmid = c_long(vmid)
+        self.jab_context.accessible_context = accessible_context
+
+    def get_hwnd(self, hwnd: HWND = None) -> HWND:
+        if isinstance(hwnd, HWND):
+            return hwnd
+        else:
+            return self.jab_context.hwnd
+
+    def get_vmid(self, vmid: c_long = None) -> c_long:
+        if isinstance(vmid, c_long):
+            return vmid
+        else:
+            return self.jab_context.vmid
+
+    def get_accessible_context(self, accessible_context: JOBJECT64 = None) -> JOBJECT64:
+        if isinstance(accessible_context, JOBJECT64):
+            return accessible_context
+        else:
+            return self.jab_context.accessible_context
+
+    def get_unicode_buffer(self, unicode_buffer: c_wchar = None) -> c_wchar:
+        if isinstance(unicode_buffer, c_wchar):
+            return unicode_buffer
+        else:
+            return create_unicode_buffer(SHORT_STRING_SIZE + 1)
+
+    def get_length(self, length: c_short = None) -> c_short:
+        if isinstance(length, c_short):
+            return length
+        else:
+            return SHORT_STRING_SIZE
 
     # Gateway Functions
     """
     You typically call these functions before calling any other Java Access Bridge API function
     """
 
-    def is_java_window(self) -> bool:
+    def is_java_window(self, hwnd: HWND = None) -> bool:
         """
         Checks to see if the given window implements the Java Accessibility API.
 
         BOOL IsJavaWindow(HWND window);
         """
-        result = False
-        result = self.bridge.isJavaWindow(self.ac.hwnd)
+        hwnd = self.get_hwnd(hwnd)
+        result = self.bridge.isJavaWindow(hwnd)
         return bool(result)
 
     def get_accessible_context_from_hwnd(
-        self, hwnd: HWND, vmid: c_long, context: JABContext
-    ) -> JABContext:
+        self, hwnd: HWND, vmid: c_long, accessible_context: JOBJECT64
+    ) -> JOBJECT64:
         """
         Gets the AccessibleContext and vmID values for the given window.
         Many Java Access Bridge functions require the AccessibleContext and vmID values.
 
         BOOL GetAccessibleContextFromHWND(HWND target, long *vmID, AccessibleContext *ac);
         """
-        hwnd = hwnd if isinstance(hwnd, HWND) else self.ac.hwnd
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        context = context if isinstance(vmid, JABContext) else self.ac
+        hwnd = self.get_hwnd(hwnd)
+        vmid = self.get_vmid(vmid)
+        accessible_context = self.get_accessible_context(accessible_context)
         result = self.bridge.getAccessibleContextFromHWND(
-            hwnd, byref(vmid), byref(context)
+            hwnd, byref(vmid), byref(accessible_context)
         )
-        if result:
-            return JABContext(hwnd=hwnd, vmid=vmid, ac=context)
+        if result == 0:
+            raise JABException(
+                self.int_func_err_msg.format("GetAccessibleContextFromHWND")
+            )
+        return accessible_context
 
     # Event Handling Functions
     """
@@ -127,7 +159,7 @@ class JABHandler(object):
     # General Functions
 
     def release_java_object(
-        self, vmid: c_long = None, context: JABContext = None
+        self, vmid: c_long = None, java_object: JOBJECT64 = None
     ) -> None:
         """
         Release the memory used by the Java object object,
@@ -142,15 +174,17 @@ class JABHandler(object):
         Args:
 
             vmid: java vmid of specific java window
-            context: accessible context of specifc java object
+            job: accessible context of specifc java object
 
         Returns:
 
             None
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        context = context if isinstance(vmid, JABContext) else self.ac
-        result = self.bridge.releaseJavaObject(vmid, context)
+        vmid = self.get_vmid(vmid)
+        java_object = self.get_accessible_context(java_object)
+        result = self.bridge.releaseJavaObject(vmid, java_object)
+        if result == 0:
+            raise JABException(self.int_func_err_msg.format("ReleaseJavaObject"))
 
     def get_version_info(self, vmid: c_long = None) -> AccessBridgeVersionInfo:
         """
@@ -174,9 +208,11 @@ class JABHandler(object):
                 bridgeJavaDLLVersion
                 bridgeWinDLLVersion
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
+        vmid = self.get_vmid(vmid)
         info = AccessBridgeVersionInfo()
         result = self.bridge.getVersionInfo(vmid, byref(info))
+        if result == 0:
+            raise JABException(self.int_func_err_msg.format("getVersionInfo"))
         return info
 
     # Accessible Context Functions
@@ -205,9 +241,9 @@ class JABHandler(object):
         x: c_int,
         y: c_int,
         vmid: c_long = None,
-        parent: JABContext = None,
-        child: JABContext = None,
-    ) -> JABContext or None:
+        parent_acc: JOBJECT64 = None,
+        new_acc: JOBJECT64 = JOBJECT64(),
+    ) -> JOBJECT64:
         """
         Retrieves an AccessibleContext object of the window or object that is under the mouse pointer.
 
@@ -218,29 +254,34 @@ class JABHandler(object):
             x: position x of child accessible context
             y: position y of child accessible context
             vmid: java vmid of specific java window
-            parent: parent accessible context of specifc java object
-            child: child accessible context of specifc java object
+            parent_acc: parent accessible context of specifc java object
+            new_acc: new accessible context of specifc java object
 
         Returns:
 
             AccessibleContext: get Accessible Context success
             None: get Accessible Context failed
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        parent = parent if isinstance(parent, JABContext) else self.ac
-        child = child if isinstance(child, JABContext) else JOBJECT64()
-        result = self.bridge.GetAccessibleContextAt(vmid, parent, x, y, byref(child))
-        if not result or not child:
-            return None
-        if not self.is_same_object(child, parent):
-            return JABContext(self.ac.hwnd, self.vmid, self.ac.ac)
-        else:
-            self.release_java_object()
+        vmid = self.get_vmid(vmid)
+        parent_acc = self.get_accessible_context(parent_acc)
+        new_acc = new_acc if isinstance(new_acc, JOBJECT64) else JOBJECT64()
+        result_acc = self.bridge.getAccessibleContextAt(
+            vmid, parent_acc, x, y, byref(new_acc)
+        )
+        if not result_acc or not new_acc:
+            raise JABException(self.int_func_err_msg.format("GetAccessibleContextAt"))
+        if not self.is_same_object(new_acc, parent_acc):
+            return new_acc
+        elif new_acc != parent_acc:
+            self.release_java_object(vmid, new_acc)
         return None
 
     def get_accessible_context_with_focus(
-        self, hwnd: HWND = None, vmid: c_long = None, context: JABContext = None
-    ) -> JABContext:
+        self,
+        hwnd: HWND = None,
+        vmid: c_long = None,
+        accessible_context: JOBJECT64 = None,
+    ) -> JOBJECT64:
         """
         Retrieves an AccessibleContext object of the window or object that has the focus.
 
@@ -250,19 +291,26 @@ class JABHandler(object):
 
             hwnd: HWND of specific window
             vmid: java vmid of specific java window
-            context: accessible context of specifc java object
+            accessible_context: accessible context of specifc java object
 
         Returns:
 
             AccessibleContext: get Accessible Context
         """
-        hwnd = hwnd if isinstance(hwnd, HWND) else self.ac.hwnd
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        context = context if isinstance(vmid, JABContext) else self.ac
-        return self.bridge.GetAccessibleContextWithFocus(hwnd, vmid, context)
+        hwnd = self.get_hwnd(hwnd)
+        vmid = self.get_vmid(vmid)
+        accessible_context = self.get_accessible_context(accessible_context)
+        result_acc = self.bridge.getAccessibleContextWithFocus(
+            hwnd, vmid, accessible_context
+        )
+        if not isinstance(result_acc, JOBJECT64):
+            raise JABException(
+                self.int_func_err_msg.format("GetAccessibleContextWithFocus")
+            )
+        return result_acc
 
     def get_accessible_context_info(
-        self, vmid: c_long = None, context: JABContext = None
+        self, vmid: c_long = None, accessible_context: JOBJECT64 = None
     ) -> AccessibleContextInfo:
         """
         Retrieves an AccessibleContextInfo object of the AccessibleContext object ac.
@@ -272,21 +320,25 @@ class JABHandler(object):
         Args:
 
             vmid: java vmid of specific java window
-            context: accessible context of specifc java object
+            accessible_context: accessible context of specifc java object
 
         Returns:
 
             AccessibleContextInfo
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        context = context if isinstance(vmid, JABContext) else self.ac
+        vmid = self.get_vmid(vmid)
+        accessible_context = self.get_accessible_context(accessible_context)
         info = AccessibleContextInfo()
-        result = self.bridge.GetAccessibleContextInfo(vmid, context, byref(info))
+        result = self.bridge.getAccessibleContextInfo(
+            vmid, accessible_context, byref(info)
+        )
+        if result == 0:
+            raise JABException(self.int_func_err_msg.format("GetAccessibleContextInfo"))
         return info
 
     def get_accessible_child_from_context(
-        self, index: c_int, vmid: c_long = None, context: JABContext = None
-    ) -> JABContext:
+        self, index: c_int, vmid: c_long = None, accessible_context: JOBJECT64 = None
+    ) -> JOBJECT64:
         """
         Returns an AccessibleContext object that represents the nth child of the object ac, where n is specified by the value index.
 
@@ -295,20 +347,26 @@ class JABHandler(object):
         Args:
 
             vmid: java vmid of specific java window
-            context: accessible context of specifc java object
+            accessible_context: accessible context of specifc java object
             index: index of child accessible context
 
         Returns:
             AccessibleContext: get child accessible context success
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        context = context if isinstance(vmid, JABContext) else self.ac
-        ac = self.bridge.GetAccessibleChildFromContext(vmid, context, index)
-        return JABContext(self.ac.hwnd, vmid, ac)
+        vmid = self.get_vmid(vmid)
+        accessible_context = self.get_accessible_context(accessible_context)
+        child_acc = self.bridge.getAccessibleChildFromContext(
+            vmid, accessible_context, index
+        )
+        if not isinstance(child_acc, JOBJECT64):
+            raise JABException(
+                self.int_func_err_msg.format("GetAccessibleChildFromContext")
+            )
+        return child_acc
 
     def get_accessible_parent_from_context(
-        self, vmid: c_long = None, context: JABContext = None
-    ) -> JABContext:
+        self, vmid: c_long = None, accessible_context: JOBJECT64 = None
+    ) -> JOBJECT64:
         """
         Returns an AccessibleContext object that represents the parent of object ac.
 
@@ -317,18 +375,24 @@ class JABHandler(object):
         Args:
 
             vmid: java vmid of specific java window
-            context: accessible context of specifc java object
+            accessible_context: accessible context of specifc java object
 
         Returns:
             AccessibleContext: get parent accessible context success
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        context = context if isinstance(vmid, JABContext) else self.ac
-        ac = self.bridge.GetAccessibleParentFromContext(vmid, context)
-        return JABContext(self.ac.hwnd, vmid, ac)
+        vmid = self.get_vmid(vmid)
+        accessible_context = self.get_accessible_context(accessible_context)
+        parent_acc = self.bridge.getAccessibleParentFromContext(
+            vmid, accessible_context
+        )
+        if not isinstance(parent_acc, JOBJECT64):
+            raise JABException(
+                self.int_func_err_msg.format("GetAccessibleParentFromContext")
+            )
+        return parent_acc
 
     def get_hwnd_from_accessible_context(
-        self, vmid: c_long = None, context: JABContext = None
+        self, vmid: c_long = None, accessible_context: JOBJECT64 = None
     ) -> HWND:
         """
         Returns the HWND from the AccessibleContextof a top-level window.
@@ -338,21 +402,20 @@ class JABHandler(object):
         Args:
 
             vmid: java vmid of specific java window
-            context: accessible context of specifc java object
+            accessible_context: accessible context of specifc java object
 
         Returns:
 
-            HWND: get HWND of current window success
-            None:  get HWND of current window failed
+            get HWND of current window
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        context = context if isinstance(vmid, JABContext) else self.ac
-        hwnd = self.bridge.getHWNDFromAccessibleContext(vmid, context)
-        if hwnd:
+        vmid = self.get_vmid(vmid)
+        accessible_context = self.get_accessible_context(accessible_context)
+        hwnd = self.bridge.getHWNDFromAccessibleContext(vmid, accessible_context)
+        if isinstance(hwnd, HWND):
             global VMIDS_OF_HWND
-            VMIDS_OF_HWND[self.ac.vmid] = hwnd
+            VMIDS_OF_HWND[self.jab_context.vmid] = hwnd
         else:
-            hwnd = VMIDS_OF_HWND.get(self.ac.vmid)
+            hwnd = VMIDS_OF_HWND.get(self.jab_context.vmid)
         return hwnd
 
     # Accessible Text Functions
@@ -368,76 +431,118 @@ class JABHandler(object):
         x: c_int,
         y: c_int,
         vmid: c_long = None,
-        context: JABContext = None,
+        accessible_text: JOBJECT64 = None,
     ) -> AccessibleTextInfo:
         """
         BOOL GetAccessibleTextInfo(long vmID, AccessibleText at, AccessibleTextInfo *textInfo, jint x, jint y);
         """
         info = AccessibleTextInfo()
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        context = context if isinstance(vmid, JABContext) else self.ac
-        result = self.bridge.GetAccessibleTextInfo(vmid, context, byref(info), x, y)
+        vmid = self.get_vmid(vmid)
+        accessible_text = self.get_accessible_context(accessible_text)
+        result = self.bridge.getAccessibleTextInfo(
+            vmid, accessible_text, byref(info), x, y
+        )
+        if result == 0:
+            raise JABException(self.int_func_err_msg.format("GetAccessibleTextInfo"))
         return info
 
     def get_accessible_text_items(
         self,
         index: c_int,
         vmid: c_long = None,
-        context: JABContext = None,
+        accessible_text: JOBJECT64 = None,
     ) -> AccessibleTextItemsInfo:
         """
+        Get Accessible Text items information.
+
+            letter: the index of text in Accessible text
+            word: the index of word in Accessible text
+            sentence: the all sentence in Accessible text
+
         BOOL GetAccessibleTextItems(long vmID, AccessibleText at, AccessibleTextItemsInfo *textItems, jint index);
         """
         info = AccessibleTextItemsInfo()
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        context = context if isinstance(vmid, JABContext) else self.ac
-        result = self.bridge.GetAccessibleTextItems(vmid, context, byref(info), index)
+        vmid = self.get_vmid(vmid)
+        accessible_text = self.get_accessible_context(accessible_text)
+        result = self.bridge.getAccessibleTextItems(
+            vmid, accessible_text, byref(info), index
+        )
+        if result == 0:
+            raise JABException(self.int_func_err_msg.format("GetAccessibleTextItems"))
         return info
 
     def get_accessible_text_selection_info(
         self,
         vmid: c_long = None,
-        context: JABContext = None,
+        accessible_text: JOBJECT64 = None,
     ) -> AccessibleTextSelectionInfo:
         """
+        Get Accessible Text of selection information.
+
+            selectionStartIndex: the selection text start index
+            selectionEndIndex: the selection text end index
+            selectedText: the selection text
+
         BOOL GetAccessibleTextSelectionInfo(long vmID, AccessibleText at, AccessibleTextSelectionInfo *textSelection);
         """
         info = AccessibleTextSelectionInfo()
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        context = context if isinstance(vmid, JABContext) else self.ac
-        result = self.bridge.GetAccessibleTextSelectionInfo(vmid, context, byref(info))
+        vmid = self.get_vmid(vmid)
+        accessible_text = self.get_accessible_context(accessible_text)
+        result = self.bridge.getAccessibleTextSelectionInfo(
+            vmid, accessible_text, byref(info)
+        )
+        if result == 0:
+            raise JABException(
+                self.int_func_err_msg.format("GetAccessibleTextSelectionInfo")
+            )
         return info
 
     def get_accessible_text_attributes(
         self,
         index: c_int,
         vmid: c_long = None,
-        context: JABContext = None,
+        accessible_text: JOBJECT64 = None,
     ) -> AccessibleTextAttributesInfo:
         """
+        Get Accessible Text Attributes information.
+
         char *GetAccessibleTextAttributes(long vmID, AccessibleText at, jint index, AccessibleTextAttributesInfo *attributes);
         """
         info = AccessibleTextAttributesInfo()
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        context = context if isinstance(vmid, JABContext) else self.ac
-        result = self.bridge.GetAccessibleTextAttributes(
-            vmid, context, index, byref(info)
+        vmid = self.get_vmid(vmid)
+        accessible_text = self.get_accessible_context(accessible_text)
+        result = self.bridge.getAccessibleTextAttributes(
+            vmid, accessible_text, index, byref(info)
         )
+        if result == 0:
+            raise JABException(
+                self.int_func_err_msg.format("GetAccessibleTextAttributes")
+            )
         return info
 
     def get_accessible_text_rect(
         self,
         index: c_int,
         vmid: c_long = None,
-        context: JABContext = None,
+        accessible_text: JOBJECT64 = None,
     ) -> AccessibleTextRectInfo:
         """
+        Get Accessible Text Rect information.
+            x
+            y
+            width
+            height
+
         BOOL GetAccessibleTextRect(long vmID, AccessibleText at, AccessibleTextRectInfo *rectInfo, jint index);
         """
         info = AccessibleTextRectInfo()
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        context = context if isinstance(vmid, JABContext) else self.ac
-        result = self.bridge.GetAccessibleTextRect(vmid, context, byref(info), index)
+        vmid = self.get_vmid(vmid)
+        accessible_text = self.get_accessible_context(accessible_text)
+        result = self.bridge.getAccessibleTextRect(
+            vmid, accessible_text, byref(info), index
+        )
+        if result == 0:
+            raise JABException(self.int_func_err_msg.format("GetAccessibleTextRect"))
         return info
 
     def get_accessible_text_range(
@@ -445,7 +550,7 @@ class JABHandler(object):
         start: c_int,
         end: c_int,
         vmid: c_long = None,
-        context: JABContext = None,
+        accessible_text: JOBJECT64 = None,
     ) -> str:
         """
         Get a range of text; null if indicies are bogus
@@ -457,22 +562,38 @@ class JABHandler(object):
             return u""
         # Use a string buffer, as from an unicode buffer, we can't get the raw data.
         buffer = create_string_buffer((length + 1) * 2)
-        # TODO: handle return text from raw bytes
-        return self.bridge.getAccessibleTextRange(
-            vmid, context, start, end, buffer, length
+        result = self.bridge.getAccessibleTextRange(
+            vmid, accessible_text, start, end, buffer, length
         )
+        if not result:
+            raise JABException(self.int_func_err_msg.format("getAccessibleTextRange"))
+        # TODO: handle return text from raw bytes
+        byte_numbers = length * 2
+        raw_text = buffer.raw[:byte_numbers]
+        if not any(raw_text):
+            return ""
+        try:
+            text = raw_text.decode("utf_16", errors="surrogatepass")
+        except UnicodeDecodeError:
+            self.log.debug(
+                "Error decoding text in {}, probably wrong encoding assumed or incomplete data".format(
+                    buffer
+                )
+            )
+            text = raw_text.decode("utf_16", errors="replace")
+        return text
 
     def get_accessible_text_line_bounds(
         self,
         index: c_int,
         vmid: c_long = None,
-        context: JABContext = None,
-    ) -> Tuple:
+        accessible_text: JOBJECT64 = None,
+    ) -> Dict:
         """
         BOOL GetAccessibleTextLineBounds(long vmID, AccessibleText at, jint index, jint *startIndex, jint *endIndex);
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        context = context if isinstance(vmid, JABContext) else self.ac
+        vmid = self.get_vmid(vmid)
+        accessible_text = self.get_accessible_context(accessible_text)
         index = max(index, 0)
         output_text_line_bounds = "line bounds: start {}, end {}"
         self.log.debug("line bounds: index {}".format(index))
@@ -481,7 +602,7 @@ class JABHandler(object):
         end_line = c_int()
         self.bridge.getAccessibleTextLineBounds(
             vmid,
-            context,
+            accessible_text,
             index,
             byref(start_line),
             byref(end_line),
@@ -491,12 +612,12 @@ class JABHandler(object):
         self.log.debug(output_text_line_bounds.format(start, end))
         if end < start or start < 0:
             # Invalid or empty line.
-            return (0, -1)
+            return dict(start=0, end=-1)
         # OpenOffice sometimes returns offsets encompassing more than one line, so try to narrow them down.
         # Try to retract the end offset.
         self.bridge.getAccessibleTextLineBounds(
             vmid,
-            context,
+            accessible_text,
             end,
             byref(start_line),
             byref(end_line),
@@ -509,8 +630,8 @@ class JABHandler(object):
             end = temp_start - 1
         # Try to retract the start.
         self.bridge.getAccessibleTextLineBounds(
-            self.ac.vmid,
-            self.ac.ac,
+            self.jab_context.vmid,
+            self.jab_context.accessible_context,
             start,
             byref(start_line),
             byref(end_line),
@@ -524,7 +645,7 @@ class JABHandler(object):
         self.log.debug(
             "line bounds: returning {start}, {end}".format(start=start, end=end)
         )
-        return start, end
+        return dict(start=start, end=end)
 
     # Additional Text Functions
 
@@ -533,7 +654,7 @@ class JABHandler(object):
         start: c_int,
         end: c_int,
         vmid: c_long = None,
-        context: JABContext = None,
+        accessible_context: JOBJECT64 = None,
     ) -> bool:
         """
         Selects text between two indices. Selection includes the text at the start index and the text at the end index.
@@ -544,7 +665,7 @@ class JABHandler(object):
         Args:
 
             vmid: java vmid of specific java window
-            context: accessible context of specifc java object
+            accessible_context: accessible text of specifc java object
             start: start index of the selection text
             end: end index of the selection text
 
@@ -553,13 +674,14 @@ class JABHandler(object):
             True: select action success
             False: select action failed
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        context = context if isinstance(vmid, JABContext) else self.ac
+        vmid = self.get_vmid(vmid)
+        accessible_context = self.get_accessible_context(accessible_context)
+        # TODO: func will not stop after do action on Java Object
         result = self.bridge.selectTextRange(
             vmid,
-            context,
-            byref(start),
-            byref(end),
+            accessible_context,
+            start,
+            end,
         )
         return bool(result)
 
@@ -568,7 +690,7 @@ class JABHandler(object):
         start: c_int,
         end: c_int,
         vmid: c_long,
-        context: JABContext,
+        accessible_context: JOBJECT64,
     ) -> AccessibleTextAttributesInfo:
         """
         Get text attributes between two indices.
@@ -580,7 +702,7 @@ class JABHandler(object):
         Args:
 
             vmid: java vmid of specific java window
-            context: accessible context of specifc java object
+            accessible_context: accessible context of specifc java object
             start: start index of the text range
             end: end index of the text range
             info: accessible text attribuetes info
@@ -593,18 +715,20 @@ class JABHandler(object):
         """
         info = AccessibleTextAttributesInfo()
         length = c_short()
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        context = context if isinstance(vmid, JABContext) else self.ac
+        vmid = self.get_vmid(vmid)
+        accessible_context = self.get_accessible_context(accessible_context)
         result = self.bridge.getTextAttributesInRange(
-            vmid, context, start, end, byref(info), length
+            vmid, accessible_context, start, end, byref(info), length
         )
+        if result == 0:
+            raise JABException(self.int_func_err_msg.format("getTextAttributesInRange"))
         return info
 
     def set_caret_position(
         self,
         position: c_int,
         vmid: c_long = None,
-        context: JABContext = None,
+        accessible_context: JOBJECT64 = None,
     ) -> bool:
         """
         Set the caret to a text position.
@@ -615,7 +739,7 @@ class JABHandler(object):
         Args:
 
             vmid: java vmid of specific java window
-            context: accessible context of specifc java object
+            accessible_context: accessible context of specifc java object
             position: number of text position
 
         Returns:
@@ -623,17 +747,17 @@ class JABHandler(object):
             True: set the caret to a text position success
             False: set the caret to a text position failed
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        context = context if isinstance(vmid, JABContext) else self.ac
-        result = self.bridge.setCaretPosition(vmid, context, position)
+        vmid = self.get_vmid(vmid)
+        accessible_context = self.get_accessible_context(accessible_context)
+        result = self.bridge.setCaretPosition(vmid, accessible_context, position)
         return bool(result)
 
     def get_caret_location(
         self,
         index: c_int,
         vmid: c_long,
-        context: JABContext,
-    ) -> Tuple:
+        accessible_context: JOBJECT64,
+    ) -> Dict:
         """
         Gets the text caret location.
 
@@ -642,7 +766,7 @@ class JABHandler(object):
         Args:
 
             vmid: java vmid of specific java window
-            context: accessible context of specifc java object
+            accessible_context: accessible context of specifc java object
             info: accessible text rect info
             index: index of caret
 
@@ -650,17 +774,21 @@ class JABHandler(object):
 
             location of specific caret
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        context = context if isinstance(vmid, JABContext) else self.ac
+        vmid = self.get_vmid(vmid)
+        accessible_context = self.get_accessible_context(accessible_context)
         info = AccessibleTextRectInfo()
-        result = self.bridge.getCaretLocation(vmid, context, byref(info), index)
-        return info.x, info.y
+        result = self.bridge.getCaretLocation(
+            vmid, accessible_context, byref(info), index
+        )
+        if not result:
+            raise JABException(self.int_func_err_msg.format("getCaretLocation"))
+        return dict(x=info.x, y=info.y)
 
     def set_text_contents(
         self,
         text: c_wchar,
         vmid: c_long = None,
-        context: JABContext = None,
+        accessible_context: JOBJECT64 = None,
     ) -> bool:
         """
         Sets editable text contents.
@@ -673,7 +801,7 @@ class JABHandler(object):
         Args:
 
             vmid: java vmid of specific java window
-            context: accessible context of specifc java object
+            accessible_context: accessible context of specifc java object
             text: text contents need to be set
 
         Returns:
@@ -681,15 +809,16 @@ class JABHandler(object):
             True: set editable text contents success
             False: set editable text contents failed
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        context = context if isinstance(vmid, JABContext) else self.ac
-        result = self.bridge.setTextContents(vmid, context, text)
+        vmid = self.get_vmid(vmid)
+        accessible_context = self.get_accessible_context(accessible_context)
+        # TODO: func setTextContents not working
+        result = self.bridge.setTextContents(vmid, accessible_context, text)
         return bool(result)
 
     # Accessible Table Functions
 
     def get_accessible_table_info(
-        self, vmid: c_long = None, context: JABContext = None
+        self, vmid: c_long = None, accessible_context: JOBJECT64 = None
     ) -> AccessibleTableInfo:
         """
         Returns information about the table, for example, caption, summary, row and column count, and the AccessibleTable.
@@ -699,7 +828,7 @@ class JABHandler(object):
         Args:
 
             vmid: java vmid of specific java window
-            context: accessible context of specifc java object
+            accessible_context: accessible context of specifc java object
             info: accessible table info
 
         Returns:
@@ -707,24 +836,28 @@ class JABHandler(object):
             AccessibleTableInfo
         """
         info = AccessibleTableInfo()
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        context = context if isinstance(vmid, JABContext) else self.ac
-        if self.bridge.getAccessibleTableInfo(vmid, context, byref(info)):
-            for item in [
-                info.caption,
-                info.summary,
-                info.accessibleContext,
-                info.accessibleTable,
-            ]:
-                item = (
-                    JABContext(
-                        hwnd=self.ac.hwnd,
-                        vmid=self.ac.vmid,
-                        ac=item,
-                    )
-                    if item
-                    else None
+        vmid = self.get_vmid(vmid)
+        accessible_context = self.get_accessible_context(accessible_context)
+        result = self.bridge.getAccessibleTableInfo(
+            vmid, accessible_context, byref(info)
+        )
+        if not result:
+            raise JABException(self.int_func_err_msg.format("getAccessibleTableInfo"))
+        for item in [
+            info.caption,
+            info.summary,
+            info.accessibleContext,
+            info.accessibleTable,
+        ]:
+            item = (
+                JABContext(
+                    hwnd=self.jab_context.hwnd,
+                    vmid=self.jab_context.vmid,
+                    accessible_context=item,
                 )
+                if item
+                else None
+            )
         return info
 
     def get_accessible_table_cell_info(
@@ -732,7 +865,7 @@ class JABHandler(object):
         row: c_int,
         column: c_int,
         vmid: c_long = None,
-        context: JABContext = None,
+        accessible_table: JOBJECT64 = None,
     ) -> AccessibleTableCellInfo:
         """
         Returns information about the specified table cell. The row and column specifiers are zero-based.
@@ -742,7 +875,7 @@ class JABHandler(object):
         Args:
 
             vmid: java vmid of specific java window
-            context: accessible context of specifc java object
+            accessible_table: accessible context of specifc java object
             row: index of row number for table cell
             column: index of column number for table cell
             info: accessible table cell info
@@ -752,26 +885,30 @@ class JABHandler(object):
             AccessibleTableCellInfo
         """
         info = AccessibleTableCellInfo()
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        context = context if isinstance(vmid, JABContext) else self.ac
-        if self.bridge.getAccessibleTableCellInfo(
-            vmid, context, row, column, byref(info)
-        ):
-            info.accessibleContext = (
-                JABContext(
-                    hwnd=self.ac.hwnd,
-                    vmid=self.ac.vmid,
-                    ac=info.accessibleContext,
-                )
-                if info.accessibleContext
-                else None
+        vmid = self.get_vmid(vmid)
+        accessible_table = self.get_accessible_context(accessible_table)
+        result = self.bridge.getAccessibleTableCellInfo(
+            vmid, accessible_table, row, column, byref(info)
+        )
+        if not result:
+            raise JABException(
+                self.int_func_err_msg.format("getAccessibleTableCellInfo")
             )
+        info.accessibleContext = (
+            JABContext(
+                hwnd=self.jab_context.hwnd,
+                vmid=self.jab_context.vmid,
+                accessible_context=info.accessibleContext,
+            )
+            if info.accessibleContext
+            else None
+        )
         return info
 
     def get_accessible_table_row_header(
         self,
         vmid: c_long = None,
-        context: JABContext = None,
+        accessible_context: JOBJECT64 = None,
     ) -> AccessibleTableInfo:
         """
         Returns the table row headers of the specified table as a table.
@@ -779,34 +916,38 @@ class JABHandler(object):
         BOOL getAccessibleTableRowHeader(long vmID, AccessibleContext acParent, AccessibleTableInfo *tableInfo);
         """
         info = AccessibleTableInfo()
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        context = context if isinstance(vmid, JABContext) else self.ac
-        if self.bridge.getAccessibleTableRowHeader(
+        vmid = self.get_vmid(vmid)
+        accessible_context = self.get_accessible_context(accessible_context)
+        result = self.bridge.getAccessibleTableRowHeader(
             vmid,
-            self.ac.ac,
+            self.jab_context.accessible_context,
             byref(info),
-        ):
-            for item in [
-                info.caption,
-                info.summary,
-                info.accessibleContext,
-                info.accessibleTable,
-            ]:
-                item = (
-                    JABContext(
-                        hwnd=self.ac.hwnd,
-                        vmid=self.ac.vmid,
-                        ac=item,
-                    )
-                    if item
-                    else None
+        )
+        if not result:
+            raise JABException(
+                self.int_func_err_msg.format("getAccessibleTableRowHeader")
+            )
+        for item in [
+            info.caption,
+            info.summary,
+            info.accessibleContext,
+            info.accessibleTable,
+        ]:
+            item = (
+                JABContext(
+                    hwnd=self.jab_context.hwnd,
+                    vmid=self.jab_context.vmid,
+                    accessible_context=item,
                 )
+                if item
+                else None
+            )
         return info
 
     def get_accessible_table_column_header(
         self,
         vmid: c_long = None,
-        context: JABContext = None,
+        accessible_context: JOBJECT64 = None,
     ) -> AccessibleTableInfo:
         """
         Returns the table column headers of the specified table as a table.
@@ -814,105 +955,124 @@ class JABHandler(object):
         BOOL getAccessibleTableColumnHeader(long vmID, AccessibleContext acParent, AccessibleTableInfo *tableInfo);
         """
         info = AccessibleTableInfo()
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        context = context if isinstance(vmid, JABContext) else self.ac
-        if self.bridge.getAccessibleTableColumnHeader(
+        vmid = self.get_vmid(vmid)
+        accessible_context = self.get_accessible_context(accessible_context)
+        result = self.bridge.getAccessibleTableColumnHeader(
             vmid,
-            context,
+            accessible_context,
             byref(info),
-        ):
-            for item in [
-                info.caption,
-                info.summary,
-                info.accessibleContext,
-                info.accessibleTable,
-            ]:
-                item = (
-                    JABContext(
-                        hwnd=self.ac.hwnd,
-                        vmid=self.ac.vmid,
-                        ac=item,
-                    )
-                    if item
-                    else None
+        )
+        if not result:
+            raise JABException(
+                self.int_func_err_msg.format("getAccessibleTableColumnHeader")
+            )
+        for item in [
+            info.caption,
+            info.summary,
+            info.accessibleContext,
+            info.accessibleTable,
+        ]:
+            item = (
+                JABContext(
+                    hwnd=self.jab_context.hwnd,
+                    vmid=self.jab_context.vmid,
+                    accessible_context=item,
                 )
+                if item
+                else None
+            )
         return info
 
     def get_accessible_table_row_description(
         self,
         row: c_int,
         vmid: c_long = None,
-        context: JABContext = None,
-    ) -> str:
+        accessible_context: JOBJECT64 = None,
+    ) -> JOBJECT64:
         """
         Returns the description of the specified row in the specified table.
         The row specifier is zero-based.
 
         AccessibleContext getAccessibleTableRowDescription(long vmID, AccessibleContext acParent, jint row);
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        context = context if isinstance(vmid, JABContext) else self.ac
-        return self.bridge.getAccessibleTableRowDescription(
+        vmid = self.get_vmid(vmid)
+        hwnd = self.get_hwnd()
+        accessible_context = self.get_accessible_context(accessible_context)
+        result_acc = self.bridge.getAccessibleTableRowDescription(
             vmid,
-            context,
+            accessible_context,
             row,
         )
+        if not result_acc:
+            raise JABException(
+                self.int_func_err_msg.format("getAccessibleTableRowDescription")
+            )
+        return JABContext(hwnd, vmid, result_acc)
 
     def get_accessible_table_column_description(
         self,
         column: c_int,
         vmid: c_long = None,
-        context: JABContext = None,
-    ) -> str:
+        accessible_context: JOBJECT64 = None,
+    ) -> JOBJECT64:
         """
         Returns the description of the specified column in the specified table.
         The column specifier is zero-based.
 
         AccessibleContext getAccessibleTableColumnDescription(long vmID, AccessibleContext acParent, jint column);
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        context = context if isinstance(vmid, JABContext) else self.ac
-        return self.bridge.getAccessibleTableColumnDescription(
+        vmid = self.get_vmid(vmid)
+        hwnd = self.get_hwnd()
+        accessible_context = self.get_accessible_context(accessible_context)
+        result_acc = self.bridge.getAccessibleTableColumnDescription(
             vmid,
-            context,
+            accessible_context,
             column,
         )
+        if not result_acc:
+            raise JABException(
+                self.int_func_err_msg.format("getAccessibleTableColumnDescription")
+            )
+        return JABContext(hwnd, vmid, result_acc)
 
     def get_accessible_table_row_selection_count(
         self,
         vmid: c_long = None,
-        context: JABContext = None,
+        accessible_table: JOBJECT64 = None,
     ) -> int:
         """
         Returns how many rows in the table are selected.
 
         jint getAccessibleTableRowSelectionCount(long vmID, AccessibleTable table);
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        context = context if isinstance(vmid, JABContext) else self.ac
+        vmid = self.get_vmid(vmid)
+        accessible_table = self.get_accessible_context(accessible_table)
         result = self.bridge.getAccessibleTableRowSelectionCount(
             vmid,
-            context,
+            accessible_table,
         )
-        if isinstance(result, int) and result != -1:
-            return result
+        if result != -1:
+            raise JABException(
+                self.int_func_err_msg.format("getAccessibleTableRowSelectionCount")
+            )
+        return result
 
     def is_accessible_table_row_selected(
         self,
         row: c_int,
         vmid: c_long = None,
-        context: JABContext = None,
+        accessible_table: JOBJECT64 = None,
     ) -> bool:
         """
         Returns true if the specified zero based row is selected.
 
         BOOL isAccessibleTableRowSelected(long vmID, AccessibleTable table, jint row);
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        context = context if isinstance(vmid, JABContext) else self.ac
+        vmid = self.get_vmid(vmid)
+        accessible_table = self.get_accessible_context(accessible_table)
         result = self.bridge.isAccessibleTableRowSelected(
             vmid,
-            context,
+            accessible_table,
             row,
         )
         return bool(result)
@@ -922,55 +1082,61 @@ class JABHandler(object):
         count: c_int,
         selections: c_int,
         vmid: c_long = None,
-        context: JABContext = None,
-    ) -> list:
+        accessible_table: JOBJECT64 = None,
+    ) -> bool:
         """
         Returns an array of zero based indices of the selected rows.
 
         BOOL getAccessibleTableRowSelections(long vmID, AccessibleTable table, jint count, jint *selections);
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        context = context if isinstance(vmid, JABContext) else self.ac
-        return self.bridge.getAccessibleTableRowSelections(
+        vmid = self.get_vmid(vmid)
+        accessible_table = self.get_accessible_context(accessible_table)
+        result = self.bridge.getAccessibleTableRowSelections(
             vmid,
-            context,
+            accessible_table,
             count,
             selections,
         )
+        return bool(result)
 
     def get_accessible_table_column_selection_count(
         self,
         vmid: c_long = None,
-        context: JABContext = None,
+        accessible_table: JOBJECT64 = None,
     ) -> int:
         """
         Returns how many columns in the table are selected.
 
         jint getAccessibleTableColumnSelectionCount(long vmID, AccessibleTable table);
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        context = context if isinstance(vmid, JABContext) else self.ac
-        return self.bridge.getAccessibleTableColumnSelectionCount(
+        vmid = self.get_vmid(vmid)
+        accessible_table = self.get_accessible_context(accessible_table)
+        result = self.bridge.getAccessibleTableColumnSelectionCount(
             vmid,
-            context,
+            accessible_table,
         )
+        if result != -1:
+            raise JABException(
+                self.int_func_err_msg.format("getAccessibleTableColumnSelectionCount")
+            )
+        return result
 
     def is_accessible_table_column_selected(
         self,
         column: c_int,
         vmid: c_long = None,
-        context: JABContext = None,
+        accessible_table: JOBJECT64 = None,
     ) -> bool:
         """
         Returns true if the specified zero based column is selected.
 
         BOOL isAccessibleTableColumnSelected(long vmID, AccessibleTable table, jint column);
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        context = context if isinstance(vmid, JABContext) else self.ac
+        vmid = self.get_vmid(vmid)
+        accessible_table = self.get_accessible_context(accessible_table)
         result = self.bridge.isAccessibleTableColumnSelected(
             vmid,
-            context,
+            accessible_table,
             column,
         )
         return bool(result)
@@ -980,27 +1146,28 @@ class JABHandler(object):
         count: c_int,
         selections: c_int,
         vmid: c_long = None,
-        context: JABContext = None,
-    ) -> list:
+        accessible_table: JOBJECT64 = None,
+    ) -> bool:
         """
         Returns an array of zero based indices of the selected columns.
 
         BOOL getAccessibleTableColumnSelections(long vmID, AccessibleTable table, jint count, jint *selections);
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        context = context if isinstance(vmid, JABContext) else self.ac
-        return self.bridge.getAccessibleTableColumnSelections(
+        vmid = self.get_vmid(vmid)
+        accessible_table = self.get_accessible_context(accessible_table)
+        result = self.bridge.getAccessibleTableColumnSelections(
             vmid,
-            context,
+            accessible_table,
             count,
             selections,
         )
+        return bool(result)
 
     def get_accessible_table_row(
         self,
         index: c_int,
         vmid: c_long = None,
-        context: JABContext = None,
+        accessible_table: JOBJECT64 = None,
     ) -> int:
         """
         Returns the row number of the cell at the specified cell index.
@@ -1008,19 +1175,22 @@ class JABHandler(object):
 
         jint getAccessibleTableRow(long vmID, AccessibleTable table, jint index);
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        context = context if isinstance(vmid, JABContext) else self.ac
-        return self.bridge.getAccessibleTableRow(
+        vmid = self.get_vmid(vmid)
+        accessible_table = self.get_accessible_context(accessible_table)
+        result = self.bridge.getAccessibleTableRow(
             vmid,
-            context,
+            accessible_table,
             index,
         )
+        if result != -1:
+            raise JABException(self.int_func_err_msg.format("getAccessibleTableRow"))
+        return result
 
     def get_accessible_table_column(
         self,
         index: c_int,
         vmid: c_long = None,
-        context: JABContext = None,
+        accessible_table: JOBJECT64 = None,
     ) -> int:
         """
         Returns the column number of the cell at the specified cell index.
@@ -1028,20 +1198,23 @@ class JABHandler(object):
 
         jint getAccessibleTableColumn(long vmID, AccessibleTable table, jint index);
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        context = context if isinstance(vmid, JABContext) else self.ac
-        return self.bridge.getAccessibleTableColumn(
+        vmid = self.get_vmid(vmid)
+        accessible_table = self.get_accessible_context(accessible_table)
+        result = self.bridge.getAccessibleTableColumn(
             vmid,
-            context,
+            accessible_table,
             index,
         )
+        if result != -1:
+            raise JABException(self.int_func_err_msg.format("getAccessibleTableColumn"))
+        return result
 
     def get_accessible_table_index(
         self,
         row: c_int,
         column: c_int,
         vmid: c_long = None,
-        context: JABContext = None,
+        accessible_table: JOBJECT64 = None,
     ) -> int:
         """
         Returns the index in the table of the specified row and column offset.
@@ -1049,21 +1222,24 @@ class JABHandler(object):
 
         jint getAccessibleTableIndex(long vmID, AccessibleTable table, jint row, jint column);
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        context = context if isinstance(vmid, JABContext) else self.ac
-        return self.bridge.getAccessibleTableIndex(
+        vmid = self.get_vmid(vmid)
+        accessible_table = self.get_accessible_context(accessible_table)
+        result = self.bridge.getAccessibleTableIndex(
             vmid,
-            context,
+            accessible_table,
             row,
             column,
         )
+        if result != -1:
+            raise JABException(self.int_func_err_msg.format("getAccessibleTableIndex"))
+        return result
 
     # Accessible Relation Set Function
 
     def get_accessible_relation_set(
         self,
         vmid: c_long = None,
-        context: JABContext = None,
+        accessible_context: JOBJECT64 = None,
     ) -> AccessibleRelationSetInfo:
         """
         Returns information about an object's related objects.
@@ -1071,13 +1247,15 @@ class JABHandler(object):
         BOOL getAccessibleRelationSet(long vmID, AccessibleContext accessibleContext, AccessibleRelationSetInfo *relationSetInfo);
         """
         info = AccessibleRelationSetInfo()
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        context = context if isinstance(vmid, JABContext) else self.ac
+        vmid = self.get_vmid(vmid)
+        accessible_context = self.get_accessible_context(accessible_context)
         result = self.bridge.getAccessibleRelationSet(
             vmid,
-            context,
+            accessible_context,
             byref(info),
         )
+        if not result:
+            raise JABException(self.int_func_err_msg.format("getAccessibleRelationSet"))
         return info
 
     # Accessible Hypertext Functions
@@ -1085,7 +1263,7 @@ class JABHandler(object):
     def get_accessible_hyper_text(
         self,
         vmid: c_long = None,
-        context: JABContext = None,
+        accessible_context: JOBJECT64 = None,
     ) -> AccessibleHypertextInfo:
         """
         Returns hypertext information associated with a component.
@@ -1093,38 +1271,39 @@ class JABHandler(object):
         BOOL getAccessibleHypertext(long vmID, AccessibleContext accessibleContext, AccessibleHypertextInfo *hypertextInfo);
         """
         info = AccessibleHypertextInfo()
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        context = context if isinstance(vmid, JABContext) else self.ac
+        vmid = self.get_vmid(vmid)
+        accessible_context = self.get_accessible_context(accessible_context)
         result = self.bridge.getAccessibleHypertext(
             vmid,
-            context,
+            accessible_context,
             byref(info),
         )
+        if not result:
+            raise JABException(self.int_func_err_msg.format("getAccessibleHypertext"))
         return info
 
     def active_accessible_hyper_link(
         self,
         vmid: c_long = None,
-        context: JABContext = None,
-        hyperlink: AccessibleHyperlink = None,
+        accessible_context: JOBJECT64 = None,
+        accessible_hyper_link: JOBJECT64 = None,
     ) -> bool:
         """
         Requests that a hyperlink be activated.
 
         BOOL activateAccessibleHyperlink(long vmID, AccessibleContext accessibleContext, AccessibleHyperlink accessibleHyperlink);
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        context = context if isinstance(vmid, JABContext) else self.ac
-        # TODO: need hanld hyperlink value if none
+        vmid = self.get_vmid(vmid)
+        accessible_context = self.get_accessible_context(accessible_context)
         result = self.bridge.activateAccessibleHyperlink(
             vmid,
-            context,
-            hyperlink,
+            accessible_context,
+            accessible_hyper_link,
         )
         return bool(result)
 
     def get_accessible_hyper_link_count(
-        self, vmid: c_long = None, hypertext: AccessibleHypertext = None
+        self, vmid: c_long = None, accessible_hyper_text: JOBJECT64 = None
     ) -> int:
         """
         Returns the number of hyperlinks in a component.
@@ -1133,18 +1312,22 @@ class JABHandler(object):
 
         jint getAccessibleHyperlinkCount(const long vmID, const AccessibleHypertext hypertext);
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        # TODO: need hanld hypertext value if none
-        return self.bridge.getAccessibleHyperlinkCount(
+        vmid = self.get_vmid(vmid)
+        result = self.bridge.getAccessibleHyperlinkCount(
             vmid,
-            hypertext,
+            accessible_hyper_text,
         )
+        if result == -1:
+            raise JABException(
+                self.int_func_err_msg.format("getAccessibleHyperlinkCount")
+            )
+        return result
 
     def get_accessible_hyper_text_ext(
         self,
         start: c_int,
         vmid: c_long = None,
-        context: JABContext = None,
+        accessible_context: JOBJECT64 = None,
     ) -> AccessibleHypertextInfo:
         """
         Iterates through the hyperlinks in a component.
@@ -1155,21 +1338,25 @@ class JABHandler(object):
         BOOL getAccessibleHypertextExt(const long vmID, const AccessibleContext accessibleContext, const jint nStartIndex, AccessibleHypertextInfo *hypertextInfo);
         """
         info = AccessibleHypertextInfo()
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        context = context if isinstance(vmid, JABContext) else self.ac
+        vmid = self.get_vmid(vmid)
+        accessible_context = self.get_accessible_context(accessible_context)
         result = self.bridge.getAccessibleHypertextExt(
-            self.ac.vmid,
-            self.ac.ac,
+            vmid,
+            accessible_context,
             start,
             byref(info),
         )
+        if not result:
+            raise JABException(
+                self.int_func_err_msg.format("getAccessibleHypertextExt")
+            )
         return info
 
     def get_accessible_hyper_link_index(
         self,
         index: c_int,
         vmid: c_long = None,
-        hypertext: AccessibleHypertext = None,
+        accessible_hyper_text: JOBJECT64 = None,
     ) -> int:
         """
         Returns the index into an array of hyperlinks that is associated with a character index in document.
@@ -1178,20 +1365,24 @@ class JABHandler(object):
 
         jint getAccessibleHypertextLinkIndex(const long vmID, const AccessibleHypertext hypertext, const jint nIndex);
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        # TODO: need hanld hypertext value if none
-        return self.bridge.getAccessibleHypertextLinkIndex(
+        vmid = self.get_vmid(vmid)
+        result = self.bridge.getAccessibleHypertextLinkIndex(
             vmid,
-            hypertext,
+            accessible_hyper_text,
             index,
         )
+        if result == -1:
+            raise JABException(
+                self.int_func_err_msg.format("getAccessibleHypertextLinkIndex")
+            )
+        return result
 
     def get_accessible_hyper_link(
         self,
         index: c_int,
         vmid: c_long = None,
-        hypertext: AccessibleHypertext = None,
-    ) -> AccessibleHyperlink:
+        accessible_hyper_text: JOBJECT64 = None,
+    ) -> bool:
         """
         Returns the nth hyperlink in a document.
         Maps to AccessibleHypertext.getLink.
@@ -1200,87 +1391,86 @@ class JABHandler(object):
         BOOL getAccessibleHyperlink(const long vmID, const AccessibleHypertext hypertext, const jint nIndex, AccessibleHypertextInfo *hyperlinkInfo);
         """
         info = AccessibleHypertextInfo()
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        # TODO: need hanld hypertext value if none
+        vmid = self.get_vmid(vmid)
         result = self.bridge.getAccessibleHyperlink(
             vmid,
-            hypertext,
+            accessible_hyper_text,
             index,
             byref(info),
         )
-        # TODO: need return type of AccessibleHyperlink
-        return result
+        return bool(result)
 
     # Accessible Key Binding Function
 
     def get_accessible_key_bindings(
         self,
         vmid: c_long = None,
-        context: JABContext = None,
-    ) -> list:
+        accessible_context: JOBJECT64 = None,
+    ) -> bool:
         """
         Returns a list of key bindings associated with a component.
 
         BOOL getAccessibleKeyBindings(long vmID, AccessibleContext accessibleContext, AccessibleKeyBindings *keyBindings);
         """
         bindings = AccessibleKeyBindings()
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        context = context if isinstance(vmid, JABContext) else self.ac
-        return self.bridge.getAccessibleKeyBindings(
+        vmid = self.get_vmid(vmid)
+        accessible_context = self.get_accessible_context(accessible_context)
+        result = self.bridge.getAccessibleKeyBindings(
             vmid,
-            context,
+            accessible_context,
             byref(bindings),
         )
+        if not result:
+            raise JABException(self.int_func_err_msg.format("getAccessibleHyperlink"))
+        return bindings
 
     # Accessible Icon Function
-
+    # TODO: get_accessible_icons func need fix
     def get_accessible_icons(
         self,
         vmid: c_long = None,
-        accessible_context: AccessibleContext = None,
-        accessible_icons: AccessibleIcons = None,
-    ) -> list:
+        accessible_context: JOBJECT64 = None,
+        accessible_icons: JOBJECT64 = None,
+    ) -> bool:
         """
         Returns a list of icons associate with a component.
 
         BOOL getAccessibleIcons(long vmID, AccessibleContext accessibleContext, AccessibleIcons *icons);
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        accessible_context = (
-            accessible_context if isinstance(vmid, AccessibleContext) else self.ac
-        )
-        return self.bridge.getAccessibleIcons(
+        vmid = self.get_vmid(vmid)
+        accessible_context = self.get_accessible_context(accessible_context)
+        result = self.bridge.getAccessibleIcons(
             vmid, accessible_context, accessible_icons
         )
+        return bool(result)
 
     # Accessible Action Functions
 
     def get_accessible_actions(
         self,
         vmid: c_long = None,
-        accessible_context: AccessibleContext = None,
-        accessible_actions: AccessibleActions = None,
+        accessible_context: JOBJECT64 = None,
+        actions: AccessibleActions = None,
     ) -> list:
         """
         Returns a list of actions that a component can perform.
 
         BOOL getAccessibleActions(long vmID, AccessibleContext accessibleContext, AccessibleActions *actions);
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        accessible_context = (
-            accessible_context if isinstance(vmid, AccessibleContext) else self.ac
-        )
-        return self.bridge.getAccessibleActions(
-            vmid, accessible_context, accessible_actions
-        )
+        vmid = self.get_vmid(vmid)
+        accessible_context = self.get_accessible_context(accessible_context)
+        result = self.bridge.getAccessibleActions(vmid, accessible_context, actions)
+        if not result:
+            raise JABException(self.int_func_err_msg.format("getAccessibleActions"))
+        return actions.actionInfo[: actions.actionsCount]
 
     def do_accessible_actions(
         self,
         vmid: c_long = None,
-        accessible_context: AccessibleContext = None,
-        accessible_actions_todo: AccessibleActionsToDo = None,
+        accessible_context: JOBJECT64 = None,
+        actions_todo: AccessibleActionsToDo = None,
         failure: jint = None,
-    ) -> list:
+    ) -> bool:
         """
         Request that a list of AccessibleActions be performed by a component.
         Returns TRUE if all actions are performed.
@@ -1288,20 +1478,27 @@ class JABHandler(object):
 
         BOOL doAccessibleActions(long vmID, AccessibleContext accessibleContext, AccessibleActionsToDo *actionsToDo, jint *failure);
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        accessible_context = (
-            accessible_context if isinstance(vmid, AccessibleContext) else self.ac
+        vmid = self.get_vmid(vmid)
+        accessible_context = self.get_accessible_context(accessible_context)
+        actions_todo = (
+            actions_todo
+            if isinstance(actions_todo, AccessibleActionsToDo)
+            else AccessibleActionsToDo(
+                actionsCount=1, actions=(self.get_accessible_actions(),)
+            )
         )
-        return self.bridge.doAccessibleActions(
-            vmid, accessible_context, accessible_actions_todo, failure
+        failure = failure if isinstance(failure, jint) else jint()
+        result = self.bridge.doAccessibleActions(
+            vmid, accessible_context, actions_todo, failure
         )
+        return result
 
     # Utility Functions
 
     def is_same_object(
         self,
-        object1: JOBJECT64,
-        object2: JOBJECT64,
+        jobject1: JOBJECT64,
+        jobject2: JOBJECT64,
         vmid: c_long = None,
     ) -> bool:
         """
@@ -1309,16 +1506,16 @@ class JABHandler(object):
 
         BOOL IsSameObject(long vmID, JOBJECT64 obj1, JOBJECT64 obj2);
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        result = self.bridge.isSameObject(vmid, object1, object2)
+        vmid = self.get_vmid(vmid)
+        result = self.bridge.isSameObject(vmid, jobject1, jobject2)
         return bool(result)
 
     def get_parent_with_role(
         self,
         role: c_wchar,
         vmid: c_long = None,
-        accessible_context: AccessibleContext = None,
-    ) -> AccessibleContext:
+        accessible_context: JOBJECT64 = None,
+    ) -> JOBJECT64:
         """
         Returns the AccessibleContext with the specified role that is the ancestor of a given object.
         The role is one of the role strings defined in Java Access Bridge API Data Structures.
@@ -1326,25 +1523,19 @@ class JABHandler(object):
 
         AccessibleContext getParentWithRole (const long vmID, const AccessibleContext accessibleContext, const wchar_t *role);
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        accessible_context = (
-            accessible_context if isinstance(vmid, AccessibleContext) else self.ac
-        )
-        parent_accessible_context = self.bridge.getParentWithRole(
-            vmid, accessible_context, role
-        )
-        # TODO: success return parent accessible context; fail return current accessible context
-        if parent_accessible_context:
-            return AccessibleContext(hwnd, vmid, parent_accessible_context)
-        else:
-            return AccessibleContext(hwnd, vmid, accessible_context)
+        vmid = self.get_vmid(vmid)
+        accessible_context = self.get_accessible_context(accessible_context)
+        result = self.bridge.getParentWithRole(vmid, accessible_context, role)
+        if not result:
+            raise JABException(self.int_func_err_msg.format("getParentWithRole"))
+        return result
 
     def get_parent_with_role_else_root(
         self,
         role: c_wchar,
         vmid: c_long = None,
-        accessible_context: AccessibleContext = None,
-    ) -> AccessibleContext:
+        accessible_context: JOBJECT64 = None,
+    ) -> JOBJECT64:
         """
         Returns the AccessibleContext with the specified role that is the ancestor of a given object.
         The role is one of the role strings defined in Java Access Bridge API Data Structures.
@@ -1353,22 +1544,18 @@ class JABHandler(object):
 
         AccessibleContext getParentWithRoleElseRoot (const long vmID, const AccessibleContext accessibleContext, const wchar_t *role);
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        accessible_context = (
-            accessible_context if isinstance(vmid, AccessibleContext) else self.ac
-        )
-        parent_accessible_context = self.bridge.getParentWithRoleElseRoot(
-            vmid, accessible_context, role
-        )
-        # TODO: success return parent accessible context; fail return current accessible context
-        if parent_accessible_context:
-            return AccessibleContext(hwnd, vmid, parent_accessible_context)
-        else:
-            return AccessibleContext(hwnd, vmid, accessible_context)
+        vmid = self.get_vmid(vmid)
+        accessible_context = self.get_accessible_context(accessible_context)
+        result = self.bridge.getParentWithRoleElseRoot(vmid, accessible_context, role)
+        if not result:
+            raise JABException(
+                self.int_func_err_msg.format("getParentWithRoleElseRoot")
+            )
+        return result
 
     def get_top_level_object(
-        self, vmid: c_long = None, accessible_context: AccessibleContext = None
-    ) -> AccessibleContext:
+        self, vmid: c_long = None, accessible_context: JOBJECT64 = None
+    ) -> JOBJECT64:
         """
         Returns the AccessibleContext for the top level object in a Java window.
         This is same AccessibleContext that is obtained from GetAccessibleContextFromHWND for that window.
@@ -1376,19 +1563,15 @@ class JABHandler(object):
 
         AccessibleContext getTopLevelObject (const long vmID, const AccessibleContext accessibleContext);
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        accessible_context = (
-            accessible_context if isinstance(vmid, AccessibleContext) else self.ac
-        )
-        top_level_object = self.bridge.getTopLevelObject(vmid, accessible_context)
-        # TODO: success return accessible context; fail return current accessible context
-        if top_level_object:
-            return AccessibleContext(hwnd, vmid, top_level_object)
-        else:
-            return AccessibleContext(hwnd, vmid, accessible_context)
+        vmid = self.get_vmid(vmid)
+        accessible_context = self.get_accessible_context(accessible_context)
+        result = self.bridge.getTopLevelObject(vmid, accessible_context)
+        if not result:
+            raise JABException(self.int_func_err_msg.format("getTopLevelObject"))
+        return result
 
     def get_object_depth(
-        self, vmid: c_long = None, accessible_context: AccessibleContext = None
+        self, vmid: c_long = None, accessible_context: JOBJECT64 = None
     ) -> int:
         """
         Returns how deep in the object hierarchy a given object is.
@@ -1397,21 +1580,16 @@ class JABHandler(object):
 
         int getObjectDepth (const long vmID, const AccessibleContext accessibleContext);
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        accessible_context = (
-            accessible_context if isinstance(vmid, AccessibleContext) else self.ac
-        )
+        vmid = self.get_vmid(vmid)
+        accessible_context = self.get_accessible_context(accessible_context)
         object_depth = self.bridge.getObjectDepth(vmid, accessible_context)
-        if object_depth != -1:
-            return object_depth
-        else:
-            raise JavaAccessBridgeInternalException(
-                "Java Access Bridge func 'getObjectDepth' error"
-            )
+        if object_depth == -1:
+            raise JABException(self.int_func_err_msg.format("getObjectDepth"))
+        return object_depth
 
     def get_active_descendent(
-        self, vmid: c_long = None, accessible_context: AccessibleContext = None
-    ) -> AccessibleContext:
+        self, vmid: c_long = None, accessible_context: JOBJECT64 = None
+    ) -> JOBJECT64:
         """
         Returns the AccessibleContext of the current ActiveDescendent of an object.
         This method assumes the ActiveDescendent is the component that is currently selected in a container object.
@@ -1419,19 +1597,15 @@ class JABHandler(object):
 
         AccessibleContext getActiveDescendent (const long vmID, const AccessibleContext accessibleContext);
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        accessible_context = (
-            accessible_context if isinstance(vmid, AccessibleContext) else self.ac
-        )
-        active_descendent = self.bridge.getActiveDescendent(vmid, accessible_context)
-        # TODO: success return accessible context; fail return current accessible context
-        if active_descendent:
-            return AccessibleContext(hwnd, vmid, active_descendent)
-        else:
-            return AccessibleContext(hwnd, vmid, accessible_context)
+        vmid = self.get_vmid(vmid)
+        accessible_context = self.get_accessible_context(accessible_context)
+        result = self.bridge.getActiveDescendent(vmid, accessible_context)
+        if not result:
+            raise JABException(self.int_func_err_msg.format("getActiveDescendent"))
+        return result
 
     def request_focus(
-        self, vmid: c_long = None, accessible_context: AccessibleContext = None
+        self, vmid: c_long = None, accessible_context: JOBJECT64 = None
     ) -> bool:
         """
         Request focus for a component.
@@ -1439,15 +1613,13 @@ class JABHandler(object):
 
         BOOL requestFocus(const long vmID, const AccessibleContext accessibleContext);
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        accessible_context = (
-            accessible_context if isinstance(vmid, AccessibleContext) else self.ac
-        )
-        is_success = self.bridge.requestFocus(vmid, accessible_context)
-        return bool(is_success)
+        vmid = self.get_vmid(vmid)
+        accessible_context = self.get_accessible_context(accessible_context)
+        is_focused = self.bridge.requestFocus(vmid, accessible_context)
+        return bool(is_focused)
 
     def get_visible_children_count(
-        self, vmid: c_long = None, accessible_context: AccessibleContext = None
+        self, vmid: c_long = None, accessible_context: JOBJECT64 = None
     ) -> int:
         """
         Gets the visible children of an AccessibleContext.
@@ -1455,19 +1627,10 @@ class JABHandler(object):
 
         int getVisibleChildrenCount(const long vmID, const AccessibleContext accessibleContext);
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        accessible_context = (
-            accessible_context if isinstance(vmid, AccessibleContext) else self.ac
-        )
-        visible_children_count = self.bridge.getVisibleChildrenCount(
-            vmid, accessible_context
-        )
-        if visible_children_count != -1:
-            return visible_children_count
-        else:
-            raise JavaAccessBridgeInternalException(
-                "Java Access Bridge func 'getVisibleChildrenCount' error"
-            )
+        vmid = self.get_vmid(vmid)
+        accessible_context = self.get_accessible_context(accessible_context)
+        result = self.bridge.getVisibleChildrenCount(vmid, accessible_context)
+        return result
 
     def get_events_waiting(self) -> int:
         """
@@ -1475,13 +1638,7 @@ class JABHandler(object):
 
         int getEventsWaiting();
         """
-        events_waiting = self.bridge.getEventsWaiting()
-        if events_waiting != -1:
-            return events_waiting
-        else:
-            raise JavaAccessBridgeInternalException(
-                "Java Access Bridge func 'getEventsWaiting' error"
-            )
+        return self.bridge.getEventsWaiting()
 
     # Accessible Value Functions
     """
@@ -1493,7 +1650,7 @@ class JABHandler(object):
     def get_current_accessible_value_from_context(
         self,
         vmid: c_long = None,
-        accessible_value: AccessibleValue = None,
+        accessible_value: JOBJECT64 = None,
         unicode_buffer: c_wchar = None,
         length: c_short = None,
     ) -> str:
@@ -1502,25 +1659,19 @@ class JABHandler(object):
 
         BOOL GetCurrentAccessibleValueFromContext(long vmID, AccessibleValue av, wchar_t *value, short len);
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        accessible_value = (
-            accessible_value if isinstance(vmid, AccessibleValue) else self.ac
-        )
-        unicode_buffer = (
-            unicode_buffer
-            if isinstance(unicode_buffer, c_wchar)
-            else create_unicode_buffer(SHORT_STRING_SIZE + 1)
-        )
-        length = length if isinstance(length, c_short) else SHORT_STRING_SIZE
-        current_accessible_value = self.GetCurrentAccessibleValueFromContext(
+        vmid = self.get_vmid(vmid)
+        accessible_value = self.get_accessible_context(accessible_value)
+        unicode_buffer = self.get_unicode_buffer(unicode_buffer)
+        length = self.get_length(length)
+        result = self.GetCurrentAccessibleValueFromContext(
             vmid, accessible_value, unicode_buffer, length
         )
-        return current_accessible_value
+        return result
 
     def get_maximum_accessible_value_from_context(
         self,
         vmid: c_long = None,
-        accessible_value: AccessibleValue = None,
+        accessible_value: JOBJECT64 = None,
         unicode_buffer: c_wchar = None,
         length: c_short = None,
     ):
@@ -1530,25 +1681,19 @@ class JABHandler(object):
 
         BOOL GetMaximumAccessibleValueFromContext(long vmID, AccessibleValue av, wchar_ *value, short len);
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        accessible_value = (
-            accessible_value if isinstance(vmid, AccessibleValue) else self.ac
-        )
-        unicode_buffer = (
-            unicode_buffer
-            if isinstance(unicode_buffer, c_wchar)
-            else create_unicode_buffer(SHORT_STRING_SIZE + 1)
-        )
-        length = length if isinstance(length, c_short) else SHORT_STRING_SIZE
-        maximum_accessible_value = self.GetMaximumAccessibleValueFromContext(
+        vmid = self.get_vmid(vmid)
+        accessible_value = self.get_accessible_context(accessible_value)
+        unicode_buffer = self.get_unicode_buffer(unicode_buffer)
+        length = self.get_length(length)
+        result = self.GetMaximumAccessibleValueFromContext(
             vmid, accessible_value, unicode_buffer, length
         )
-        return maximum_accessible_value
+        return result
 
     def get_minimum_accessible_value_from_context(
         self,
         vmid: c_long = None,
-        accessible_value: AccessibleValue = None,
+        accessible_value: JOBJECT64 = None,
         unicode_buffer: c_wchar = None,
         length: c_short = None,
     ):
@@ -1558,20 +1703,14 @@ class JABHandler(object):
 
         BOOL GetMinimumAccessibleValueFromContext(long vmID, AccessibleValue av, wchar_ *value, short len);
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        accessible_value = (
-            accessible_value if isinstance(vmid, AccessibleValue) else self.ac
-        )
-        unicode_buffer = (
-            unicode_buffer
-            if isinstance(unicode_buffer, c_wchar)
-            else create_unicode_buffer(SHORT_STRING_SIZE + 1)
-        )
-        length = length if isinstance(length, c_short) else SHORT_STRING_SIZE
-        maximum_accessible_value = self.GetMinimumAccessibleValueFromContext(
+        vmid = self.get_vmid(vmid)
+        accessible_value = self.get_accessible_context(accessible_value)
+        unicode_buffer = self.get_unicode_buffer(unicode_buffer)
+        length = self.get_length(length)
+        result = self.GetMinimumAccessibleValueFromContext(
             vmid, accessible_value, unicode_buffer, length
         )
-        return maximum_accessible_value
+        return result
 
     # Accessible Selection Functions
     """
@@ -1585,9 +1724,9 @@ class JABHandler(object):
 
     def add_accessible_selection_from_context(
         self,
-        child_index: c_int,
+        index: c_int,
         vmid: c_long = None,
-        accessible_selection: AccessibleSelection = None,
+        accessible_selection: JOBJECT64 = None,
     ) -> None:
         """
         Adds the specified Accessible child of the object to the object's selection.
@@ -1596,35 +1735,29 @@ class JABHandler(object):
 
         void AddAccessibleSelectionFromContext(long vmID, AccessibleSelection as, int i);
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        accessible_selection = (
-            accessible_selection if isinstance(vmid, AccessibleSelection) else self.ac
-        )
-        self.bridge.AddAccessibleSelectionFromContext(
-            vmid, accessible_selection, child_index
-        )
+        vmid = self.get_vmid(vmid)
+        accessible_selection = self.get_accessible_context(accessible_selection)
+        self.bridge.AddAccessibleSelectionFromContext(vmid, accessible_selection, index)
 
     def clear_accessible_selection_from_context(
         self,
         vmid: c_long = None,
-        accessible_selection: AccessibleSelection = None,
+        accessible_selection: JOBJECT64 = None,
     ) -> None:
         """
         Clears the selection in the object, so that no children in the object are selected.
 
         void ClearAccessibleSelectionFromContext(long vmID, AccessibleSelection as);
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        accessible_selection = (
-            accessible_selection if isinstance(vmid, AccessibleSelection) else self.ac
-        )
+        vmid = self.get_vmid(vmid)
+        accessible_selection = self.get_accessible_context(accessible_selection)
         self.bridge.ClearAccessibleSelectionFromContext(vmid, accessible_selection)
 
     def get_accessible_selection_from_context(
         self,
-        child_index: c_int,
+        index: c_int,
         vmid: c_long = None,
-        accessible_selection: AccessibleSelection = None,
+        accessible_selection: JOBJECT64 = None,
     ) -> JOBJECT64:
         """
         Returns an Accessible representing the specified selected child of the object.
@@ -1633,24 +1766,21 @@ class JABHandler(object):
 
         jobject GetAccessibleSelectionFromContext(long vmID, AccessibleSelection as, int i);
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        accessible_selection = (
-            accessible_selection if isinstance(vmid, AccessibleSelection) else self.ac
-        )
+        vmid = self.get_vmid(vmid)
+        accessible_selection = self.get_accessible_context(accessible_selection)
         selected_object = self.bridge.GetAccessibleSelectionFromContext(
-            vmid, accessible_selection, child_index
+            vmid, accessible_selection, index
         )
-        if isinstance(selected_object, JOBJECT64):
-            return selected_object
-        else:
-            raise JavaAccessBridgeInternalException(
-                "Java Access Bridge func 'GetAccessibleSelectionFromContext' error"
+        if not isinstance(selected_object, JOBJECT64):
+            raise JABException(
+                self.int_func_err_msg.format("GetAccessibleSelectionFromContext")
             )
+        return selected_object
 
     def get_accessible_selection_count_from_context(
         self,
         vmid: c_long = None,
-        accessible_selection: AccessibleSelection = None,
+        accessible_selection: JOBJECT64 = None,
     ) -> int:
         """
         Returns the number of Accessible children currently selected.
@@ -1658,45 +1788,36 @@ class JABHandler(object):
 
         int GetAccessibleSelectionCountFromContext(long vmID, AccessibleSelection as);
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        accessible_selection = (
-            accessible_selection if isinstance(vmid, AccessibleSelection) else self.ac
-        )
+        vmid = self.get_vmid(vmid)
+        accessible_selection = self.get_accessible_context(accessible_selection)
         selection_count = self.bridge.GetAccessibleSelectionCountFromContext(
             vmid, accessible_selection
         )
-        if selection_count != -1:
-            return selection_count
-        else:
-            raise JavaAccessBridgeInternalException(
-                "Java Access Bridge func 'GetAccessibleSelectionCountFromContext' error"
-            )
+        return selection_count
 
     def is_accessible_child_selected_from_context(
         self,
-        child_index: c_int,
+        index: c_int,
         vmid: c_long = None,
-        accessible_selection: AccessibleSelection = None,
+        accessible_selection: JOBJECT64 = None,
     ) -> bool:
         """
         Determines if the current child of this object is selected.
 
         BOOL IsAccessibleChildSelectedFromContext(long vmID, AccessibleSelection as, int i);
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        accessible_selection = (
-            accessible_selection if isinstance(vmid, AccessibleSelection) else self.ac
-        )
+        vmid = self.get_vmid(vmid)
+        accessible_selection = self.get_accessible_context(accessible_selection)
         is_selected = self.bridge.IsAccessibleChildSelectedFromContext(
-            vmid, accessible_selection, child_index
+            vmid, accessible_selection, index
         )
         return bool(is_selected)
 
     def remove_accessible_selection_from_context(
         self,
-        child_index: c_int,
+        index: c_int,
         vmid: c_long = None,
-        accessible_selection: AccessibleSelection = None,
+        accessible_selection: JOBJECT64 = None,
     ) -> None:
         """
         Removes the specified child of the object from the object's selection.
@@ -1704,59 +1825,22 @@ class JABHandler(object):
 
         void RemoveAccessibleSelectionFromContext(long vmID, AccessibleSelection as, int i);
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        accessible_selection = (
-            accessible_selection if isinstance(vmid, AccessibleSelection) else self.ac
-        )
+        vmid = self.get_vmid(vmid)
+        accessible_selection = self.get_accessible_context(accessible_selection)
         self.bridge.RemoveAccessibleSelectionFromContext(
-            vmid, accessible_selection, child_index
+            vmid, accessible_selection, index
         )
 
     def select_all_accessible_selection_from_context(
         self,
         vmid: c_long = None,
-        accessible_selection: AccessibleSelection = None,
+        accessible_selection: JOBJECT64 = None,
     ) -> None:
         """
         Causes every child of the object to be selected if the object supports multiple selections.
 
         void SelectAllAccessibleSelectionFromContext(long vmID, AccessibleSelection as);
         """
-        vmid = vmid if isinstance(vmid, c_long) else self.ac.vmid
-        accessible_selection = (
-            accessible_selection if isinstance(vmid, AccessibleSelection) else self.ac
-        )
+        vmid = self.get_vmid(vmid)
+        accessible_selection = self.get_accessible_context(accessible_selection)
         self.bridge.SelectAllAccessibleSelectionFromContext(vmid, accessible_selection)
-
-    @focus_gained_fp
-    def _gain_focus(self, vmid: c_long, event: JOBJECT64, source: JOBJECT64) -> None:
-        hwnd = self._get_hwnd_from_accessible_context(vmid, source)
-        self._release_java_object(vmid, event)
-
-    def gain_focus(
-        self, vmid: c_long, accessible_context: JOBJECT64, hwnd: HWND
-    ) -> None:
-        jab_context = JABContext(
-            hwnd=hwnd, vmid=vmid, accessible_context=accessible_context
-        )
-        is_descendant_window = self.user.is_descendant_window(
-            self.user.get_foreground_window(), jab_context.hwnd
-        )
-        if not is_descendant_window:
-            return
-        focus = self.handler.last_queue_focus
-        is_same_object = (
-            isinstance(focus, JABElement) and focus.jab_context == jab_context
-        )
-        if is_same_object:
-            return
-        focused_jab_element = JABElement(jab_context=jab_context)
-
-    @focus_gained_fp
-    def set_focus_fained(self) -> None:
-        ac = JABContext(hwnd=self.ac.hwnd, vmid=self.ac.vmid, ac=self.ac.ac)
-        if not self.user.is_descendant_window(
-            self.user.get_foreground_window(), ac.hwnd
-        ):
-            return
-        focus = self.handler.last_queue_focus

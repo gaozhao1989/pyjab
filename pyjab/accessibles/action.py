@@ -1,2 +1,0 @@
-class AccessibleAction:
-    pass

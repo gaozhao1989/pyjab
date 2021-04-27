@@ -4,7 +4,7 @@ class InvalidJABElement(RuntimeError):
     """
 
 
-class JavaAccessBridgeInternalException(Exception):
+class JABException(Exception):
     """
     Raised by Java Access Bridge if func internal error
     """
