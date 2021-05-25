@@ -4,14 +4,17 @@ from ctypes import (
 )
 from ctypes import byref
 from ctypes.wintypes import HWND
+from PIL import Image, ImageGrab
 from pyjab.jabelement import JABElement
 from pyjab.jabfixedfunc import JABFixedFunc
 from pyjab.common.actorscheduler import ActorScheduler
 from pyjab.common.by import By
 from typing import Dict, List
+from pyjab.common.exceptions import JABException
 from pyjab.common.logger import Logger
 from pyjab.common.service import Service
-from pyjab.common.types import JOBJECT64, jint
+from pyjab.common.types import JOBJECT64
+from pyjab.common.xpathparser import XpathParser
 
 
 class JABDriver(Service, ActorScheduler):
@@ -22,9 +25,9 @@ class JABDriver(Service, ActorScheduler):
         self._bridge = self.service_bridge
         JABFixedFunc(self._bridge).fix_bridge_functions()
         self._root_element = JABElement()
-        self._vmids = dict()
         self.int_func_err_msg = "Java Access Bridge func '{}' error"
         self.init_jab_service()
+        self.xpath_parser = XpathParser()
 
     @property
     def bridge(self) -> CDLL:
@@ -41,14 +44,6 @@ class JABDriver(Service, ActorScheduler):
     @root_element.setter
     def root_element(self, root_element) -> None:
         self._root_element = root_element
-
-    @property
-    def vmids(self) -> Dict[str, HWND]:
-        return self._vmids
-
-    @vmids.setter
-    def vmids(self, vmids: Dict[str, HWND]) -> None:
-        self._vmids = vmids
 
     def init_jab_service(self, root_element: JABElement = JABElement()) -> None:
         # invoke generator in message queue
@@ -69,7 +64,6 @@ class JABDriver(Service, ActorScheduler):
             )
             vmid = vmid.value
         elif vmid and not hwnd:
-            vmid = c_long()
             accessible_context = JOBJECT64()
             hwnd = self.bridge.getHWNDFromAccessibleContext(
                 byref(vmid), byref(accessible_context)
@@ -92,7 +86,7 @@ class JABDriver(Service, ActorScheduler):
 
     def find_element_by_name(self, value: str) -> JABElement:
         """
-        Find an jab element given a name locator.
+        Find an JABElement given a name locator.
         """
         if value == self.root_element.name:
             return self.root_element
@@ -101,7 +95,7 @@ class JABDriver(Service, ActorScheduler):
 
     def find_element_by_role(self, value: str) -> JABElement:
         """
-        Find an jab element given a role locator.
+        Find an JABElement given a role locator.
         """
         if value == self.root_element.role:
             return self.root_element
@@ -110,70 +104,145 @@ class JABDriver(Service, ActorScheduler):
 
     def find_element_by_states(self, value: str) -> JABElement:
         """
-        Find an jab element given a states locator.
+        Find an JABElement given a states locator.
         """
         if value == self.root_element.states:
             return self.root_element
         else:
             return self.root_element.find_element_by_states(value)
 
-    def find_element_by_object_depth(self, value: str) -> JABElement:
+    def find_element_by_object_depth(self, value: int) -> JABElement:
         """
-        Find an jab element given a object depth locator.
+        Find an JABElement given a object depth locator.
         """
         if value == self.root_element.object_depth:
             return self.root_element
         else:
             return self.root_element.find_element_by_object_depth(value)
 
-    def find_element_by_children_count(self, value: str) -> JABElement:
+    def find_element_by_children_count(self, value: int) -> JABElement:
         """
-        Find an jab element given a children count locator.
+        Find an JABElement given a children count locator.
         """
         if value == self.root_element.children_count:
             return self.root_element
         else:
             return self.root_element.find_element_by_children_count(value)
 
-    def find_element_by_index_in_parent(self, value: str) -> JABElement:
+    def find_element_by_index_in_parent(self, value: int) -> JABElement:
         """
-        Find an jab element given a index in parent locator.
+        Find an JABElement given a index in parent locator.
         """
         if value == self.root_element.index_in_parent:
             return self.root_element
         else:
             return self.root_element.find_element_by_index_in_parent(value)
 
+    def find_element_by_xpath(self, value: str) -> JABElement:
+        """
+        Find an JABElement given a index in parent locator.
+        """
+        return self.root_element.find_element_by_xpath(value)
+
     def find_element(self, by: str = By.NAME, value: str = None) -> JABElement:
         """
-        Find an jab element given a By strategy and locator.
+        Find an JABElement given a By strategy and locator.
         """
-        jab_elements = self.find_elements(by=by, value=value)
-        return jab_elements[0]
-
-    def find_elements(self, by: str = By.NAME, value: str = None) -> List[JABElement]:
-        """
-        Find jab elements given a By strategy and locator.
-        """
-        dict_by = {
-            By.NAME: "//*[@name='{}']".format(value),
-            By.ROLE: "//*[@role_en_us='{}']".format(value),
-            By.STATES: "//*[@states_en_us='{}']".format(value),
-            By.OBJECT_DEPTH: "//*[@object_depth='{}']".format(value),
-            By.CHILDREN_COUNT: "//*[@children_count='{}']".format(value),
-            By.INDEX_IN_PARENT: "//*[@index_in_parent='{}']".format(value),
-            By.XPATH: value,
+        dict_find = {
+            By.NAME: self.find_element_by_name,
+            By.ROLE: self.find_element_by_role,
+            By.STATES: self.find_element_by_states,
+            By.OBJECT_DEPTH: self.find_element_by_object_depth,
+            By.CHILDREN_COUNT: self.find_element_by_children_count,
+            By.INDEX_IN_PARENT: self.find_element_by_index_in_parent,
+            By.XPATH: self.find_element_by_xpath,
         }
-        # TODO: set func to find specific jab_context
-        jab_context = None
-        return [JABElement(jab_context)]
+        if by not in dict_find.keys():
+            raise JABException("incorrect by strategy '{}'".format(by))
+        return dict_find[by](value)
 
-    @property
-    def source(self) -> dict:
+    def find_elements_by_name(self, value: str) -> list[JABElement]:
         """
-        Get the source tree of current java window
+        Find list of JABElement given a name locator.
         """
-        # TODO: set func to get source tree
+        jabelements = list()
+        if value == self.root_element.name:
+            jabelements.append(self.root_element)
+        jabelements.extend(self.root_element.find_elements_by_name(value))
+        return jabelements
+
+    def find_elements_by_role(self, value: str) -> list[JABElement]:
+        """
+        Find list of JABElement given a role locator.
+        """
+        jabelements = list()
+        if value == self.root_element.role:
+            jabelements.append(self.root_element)
+        jabelements.extend(self.root_element.find_elements_by_role(value))
+        return jabelements
+
+    def find_elements_by_states(self, value: str) -> list[JABElement]:
+        """
+        Find list of JABElement given a states locator.
+        """
+        jabelements = list()
+        if value == self.root_element.states:
+            jabelements.append(self.root_element)
+        jabelements.extend(self.root_element.find_elements_by_states(value))
+        return jabelements
+
+    def find_elements_by_object_depth(self, value: int) -> list[JABElement]:
+        """
+        Find list of JABElement given a object depth locator.
+        """
+        jabelements = list()
+        if value == self.root_element.object_depth:
+            jabelements.append(self.root_element)
+        jabelements.extend(self.root_element.find_elements_by_object_depth(value))
+        return jabelements
+
+    def find_elements_by_children_count(self, value: int) -> list[JABElement]:
+        """
+        Find list of JABElement given a children count locator.
+        """
+        jabelements = list()
+        if value == self.root_element.children_count:
+            jabelements.append(self.root_element)
+        jabelements.extend(self.root_element.find_elements_by_children_count(value))
+        return jabelements
+
+    def find_elements_by_index_in_parent(self, value: int) -> list[JABElement]:
+        """
+        Find list of JABElement given a index in parent locator.
+        """
+        jabelements = list()
+        if value == self.root_element.index_in_parent:
+            jabelements.append(self.root_element)
+        jabelements.extend(self.root_element.find_elements_by_index_in_parent(value))
+        return jabelements
+
+    def find_elements_by_xpath(self, value: str) -> list[JABElement]:
+        """
+        Find list of JABElement given a index in parent locator.
+        """
+        return self.root_element.find_elements_by_xpath(value)
+
+    def find_elements(self, by: str = By.NAME, value: str = None) -> list[JABElement]:
+        """
+        Find list of JABElement given a By strategy and locator.
+        """
+        dict_finds = {
+            By.NAME: self.find_elements_by_name,
+            By.ROLE: self.find_elements_by_role,
+            By.STATES: self.find_elements_by_states,
+            By.OBJECT_DEPTH: self.find_elements_by_object_depth,
+            By.CHILDREN_COUNT: self.find_elements_by_children_count,
+            By.INDEX_IN_PARENT: self.find_elements_by_index_in_parent,
+            By.XPATH: self.find_elements_by_xpath,
+        }
+        if by not in dict_finds.keys():
+            raise JABException("incorrect by strategy '{}'".format(by))
+        return dict_finds[by](value)
 
     def maximize_window(self):
         """
@@ -215,7 +284,8 @@ class JABDriver(Service, ActorScheduler):
         :Usage:
             driver.get_screenshot_as_file('/Screenshots/foo.png')
         """
-        # TODO: set func to get_screenshot_as_file
+        im = self.get_screenshot()
+        im.save(filename)
 
     def get_screenshot(self):
         """
@@ -225,7 +295,23 @@ class JABDriver(Service, ActorScheduler):
         :Usage:
             driver.get_screenshot_as_base64()
         """
-        # TODO: set func to get_screenshot
+        self.set_window_foreground(hwnd=self.hwnd.value)
+        self.root_element.set_element_information()
+        x = self.root_element.bounds.get("x")
+        y = self.root_element.bounds.get("y")
+        width = self.root_element.bounds.get("width")
+        height = self.root_element.bounds.get("height")
+        im = ImageGrab.grab(
+            bbox=(
+                x,
+                y,
+                x + width,
+                y + height,
+            ),
+            include_layered_windows=False,
+            all_screens=True,
+        )
+        return im
 
     def set_window_size(self, width, height):
         """

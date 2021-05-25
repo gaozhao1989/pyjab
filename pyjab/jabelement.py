@@ -50,6 +50,7 @@ class JABElement(object):
         self._accessible_selection = False
         self._accessible_text = False
         self._accessible_interfaces = False
+        # TODO: missing attribute text
         self.set_element_information()
 
     @property
@@ -446,12 +447,14 @@ class JABElement(object):
         """
         return int(attr_val) == jabelement.index_in_parent
 
-    def _is_match_attributes(self, attributes: list[dict], jabelement: JABElement) -> bool:
-        """Return the attributes is matched or not with node conditions.
+    def _is_match_attributes(
+        self, attributes: list[dict], jabelement: JABElement
+    ) -> bool:
+        """Return the node attributes is matched or not with specific JABElement.
 
 
         Args:
-            attributes (list[dict]): List of attribute contains 
+            attributes (list[dict]): List of attribute contains
             "name" of attribute and "value" of attribute conditions
             jabelement (JABElement): The JABElement
 
@@ -476,6 +479,45 @@ class JABElement(object):
             if not dict_attribute[name](value, jabelement):
                 return False
         return True
+
+    def _get_node_element(
+        self, attributes: list, jabelement: JABElement = None
+    ) -> JABElement:
+        """Get node JABElement.
+
+        Args:
+            attributes (list): root node attributes
+            jabelement (JABElement, optional): The JABElement. Defaults to None.
+
+        Raises:
+            JABException: internal JAB func getTopLevelObject error
+
+        Returns:
+            JABElement: Node JABElement
+        """
+        jabelement = (
+            jabelement
+            if jabelement
+            else JABElement(self.bridge, self.hwnd, self.vmid, self.accessible_context)
+        )
+        is_same = self._is_match_attributes(attributes, jabelement) and bool(
+            self.bridge.isSameObject(
+                self.vmid, self.accessible_context, jabelement.accessible_context
+            )
+        )
+        if is_same:
+            top_object = self.bridge.getTopLevelObject(
+                self.vmid, self.accessible_context
+            )
+            if top_object == 0:
+                raise JABException(self.int_func_err_msg.format("getTopLevelObject"))
+            is_top_level = top_object == self.accessible_context
+            if is_top_level:
+                return jabelement
+            else:
+                return self.parent
+        else:
+            return jabelement
 
     def _get_element_by_node(
         self, node: str, level: str = "root", jabelement: JABElement = None
@@ -503,6 +545,7 @@ class JABElement(object):
         node_info = self.xpath_parser.get_node_information(node)
         node_role = node_info.get("role")
         node_attributes = node_info.get("attributes")
+        jabelement = self._get_node_element(node_attributes, jabelement)
         for element in dict_gen[level](jabelement):
             if node_role not in ["*", element.role_en_us]:
                 continue
@@ -518,7 +561,7 @@ class JABElement(object):
 
         Args:
             value (str): Locator of JABElement need to find.
-        
+
         Example:
             find_element_by_xpath("//internal frame/panel")\n
             find_element_by_xpath("//*/panel")\n
@@ -529,7 +572,7 @@ class JABElement(object):
             find_element_by_xpath("//internal frame[@objectdepth=7]")\n
             find_element_by_xpath("//internal frame[@childrencount=2]")\n
             find_element_by_xpath("//internal frame[@indexinparent=3]")\n
-            find_element_by_xpath("//internal frame[@name=contains('FRM-999') and @indexinparent=0 and @objectdepth=7]")\n
+            find_element_by_xpath("//internal frame[@name=contains('FRM-999') and @objectdepth=7]")\n
 
         Returns:
             JABElement: The JABElement find by locator
@@ -680,6 +723,7 @@ class JABElement(object):
         node_info = self.xpath_parser.get_node_information(node)
         node_role = node_info.get("role")
         node_attributes = node_info.get("attributes")
+        jabelement = self._get_node_element(node_attributes, jabelement)
         jabelements = list()
         for _jabelement in dict_gen[level](jabelement):
             if node_role not in ["*", _jabelement.role_en_us]:
