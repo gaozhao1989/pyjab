@@ -54,7 +54,7 @@ class JABFixedFunc(object):
         self.fix_bridge_function(None, "setPropertyActiveDescendentChangeFP", c_void_p)
         self.fix_bridge_function(None, "releaseJavaObject", c_long, JOBJECT64)
         self.fix_bridge_function(
-            BOOL, "getVersionInfo", POINTER(AccessBridgeVersionInfo), errorcheck=True
+            BOOL, "getVersionInfo", c_long, POINTER(AccessBridgeVersionInfo), errorcheck=True
         )
         self.fix_bridge_function(BOOL, "isJavaWindow", HWND)
         self.fix_bridge_function(BOOL, "isSameObject", c_long, JOBJECT64, JOBJECT64)

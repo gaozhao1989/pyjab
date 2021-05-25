@@ -1,235 +1,906 @@
+from __future__ import annotations
+from ctypes import CDLL, byref, c_long
 from ctypes.wintypes import HWND
 import re
-from pyjab.config import (
-    ACCESSIBLE_ALT_GRAPH_KEYSTROKE,
-    ACCESSIBLE_ALT_KEYSTROKE,
-    ACCESSIBLE_BUTTON1_KEYSTROKE,
-    ACCESSIBLE_BUTTON2_KEYSTROKE,
-    ACCESSIBLE_BUTTON3_KEYSTROKE,
-    ACCESSIBLE_CONTROL_KEYSTROKE,
-    ACCESSIBLE_META_KEYSTROKE,
-    ACCESSIBLE_SHIFT_KEYSTROKE,
-)
-from pyjab.globalargs import BRIDGE
-from pyjab.jabhandler import JABHandler
+from typing import Any, Generator
+from PIL import Image, ImageGrab
+from pyjab.common.win32utils import Win32Utils
+from pyjab.common.shortcutkeys import ShortcutKeys
+from pyjab.common.exceptions import JABException
+from pyjab.accessibleinfo import AccessibleContextInfo
+from pyjab.common.types import JOBJECT64
+from pyjab.common.by import By
 from pyjab.common.logger import Logger
-from pyjab.accessibleinfo import AccessibleContextInfo, AccessibleTextInfo
-from pyjab.jabcontext import JABContext
-
-# jab roles
-JAB_ROLE_ALERT = "alert"
-JAB_ROLE_CANVAS = "canvas"
-JAB_ROLE_COLUMN_HEADER = "column header"
-JAB_ROLE_COMBO_BOX = "combo box"
-JAB_ROLE_DESKTOP_ICON = "desktop icon"
-JAB_ROLE_INTERNAL_FRAME = "internal frame"
-JAB_ROLE_OPTION_PANE = "option pane"
-JAB_ROLE_WINDOW = "window"
-JAB_ROLE_FRAME = "frame"
-JAB_ROLE_DIALOG = "dialog"
-JAB_ROLE_COLOR_CHOOSER = "color chooser"
-JAB_ROLE_DIRECTORY_PANE = "directory pane"
-JAB_ROLE_FILE_CHOOSER = "file chooser"
-JAB_ROLE_FILLER = "filler"
-JAB_ROLE_HYPERLINK = "hyperlink"
-JAB_ROLE_ICON = "icon"
-JAB_ROLE_LABEL = "label"
-JAB_ROLE_ROOT_PANE = "root pane"
-JAB_ROLE_GLASS_PANE = "glass pane"
-JAB_ROLE_LAYERED_PANE = "layered pane"
-JAB_ROLE_LIST = "list"
-JAB_ROLE_LIST_ITEM = "list item"
-JAB_ROLE_MENU_BAR = "menu bar"
-JAB_ROLE_POPUP_MENU = "popup menu"
-JAB_ROLE_MENU = "menu"
-JAB_ROLE_MENU_ITEM = "menu item"
-JAB_ROLE_SEPARATOR = "separator"
-JAB_ROLE_PAGE_TAB_LIST = "page tab list"
-JAB_ROLE_PAGE_TAB = "page tab"
-JAB_ROLE_PANEL = "panel"
-JAB_ROLE_PROGRESS_BAR = "progress bar"
-JAB_ROLE_PASSWORD_TEXT = "password text"
-JAB_ROLE_PUSH_BUTTON = "push button"
-JAB_ROLE_TOGGLE_BUTTON = "toggle button"
-JAB_ROLE_CHECK_BOX = "check box"
-JAB_ROLE_RADIO_BUTTON = "radio button"
-JAB_ROLE_ROW_HEADER = "row header"
-JAB_ROLE_SCROLL_PANE = "scroll pane"
-JAB_ROLE_SCROLL_BAR = "scroll bar"
-JAB_ROLE_VIEW_PORT = "view port"
-JAB_ROLE_SLIDER = "slider"
-JAB_ROLE_SPLIT_PANE = "split pane"
-JAB_ROLE_TABLE = "table"
-JAB_ROLE_TEXT = "text"
-JAB_ROLE_TREE = "tree"
-JAB_ROLE_TOOL_BAR = "tool bar"
-JAB_ROLE_TOOL_TIP = "tool tip"
-JAB_ROLE_STATUS_BAR = "status bar"
-JAB_ROLE_STATUSBAR = "statusbar"
-JAB_ROLE_DATE_EDITOR = "date editor"
-JAB_ROLE_SPIN_BOX = "spin box"
-JAB_ROLE_FONT_CHOOSER = "font chooser"
-JAB_ROLE_GROUP_BOX = "group box"
-JAB_ROLE_HEADER = "header"
-JAB_ROLE_FOOTER = "footer"
-JAB_ROLE_PARAGRAPH = "paragraph"
-JAB_ROLE_RULER = "ruler"
-JAB_ROLE_EDIT_BAR = "edit bar"
-JAB_ROLE_UNKNOWN = "unknown"
-# jab states
-JAB_STATES_BUSY = "busy"
-JAB_STATES_CHECKED = "checked"
-JAB_STATES_FOCUSED = "focused"
-JAB_STATES_SELECTED = "selected"
-JAB_STATES_PRESSED = "pressed"
-JAB_STATES_EXPANDED = "expanded"
-JAB_STATES_COLLAPSED = "collapsed"
-JAB_STATES_ICONIFIED = "iconified"
-JAB_STATES_MODAL = "modal"
-JAB_STATES_MULTI_LINE = "multi_line"
-JAB_STATES_FOCUSABLE = "focusable"
-JAB_STATES_EDITABLE = "editable"
-JAB_STATES_UNKNOWN = "unknown"
+from pyjab.common.xpathparser import XpathParser
 
 
 class JABElement(object):
+    int_func_err_msg = "Java Access Bridge func '{}' error"
+    win32_utils = Win32Utils()
+    shortcut_keys = ShortcutKeys()
+    xpath_parser = XpathParser()
 
-    xml_tag_pattern = re.compile(r"\<[^>]+\>")
-
-    def __init__(self, hwnd: HWND = None, jab_context: JABContext = None) -> None:
-        self.log = Logger(self.__class__.__name__)
-        self.handler = JABHandler(BRIDGE)
-        if jab_context is None:
-            self.handler.init_jab_context()
-        self.ac = JABContext(jab_context.hwnd, jab_context.vmid, jab_context.ac)
+    def __init__(
+        self,
+        bridge: CDLL = None,
+        hwnd: HWND = None,
+        vmid: c_long = None,
+        accessible_context: JOBJECT64 = None,
+    ) -> None:
+        # not recommand instantiation for low performance
+        # self.log = Logger(self.__class__.__name__)
+        self._bridge = bridge
+        # jab context attributes
+        self._hwnd = hwnd
+        self._vmid = vmid
+        self._accessible_context = accessible_context
+        # infor attributes
+        self._name = None
+        self._description = None
         self._role = None
-        super(JABElement, self).__init__(hwnd=hwnd)
-        self._ac_info = self._get_accessible_context_info()
+        self._role_en_us = None
+        self._states = None
+        self._states_en_us = None
+        self._object_depth = 0
+        self._index_in_parent = 0
+        self._children_count = 0
+        self._bounds = dict(x=0, y=0, width=0, height=0)
+        self._accessible_component = False
+        self._accessible_action = False
+        self._accessible_selection = False
+        self._accessible_text = False
+        self._accessible_interfaces = False
+        self.set_element_information()
+
+    @property
+    def bridge(self) -> CDLL:
+        return self._bridge
+
+    @bridge.setter
+    def bridge(self, bridge: CDLL) -> None:
+        self._bridge = bridge
+
+    @property
+    def hwnd(self) -> HWND:
+        return self._hwnd
+
+    @hwnd.setter
+    def hwnd(self, hwnd: HWND) -> None:
+        self._hwnd = hwnd
+
+    @property
+    def vmid(self) -> c_long:
+        return self._vmid
+
+    @vmid.setter
+    def vmid(self, vmid: c_long) -> None:
+        self._vmid = vmid
+
+    @property
+    def accessible_context(self) -> JOBJECT64:
+        return self._accessible_context
+
+    @accessible_context.setter
+    def accessible_context(self, accessible_context: JOBJECT64) -> None:
+        self._accessible_context = accessible_context
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @name.setter
+    def name(self, name: str) -> None:
+        self._name = name
+
+    @property
+    def description(self) -> str:
+        return self._description
+
+    @description.setter
+    def description(self, description: str) -> None:
+        self._description = description
 
     @property
     def role(self) -> str:
-        if not self._role:
-            self._role = self._get_jab_role()
         return self._role
 
+    @role.setter
+    def role(self, role: str) -> None:
+        self._role = role
+
     @property
-    def ac_info(self) -> AccessibleContextInfo:
-        return self._ac_info
+    def role_en_us(self) -> str:
+        return self._role_en_us
 
-    @ac_info.setter
-    def ac_info(self, ac_info: AccessibleContextInfo) -> None:
-        self._ac_info = ac_info
+    @role_en_us.setter
+    def role_en_us(self, role_en_us: str) -> None:
+        self._role_en_us = role_en_us
 
-    def _get_accessible_context_info(self) -> AccessibleContextInfo:
-        return self.handler.get_accessible_context_info()
+    @property
+    def states(self) -> str:
+        return self._states
 
-    def _get_text_info(self) -> AccessibleTextInfo:
-        is_eligible = self.ac_info.accessibleText and self.role not in [
-            JAB_ROLE_PUSH_BUTTON,
-            JAB_ROLE_MENU_ITEM,
-            JAB_ROLE_MENU,
-            JAB_ROLE_LIST_ITEM,
-        ]
-        if is_eligible:
-            return JABText
-        # TODO: fix missing self.text_info
-        return super(JABElement, self).text_info
+    @states.setter
+    def states(self, states: str) -> None:
+        self._states = states
 
-    def _is_equal(self, other: JABContext) -> bool:
-        try:
-            return self.ac == other.ac
-        except Exception as exc:
-            self.log.error(
-                "jab context not equal",
-                exc_info=exc,
+    @property
+    def states_en_us(self) -> str:
+        return self._states_en_us
+
+    @states_en_us.setter
+    def states_en_us(self, states_en_us: str) -> None:
+        self._states_en_us = states_en_us
+
+    @property
+    def object_depth(self) -> int:
+        return self._object_depth
+
+    @object_depth.setter
+    def object_depth(self, object_depth: int) -> None:
+        self._object_depth = object_depth
+
+    @property
+    def index_in_parent(self) -> int:
+        return self._index_in_parent
+
+    @index_in_parent.setter
+    def index_in_parent(self, index_in_parent: int) -> None:
+        self._index_in_parent = index_in_parent
+
+    @property
+    def children_count(self) -> int:
+        return self._children_count
+
+    @children_count.setter
+    def children_count(self, children_count: int) -> None:
+        self._children_count = children_count
+
+    @property
+    def bounds(self) -> dict:
+        return self._bounds
+
+    @bounds.setter
+    def bounds(self, bounds: dict) -> None:
+        self._bounds = bounds
+
+    @property
+    def accessible_component(self) -> bool:
+        return self._accessible_component
+
+    @accessible_component.setter
+    def accessible_component(self, accessible_component: bool) -> None:
+        self._accessible_component = accessible_component
+
+    @property
+    def accessible_action(self) -> bool:
+        return self._accessible_action
+
+    @accessible_action.setter
+    def accessible_action(self, accessible_action: bool) -> None:
+        self._accessible_action = accessible_action
+
+    @property
+    def accessible_selection(self) -> bool:
+        return self._accessible_selection
+
+    @accessible_selection.setter
+    def accessible_selection(self, accessible_selection: bool) -> None:
+        self._accessible_selection = accessible_selection
+
+    @property
+    def accessible_text(self) -> bool:
+        return self._accessible_text
+
+    @accessible_text.setter
+    def accessible_text(self, accessible_text: bool) -> None:
+        self._accessible_text = accessible_text
+
+    @property
+    def accessible_interfaces(self) -> bool:
+        return self._accessible_interfaces
+
+    @accessible_interfaces.setter
+    def accessible_interfaces(self, accessible_interfaces: bool) -> None:
+        self._accessible_interfaces = accessible_interfaces
+
+    # Jab Element actions
+    def _generate_all_childs(self, jabelement: JABElement = None) -> Generator:
+        """generate all child jab elements from a jab element.
+
+        Args:
+            jabelement (JABElement, optional): The parent jab element to generate child jab elements.
+            Defaults to None use current element.
+
+        Yields:
+            Generator: Generator of all child jab elements from this parent jab element.
+        """
+        jabelement = (
+            jabelement
+            if jabelement
+            else JABElement(self.bridge, self.hwnd, self.vmid, self.accessible_context)
+        )
+        for jabelement in self._generate_childs_from_element(jabelement):
+            if jabelement.children_count != 0:
+                yield from self._generate_all_childs(jabelement)
+            yield jabelement
+
+    def _generate_childs_from_element(self, jabelement: JABElement = None) -> Generator:
+        """generate child jab elements from a jab element.
+
+        Args:
+            jabelement (JABElement, optional): The parent jab element to generate child jab elements.
+            Defaults to None use current element.
+
+        Yields:
+            Generator: Generator of child jab elements from this parent jab element.
+        """
+        jabelement = (
+            jabelement
+            if jabelement
+            else JABElement(self.bridge, self.hwnd, self.vmid, self.accessible_context)
+        )
+        for index in range(jabelement.children_count):
+            child_acc = jabelement.bridge.getAccessibleChildFromContext(
+                jabelement.vmid, jabelement.accessible_context, index
             )
-            return False
+            child_element = JABElement(
+                jabelement.bridge, jabelement.hwnd, jabelement.vmid, child_acc
+            )
+            yield child_element
 
-    def _get_keyboard_shortcut(self) -> str:
-        bindings = self.handler.get_accessible_key_bindings()
-        bindings_count = bindings.keyBindingsCount
-        if not bindings or bindings_count < 1:
-            return ""
-        shortcut_list = []
-        key_list = []
-        for index in range(bindings_count):
-            binding_info = bindings.keyBindingInfo[index]
-            if binding_info.modifiers and (
-                ACCESSIBLE_META_KEYSTROKE
-                or ACCESSIBLE_ALT_GRAPH_KEYSTROKE
-                or ACCESSIBLE_BUTTON1_KEYSTROKE
-                or ACCESSIBLE_BUTTON2_KEYSTROKE
-                or ACCESSIBLE_BUTTON3_KEYSTROKE
-            ):
+    def click(self) -> None:
+        """Clicks the JABElement."""
+        self.win32_utils.set_window_foreground(hwnd=self.hwnd.value)
+        self.set_element_information()
+        x = self.bounds.get("x")
+        y = self.bounds.get("y")
+        width = self.bounds.get("width")
+        height = self.bounds.get("height")
+        if width == 0 or height == 0:
+            raise ValueError("element width or height is 0")
+        position_x = round(x + width / 2)
+        position_y = round(y + height / 2)
+        self.win32_utils.click_mouse(x=position_x, y=position_y)
+
+    def clear(self) -> None:
+        """Clears the text if it's a text entry JABElement."""
+        if self.role_en_us not in ["label", "text", "password text"]:
+            raise TypeError(
+                "JABElement role '{}' does not support clear".format(self.role_en_us)
+            )
+        self.click()
+        self.shortcut_keys.clear_text()
+
+    def is_checked(self) -> bool:
+        """Returns whether the JABElement is checked.
+
+        Can be used to check if a checkbox or radio button is checked.
+        """
+        self.set_element_information()
+        return "checked" in self.states_en_us
+
+    def is_enabled(self) -> bool:
+        """Returns whether the JABElement is enabled."""
+        self.set_element_information()
+        return "enabled" in self.states_en_us
+
+    def is_visible(self) -> bool:
+        """Returns whether the JABElement is visible."""
+        self.set_element_information()
+        return "visible" in self.states_en_us
+
+    def is_showing(self) -> bool:
+        """Returns whether the JABElement is showing."""
+        self.set_element_information()
+        return "showing" in self.states_en_us
+
+    def is_selected(self) -> bool:
+        """Returns whether the JABElement is selected."""
+        self.set_element_information()
+        return "selected" in self.states_en_us
+
+    def find_element_by_name(self, value: str) -> JABElement:
+        """find child JABElement by name
+
+        Args:
+            value (str): Locator of JABElement need to find.
+
+        Returns:
+            JABElement: The JABElement find by locator
+        """
+        return self.find_element(by=By.NAME, value=value)
+
+    def find_element_by_role(self, value: str) -> JABElement:
+        """find child JABElement by role
+
+        Args:
+            value (str): Locator of JABElement need to find.
+
+        Returns:
+            JABElement: The JABElement find by locator
+        """
+        return self.find_element(by=By.ROLE, value=value)
+
+    def find_element_by_states(self, value: list) -> JABElement:
+        """find child JABElement by states
+
+        Args:
+            value (list): Locator of JABElement need to find.
+
+        Returns:
+            JABElement: The JABElement find by locator
+        """
+        return self.find_element(by=By.STATES, value=value)
+
+    def find_element_by_object_depth(self, value: int) -> JABElement:
+        """find child JABElement by object depth
+
+        Args:
+            value (int): Locator of JABElement need to find.
+
+        Returns:
+            JABElement: The JABElement find by locator
+        """
+        return self.find_element(by=By.OBJECT_DEPTH, value=value)
+
+    def find_element_by_children_count(self, value: int) -> JABElement:
+        """find child JABElement by children count
+
+        Args:
+            value (int): Locator of JABElement need to find.
+
+        Returns:
+            JABElement: The JABElement find by locator
+        """
+        return self.find_element(by=By.CHILDREN_COUNT, value=value)
+
+    def find_element_by_index_in_parent(self, value: int) -> JABElement:
+        """find child JABElement by index in parent
+
+        Args:
+            value (int): Locator of JABElement need to find.
+
+        Returns:
+            JABElement: The JABElement find by locator
+        """
+        return self.find_element(by=By.INDEX_IN_PARENT, value=value)
+
+    def _is_match_attr_name(self, attr_val: str, jabelement: JABElement) -> bool:
+        """Return the attribute value is matched or not by name.
+
+        Args:
+            attr_val (str): Attribute name value
+            jabelement (JABElement): The JABElement
+
+        Returns:
+            bool: True for attribute matched False for not
+        """
+        if attr_val[0] in ["'", '"'] and attr_val[-1] in ["'", '"']:
+            attr_val = attr_val[1:-1]
+        pattern = re.compile("^contains\([\"'](.*?)[\"']\)")
+        content = pattern.findall(attr_val)
+        if content:
+            return content[0] in jabelement.name
+        else:
+            return attr_val == jabelement.name
+
+    def _is_match_attr_states(self, attr_val: str, jabelement: JABElement) -> bool:
+        """Return the attribute value is matched or not by states.
+
+        Args:
+            attr_val (str): Attribute states value
+            jabelement (JABElement): The JABElement
+
+        Returns:
+            bool: True for attribute matched False for not
+        """
+        if attr_val[0] in ["'", '"'] and attr_val[-1] in ["'", '"']:
+            attr_val = attr_val[1:-1]
+        pattern = re.compile("^contains\([\"'](.*?)[\"']\)")
+        content = pattern.findall(attr_val)
+        if content:
+            return all(
+                [stat in jabelement.states_en_us for stat in content[0].split(",")]
+            )
+        else:
+            return set(attr_val.split(",")) == set(jabelement.states_en_us)
+
+    def _is_match_attr_objectdepth(self, attr_val: str, jabelement: JABElement) -> bool:
+        """Return the attribute value is matched or not by object depth.
+
+        Args:
+            attr_val (str): Attribute object depth value
+            jabelement (JABElement): The JABElement
+
+        Returns:
+            bool: True for attribute matched False for not
+        """
+        return int(attr_val) == jabelement.object_depth
+
+    def _is_match_attr_childrencount(
+        self, attr_val: str, jabelement: JABElement
+    ) -> bool:
+        """Return the attribute value is matched or not by children count.
+
+        Args:
+            attr_val (str): Attribute children count value
+            jabelement (JABElement): The JABElement
+
+        Returns:
+            bool: True for attribute matched False for not
+        """
+        return int(attr_val) == jabelement.children_count
+
+    def _is_match_attr_indexinparent(
+        self, attr_val: str, jabelement: JABElement
+    ) -> bool:
+        """Return the attribute value is matched or not by index in parent.
+
+        Args:
+            attr_val (str): Attribute index in parent value
+            jabelement (JABElement): The JABElement
+
+        Returns:
+            bool: True for attribute matched False for not
+        """
+        return int(attr_val) == jabelement.index_in_parent
+
+    def _is_match_attributes(self, attributes: list[dict], jabelement: JABElement) -> bool:
+        """Return the attributes is matched or not with node conditions.
+
+
+        Args:
+            attributes (list[dict]): List of attribute contains 
+            "name" of attribute and "value" of attribute conditions
+            jabelement (JABElement): The JABElement
+
+        Raises:
+            JABException: Incorrect attribute name found
+
+        Returns:
+            bool: True for attributes matched False for not
+        """
+        dict_attribute = {
+            "name": self._is_match_attr_name,
+            "states": self._is_match_attr_states,
+            "objectdepth": self._is_match_attr_objectdepth,
+            "childrencount": self._is_match_attr_childrencount,
+            "indexinparent": self._is_match_attr_indexinparent,
+        }
+        for attribute in attributes:
+            name = attribute.get("name")
+            value = attribute.get("value")
+            if name not in dict_attribute.keys():
+                raise JABException("incorrect attribute name '{}'".format(name))
+            if not dict_attribute[name](value, jabelement):
+                return False
+        return True
+
+    def _get_element_by_node(
+        self, node: str, level: str = "root", jabelement: JABElement = None
+    ) -> JABElement:
+        """Get child JABElement by specific node
+
+        Args:
+            node (str): Node content for every single content in xpath.\n
+            level (str, optional): Level for node, two options: "root" and "child". Defaults to "root".\n
+            jabelement (JABElement, optional): The parent JABElement. Defaults to None.
+
+        Raises:
+            ValueError: Incorect level set
+            JABException: No JABElement found with specific node
+
+        Returns:
+            JABElement: The JABElement
+        """
+        dict_gen = {
+            "root": self._generate_all_childs,
+            "child": self._generate_childs_from_element,
+        }
+        if level not in dict_gen.keys():
+            raise ValueError("level should be in 'root' or 'child'")
+        node_info = self.xpath_parser.get_node_information(node)
+        node_role = node_info.get("role")
+        node_attributes = node_info.get("attributes")
+        for element in dict_gen[level](jabelement):
+            if node_role not in ["*", element.role_en_us]:
                 continue
-            key_list.clear()
-            if (binding_info.modifiers and ACCESSIBLE_ALT_KEYSTROKE) or (
-                not binding_info.modifiers and self.role != JAB_ROLE_MENU_ITEM
-            ):
-                key_list.append("alt")
-            if binding_info.modifiers and ACCESSIBLE_CONTROL_KEYSTROKE:
-                key_list.append("control")
-            if binding_info.modifiers and ACCESSIBLE_SHIFT_KEYSTROKE:
-                key_list.append("shift")
-            key_list.append(binding_info.character)
-        shortcut_list.append("+".join(key_list))
-        return ", ".join(shortcut_list)
+            if self._is_match_attributes(node_attributes, element):
+                return element
+        else:
+            raise JABException(
+                "no JABElement found in level {} with node '{}'".format(level, node)
+            )
 
-    def _get_name(self) -> str:
-        return self.xml_tag_pattern.sub(" ", self.ac_info.name)
+    def find_element_by_xpath(self, value: str) -> JABElement:
+        """find child JABElement by xpath
 
-    def _get_description(self) -> str:
-        return self.xml_tag_pattern.sub(" ", self.ac_info.description)
-
-    def _get_role(self) -> str:
-        role = self.ac_info.role_en_US
-        return role if role else JAB_ROLE_UNKNOWN
-
-    def _get_status(self) -> str:
-        states = self.ac_info.states_en_US
-        return states if states else JAB_STATES_UNKNOWN
-
-    def _get_bounds(self) -> dict:
-        x = self.ac_info.X
-        y = self.ac_info.Y
-        width = self.ac_info.Width
-        height = self.ac_info.Height
-        return {"x": x, "y": y, "width": width, "height": height}
-
-    def _get_children_count(self) -> int:
-        return self.ac_info.childrenCount
-
-    def _get_index_in_parent(self) -> int:
-        return self.ac_info.indexInParent
-
-    def _get_accessible_component_support(self) -> bool:
-        return self.ac_info.accessibleComponent
-
-    def _get_accessible_action_support(self) -> bool:
-        return self.ac_info.accessibleAction
-
-    def _get_accessible_selection_support(self) -> bool:
-        return self.ac_info.accessibleSelection
-
-    def _get_accessible_text_support(self) -> bool:
-        return self.ac_info.accessibleText
-
-    def _get_accessible_interfaces_support(self) -> bool:
-        return self.ac_info.accessibleInterfaces
-    
-    def _get_value(self)->str:
-        is_eligible = self.role not in [JAB_ROLE_CHECK_BOX, JAB_ROLE_MENU, JAB_ROLE_MENU_ITEM,JAB_ROLE_RADIO_BUTTON, JAB_ROLE_PUSH_BUTTON] and not self.ac_info.accessibleText
-        if is_eligible:
-            return self.handler.get_current_accessible_value_from_context()
+        Args:
+            value (str): Locator of JABElement need to find.
         
-    def _has_focus(self)->bool:
-        return JAB_STATES_FOCUSED in self.states
+        Example:
+            find_element_by_xpath("//internal frame/panel")\n
+            find_element_by_xpath("//*/panel")\n
+            find_element_by_xpath("//internal frame[@name='FRM-999']")\n
+            find_element_by_xpath("//internal frame[@name=contains('FRM-999')]")\n
+            find_element_by_xpath("//internal frame[@states='enable,focusable,visible,showing']")\n
+            find_element_by_xpath("//internal frame[@states=contains('enable,focusable')]")\n
+            find_element_by_xpath("//internal frame[@objectdepth=7]")\n
+            find_element_by_xpath("//internal frame[@childrencount=2]")\n
+            find_element_by_xpath("//internal frame[@indexinparent=3]")\n
+            find_element_by_xpath("//internal frame[@name=contains('FRM-999') and @indexinparent=0 and @objectdepth=7]")\n
 
-    def _get_position_info(self):
-        info = super(JABElement, self).position_info or {}
-        # If tree view item, try to retrieve the level via JABElement
-        if self.role == JAB_ROLE_TREE:
-            tree = self.handler.get_parent_with_role(JAB_ROLE_TREE)
-            if tree:
-                tree_depth = tree.get_object_depth()
-                self_depth = self.ac.get_object_depth()
+        Returns:
+            JABElement: The JABElement find by locator
+        """
+        nodes = self.xpath_parser.split_nodes(value)
+        jabelement = None
+        for node in nodes:
+            level = "root" if nodes.index(node) == 0 else "child"
+            jabelement = self._get_element_by_node(
+                node=node, level=level, jabelement=jabelement
+            )
+        return jabelement
+
+    def find_element(self, by: str = By.NAME, value: Any = None) -> JABElement:
+        """Find an jab element given a By strategy and locator.
+
+        Args:
+            by (str, optional): By strategy of element need to find. Defaults to By.NAME.
+            value (Any, optional): Locator of element need to find.
+            Defaults to None will select the first child jab element.
+
+        Returns:
+            JABElement: The element find by locator
+        """
+        if by not in [
+            By.NAME,
+            By.ROLE,
+            By.STATES,
+            By.OBJECT_DEPTH,
+            By.CHILDREN_COUNT,
+            By.INDEX_IN_PARENT,
+            By.XPATH,
+        ]:
+            raise JABException("incorrect by strategy '{}'".format(by))
+        if by == By.XPATH:
+            self.find_element_by_xpath(value)
+        located_element = None
+        for jabelement in self._generate_all_childs():
+            is_matched = (
+                (value is None)
+                or (by == By.NAME and jabelement.name == value)
+                or (by == By.ROLE and jabelement.role_en_us == value)
+                or (by == By.STATES and set(jabelement.states_en_us) == set(value))
+                or (by == By.OBJECT_DEPTH and jabelement.object_depth == int(value))
+                or (by == By.CHILDREN_COUNT and jabelement.children_count == int(value))
+                or (
+                    by == By.INDEX_IN_PARENT
+                    and jabelement.index_in_parent == int(value)
+                )
+            )
+            if is_matched:
+                located_element = jabelement
+                break
+        else:
+            raise JABException(
+                "jab element not found by '{}' with locator '{}'".format(by, value)
+            )
+        return located_element
+
+    def find_elements_by_name(self, value: str) -> list[JABElement]:
+        """Find list of child JABElement by name
+
+        Args:
+            value (str): Locator of list JABElement need to find.
+
+        Returns:
+            list[JABElement]: List of JABElement find by locator
+        """
+        return self.find_elements(by=By.NAME, value=value)
+
+    def find_elements_by_role(self, value: str) -> list[JABElement]:
+        """Find list of child JABElement by role
+
+        Args:
+            value (str): Locator of list JABElement need to find.
+
+        Returns:
+            list[JABElement]: List of JABElement find by locator
+        """
+        return self.find_elements(by=By.ROLE, value=value)
+
+    def find_elements_by_states(self, value: list) -> list[JABElement]:
+        """Find list of child JABElement by states
+
+        Args:
+            value (str): Locator of list JABElement need to find.
+
+        Returns:
+            list[JABElement]: List of JABElement find by locator
+        """
+        return self.find_elements(by=By.STATES, value=value)
+
+    def find_elements_by_object_depth(self, value: int) -> list[JABElement]:
+        """Find list of child JABElement by object depth
+
+        Args:
+            value (str): Locator of list JABElement need to find.
+
+        Returns:
+            list[JABElement]: List of JABElement find by locator
+        """
+        return self.find_elements(by=By.OBJECT_DEPTH, value=value)
+
+    def find_elements_by_children_count(self, value: int) -> list[JABElement]:
+        """Find list of child JABElement by children count
+
+        Args:
+            value (str): Locator of list JABElement need to find.
+
+        Returns:
+            list[JABElement]: List of JABElement find by locator
+        """
+        return self.find_elements(by=By.CHILDREN_COUNT, value=value)
+
+    def find_elements_by_index_in_parent(self, value: int) -> list[JABElement]:
+        """Find list of child JABElement by index inparent
+
+        Args:
+            value (str): Locator of list JABElement need to find.
+
+        Returns:
+            list[JABElement]: List of JABElement find by locator
+        """
+        return self.find_elements(by=By.INDEX_IN_PARENT, value=value)
+
+    def _get_elements_by_node(
+        self, node: str, level: str = "root", jabelement: JABElement = None
+    ) -> list[JABElement]:
+        """Get list of child JABElement by specific node
+
+        Args:
+            node (str): Node content for every single content in xpath.\n
+            level (str, optional): Level for node, two options: "root" and "child". Defaults to "root".\n
+            jabelement (JABElement, optional): The parent JABElement. Defaults to None.
+
+        Raises:
+            ValueError: Incorect level set
+
+        Returns:
+            list[JABElement]: list of the JABElement
+        """
+        dict_gen = {
+            "root": self._generate_all_childs,
+            "child": self._generate_childs_from_element,
+        }
+        if level not in dict_gen.keys():
+            raise ValueError("level should be in 'root' or 'child'")
+        node_info = self.xpath_parser.get_node_information(node)
+        node_role = node_info.get("role")
+        node_attributes = node_info.get("attributes")
+        jabelements = list()
+        for _jabelement in dict_gen[level](jabelement):
+            if node_role not in ["*", _jabelement.role_en_us]:
+                continue
+            if self._is_match_attributes(node_attributes, _jabelement):
+                jabelements.append(_jabelement)
+        return jabelements
+
+    def find_elements_by_xpath(self, value: str) -> list[JABElement]:
+        """Find list of child JABElement by xpath
+
+        Args:
+            value (str): Locator of JABElement need to find.
+
+        Returns:
+            list[JABElement]: List of JABElement find by locator
+        """
+        def generate_node(nodes: list[str]) -> Generator:
+            for index, node in enumerate(nodes):
+                level = "root" if index == 0 else "child"
+                yield node, level
+
+        def get_child_jabelements(
+            node: str, level: str, parent_jabelements: list[JABElement]
+        ) -> list(JABElement):
+            child_jabelements = list()
+            for parent_jabelement in parent_jabelements:
+                jabelements = self._get_elements_by_node(
+                    node=node, level=level, jabelement=parent_jabelement
+                )
+                child_jabelements.extend(jabelements)
+            return child_jabelements
+
+        nodes = self.xpath_parser.split_nodes(value)
+        jabelements = [
+            JABElement(self.bridge, self.hwnd, self.vmid, self.accessible_context)
+        ]
+        for node, level in generate_node(nodes):
+            if not jabelements:
+                raise JABException("no JABElement found")
+            jabelements = get_child_jabelements(node, level, jabelements)
+        return jabelements
+
+    def find_elements(self, by: str = By.NAME, value: str = None) -> list[JABElement]:
+        """Find list of JABElement given a By strategy and locator.
+
+        Args:
+            by (str, optional): By strategy of element need to find. Defaults to By.NAME.
+            value (Any, optional): Locator of element need to find.
+            Defaults to None will select the first child jab element.
+
+        Returns:
+            list: List of JABElement find by locator
+        """
+        if by not in [
+            By.NAME,
+            By.ROLE,
+            By.STATES,
+            By.OBJECT_DEPTH,
+            By.CHILDREN_COUNT,
+            By.INDEX_IN_PARENT,
+            By.XPATH,
+        ]:
+            raise JABException("incorrect by strategy '{}'".format(by))
+        if by == By.XPATH:
+            self.find_elements_by_xpath(value)
+        jabelements = list()
+        for jabelement in self._generate_all_childs():
+            is_matched = (
+                (value is None)
+                or (by == By.NAME and jabelement.name == value)
+                or (by == By.ROLE and jabelement.role_en_us == value)
+                or (by == By.STATES and set(jabelement.states_en_us) == set(value))
+                or (by == By.OBJECT_DEPTH and jabelement.object_depth == int(value))
+                or (by == By.CHILDREN_COUNT and jabelement.children_count == int(value))
+                or (
+                    by == By.INDEX_IN_PARENT
+                    and jabelement.index_in_parent == int(value)
+                )
+            )
+            if is_matched:
+                jabelements.append(jabelement)
+        if not jabelements:
+            raise JABException(
+                "no JABElement found by '{}' with locator '{}'".format(by, value)
+            )
+        return jabelements
+
+    def send_text(self, value: str) -> None:
+        """Simulates typing into the element.
+
+        :Args:
+            - value - A string for typing.
+
+        Use this to send simple key events or to fill out form fields::
+
+            form_textfield = driver.find_element_by_name('username')
+            form_textfield.send_keys("admin")
+        """
+        self.clear()
+        self.win32_utils.send_keys(value)
+
+    @property
+    def size(self) -> dict:
+        """The size of the element."""
+        self.set_element_information()
+        return dict(height=self.bounds.get("height"), width=self.bounds.get("width"))
+
+    @property
+    def location(self) -> dict:
+        """The location of the element in the renderable canvas."""
+        self.set_element_information()
+        return dict(x=self.bounds.get("x"), y=self.bounds.get("y"))
+
+    def get_screenshot_as_file(self, filename: str) -> None:
+        """
+        Saves a screenshot of the current element to a PNG image file. Returns
+           False if there is any IOError, else returns True. Use full paths in
+           your filename.
+
+        :Args:
+         - filename: The full path you wish to save your screenshot to. This
+           should end with a `.png` extension.
+
+        :Usage:
+            element.screenshot('/Screenshots/foo.png')
+        """
+        im = self.get_screenshot()
+        im.save(filename)
+
+    def get_screenshot(self) -> Image:
+        """
+        Gets the screenshot of the current element as pillow Image.
+
+        :Usage:
+            img = element.get_screenshot()
+        """
+        self.win32_utils.set_window_foreground(hwnd=self.hwnd.value)
+        self.set_element_information()
+        x = self.bounds.get("x")
+        y = self.bounds.get("y")
+        width = self.bounds.get("width")
+        height = self.bounds.get("height")
+        im = ImageGrab.grab(
+            bbox=(
+                x,
+                y,
+                x + width,
+                y + height,
+            ),
+            include_layered_windows=False,
+            all_screens=True,
+        )
+        return im
+
+    @property
+    def parent(self):
+        """Internal reference to the JabDriver instance this element was found from."""
+        self.set_element_information()
+        parent_acc = self.bridge.getAccessibleParentFromContext(
+            self.vmid, self.accessible_context
+        )
+        return JABElement(
+            bridge=self.bridge,
+            hwnd=self.hwnd,
+            vmid=self.vmid,
+            accessible_context=parent_acc,
+        )
+
+    def set_element_information(self) -> None:
+        """Set JABElement information(attributes) from internal jab funcs
+
+        Raises:
+            JABException: Get Accessible Context Info error(internal jab func error)
+            JABException: Get Object Depth error(internal jab func error)
+        """
+        if not any([self.vmid, self.hwnd, self.accessible_context]):
+            return
+        info = AccessibleContextInfo()
+        result = self.bridge.getAccessibleContextInfo(
+            self.vmid, self.accessible_context, byref(info)
+        )
+        if result == 0:
+            raise JABException(self.int_func_err_msg.format("GetAccessibleContextInfo"))
+        object_depth = self.bridge.getObjectDepth(self.vmid, self.accessible_context)
+        if object_depth == -1:
+            raise JABException(self.int_func_err_msg.format("getObjectDepth"))
+        self.name = info.name
+        self.description = info.description
+        self.role = info.role
+        self.role_en_us = info.role_en_US
+        self.states = info.states.split(",")
+        self.states_en_us = info.states_en_US.split(",")
+        self.bounds = dict(x=info.x, y=info.y, height=info.height, width=info.width)
+        self.object_depth = object_depth
+        self.index_in_parent = info.indexInParent
+        self.children_count = info.childrenCount
+        self.accessible_component = info.accessibleComponent
+        self.accessible_action = info.accessibleAction
+        self.accessible_selection = info.accessibleSelection
+        self.accessible_text = info.accessibleText
+
+    def get_element_information(self) -> dict:
+        """Get dict information of current JABElement
+
+        Returns:
+            dict: dict information of current JABElement
+        """
+        return dict(
+            name=self.name,
+            description=self.description,
+            role=self.role,
+            role_en_us=self.role_en_us,
+            states=self.states,
+            states_en_us=self.states_en_us,
+            bounds=self.bounds,
+            object_depth=self.object_depth,
+            index_in_parent=self.index_in_parent,
+            children_count=self.children_count,
+            accessible_component=self.accessible_component,
+            accessible_action=self.accessible_action,
+            accessible_selection=self.accessible_selection,
+            accessible_text=self.accessible_text,
+        )

@@ -33,12 +33,3 @@ class Logger(object):
 
     def critical(self, msg, *args, **kwargs):
         self.log.critical(msg, *args, **kwargs)
-
-    def select_logger(self, msg: str, level: int = LOGGER_INFO, *args, **kwargs):
-        _ = {
-            self.LOGGER_INFO: self.info,
-            self.LOGGER_DEBUG: self.debug,
-            self.LOGGER_WARN: self.warning,
-            self.LOGGER_ERROR: self.error,
-            self.LOGGER_CRITICAL: self.critical,
-        }[level](msg, *args, **kwargs)

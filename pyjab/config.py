@@ -1,3 +1,5 @@
+import os
+
 ACCESSIBLE_SHIFT_KEYSTROKE=1
 ACCESSIBLE_CONTROL_KEYSTROKE=2
 ACCESSIBLE_META_KEYSTROKE=4
@@ -16,5 +18,15 @@ MAX_HYPERLINKS = 64
 MAX_ICON_INFO = 256
 MAX_VISIBLE_CHILDREN = 256
 SHORT_STRING_SIZE = 256
+TIMEOUT = 30
 
 BRIDGE_DLL = r"C:\Program Files (x86)\Java\jdk8\jre\bin\WindowsAccessBridge-32.dll"
+
+#: The path to the user's .accessibility.properties file, used
+#: to enable JAB.
+A11Y_PROPS_PATH = os.path.expanduser(r"~\.accessibility.properties")
+#: The content of ".accessibility.properties" when JAB is enabled.
+A11Y_PROPS_CONTENT = (
+    "assistive_technologies=com.sun.java.accessibility.AccessBridge\n"
+    "screen_magnifier_present=true\n"
+)
