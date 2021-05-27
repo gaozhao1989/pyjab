@@ -1,5 +1,5 @@
-from pyjab.common.role import Role
 import re
+from pyjab.common.role import Role
 from pyjab.common.exceptions import XpathParserException
 
 # TODO: this is very simple parser, need refactor in future

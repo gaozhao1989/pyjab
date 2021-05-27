@@ -1,33 +1,43 @@
-from ctypes import (
-    CDLL,
-    c_long,
-)
+from __future__ import annotations
 from ctypes import byref
+from ctypes import CDLL
+from ctypes import c_long
 from ctypes.wintypes import HWND
-from PIL import Image, ImageGrab
-from pyjab.jabelement import JABElement
-from pyjab.jabfixedfunc import JABFixedFunc
+from time import time, sleep
+from typing import Any
+from PIL import ImageGrab
 from pyjab.common.actorscheduler import ActorScheduler
 from pyjab.common.by import By
-from typing import Dict, List
 from pyjab.common.exceptions import JABException
 from pyjab.common.logger import Logger
 from pyjab.common.service import Service
 from pyjab.common.types import JOBJECT64
 from pyjab.common.xpathparser import XpathParser
+from pyjab.config import TIMEOUT
+from pyjab.jabelement import JABElement
+from pyjab.jabfixedfunc import JABFixedFunc
 
 
 class JABDriver(Service, ActorScheduler):
+    int_func_err_msg = "Java Access Bridge func '{}' error"
+
     def __init__(self, title: str = "") -> None:
         super(JABDriver, self).__init__()
-        self.log = Logger(self.__class__.__name__)
+        self.logger = Logger(self.__class__.__name__)
         self._title = title
-        self._bridge = self.service_bridge
-        JABFixedFunc(self._bridge).fix_bridge_functions()
-        self._root_element = JABElement()
-        self.int_func_err_msg = "Java Access Bridge func '{}' error"
+        self._bridge = None
+        self._root_element = None
         self.init_jab_service()
+        JABFixedFunc(self._bridge)._fix_bridge_functions()
         self.xpath_parser = XpathParser()
+
+    @property
+    def title(self) -> str:
+        return self._title
+
+    @title.setter
+    def title(self, title: str) -> None:
+        self._title = title
 
     @property
     def bridge(self) -> CDLL:
@@ -42,48 +52,90 @@ class JABDriver(Service, ActorScheduler):
         return self._root_element
 
     @root_element.setter
-    def root_element(self, root_element) -> None:
+    def root_element(self, root_element: JABElement) -> None:
         self._root_element = root_element
 
-    def init_jab_service(self, root_element: JABElement = JABElement()) -> None:
+    def init_jab_service(
+        self,
+        hwnd: HWND = None,
+        vmid: c_long = None,
+        accessible_context: JOBJECT64 = None,
+    ) -> None:
+        # enum window and find hwnd
+        win_hwnd = self.wait_hwnd_by_title(self.title)
+        self.bridge = self.load_library()
+        self.bridge.Windows_run()
         # invoke generator in message queue
         sched = ActorScheduler()
         sched.new_actor("jab", self.setup_msg_pump())
         sched.run()
         # init jab
-        win_hwnd = self.wait_hwnd_by_title(self._title)
-        java_hwnd = self.wait_java_window_present(win_hwnd)
-        hwnd = root_element.hwnd or java_hwnd
-        vmid = root_element.vmid
-        accessible_context = root_element.accessible_context
+        self.bridge.Windows_run()
+        self._wait_until_java_window_exist(win_hwnd)
+        hwnd = hwnd or win_hwnd
         if hwnd and not vmid:
+            # must have hwnd
             vmid = c_long()
             accessible_context = JOBJECT64()
             self.bridge.getAccessibleContextFromHWND(
                 hwnd, byref(vmid), byref(accessible_context)
             )
             vmid = vmid.value
-        elif vmid and not hwnd:
-            accessible_context = JOBJECT64()
-            hwnd = self.bridge.getHWNDFromAccessibleContext(
-                byref(vmid), byref(accessible_context)
+        elif vmid and accessible_context and not hwnd:
+            # must have vmid and accessible_context
+            top_level_object = self.bridge.getTopLevelObject(vmid, accessible_context)
+            hwnd = self.bridge.getHWNDFromAccessibleContext(vmid, top_level_object)
+        else:
+            raise RuntimeError(
+                "At least hwnd or vmid and accessible_context is required"
             )
-        if not (vmid and hwnd):
-            raise RuntimeError("both vmid and hwnd empty, please check")
-        self.root_element.hwnd = HWND(hwnd)
-        self.root_element.vmid = c_long(vmid)
-        self.root_element.accessible_context = accessible_context
+        self.root_element = JABElement(
+            bridge=self.bridge,
+            hwnd=HWND(hwnd),
+            vmid=c_long(vmid),
+            accessible_context=accessible_context,
+        )
+        # TODO:fix JABElement not loading complete
+        sleep(2)
+
+    def _is_java_window(self, hwnd: HWND) -> bool:
+        """Return the specific window is or not a Java Window
+
+        Args:
+            hwnd (HWND): The hwnd of window. Defaults to None.
+
+        Returns:
+            bool: True if is a Java Window. False is not a Java Window.
+        """
+        return bool(self.bridge.isJavaWindow(hwnd))
+
+    def _wait_until_java_window_exist(self, hwnd: HWND, timeout: int = TIMEOUT) -> None:
+        """Wait until a Java Window exist in specific seconds.
+
+        Args:
+            hwnd (HWND): The hwnd of specific Java Window need to wait.
+            timeout (int, optional): The timeout seconds. Defaults to TIMEOUT.
+
+        Raises:
+            TimeoutError: Timeout error occurs when wait time over the specific timeout
+
+        Returns:
+            None
+        """
+        start = time()
+        while True:
+            if self._is_java_window(hwnd):
+                break
+            current = time()
+            elapsed = round(current - start)
+            if elapsed >= timeout:
+                raise TimeoutError(
+                    "no java window found by hwnd '{}' in '{}'seconds".format(
+                        hwnd, timeout
+                    )
+                )
 
     # jab driver functions: similar with webdriver
-    @property
-    def title(self) -> str:
-        """
-        Returns the title of current java window
-        """
-        win_title = self.get_title_by_hwnd(self.root_element.hwnd)
-        self.logger.debug("current java window title '{}'".format(win_title))
-        return win_title
-
     def find_element_by_name(self, value: str) -> JABElement:
         """
         Find an JABElement given a name locator.
@@ -144,7 +196,7 @@ class JABDriver(Service, ActorScheduler):
         """
         return self.root_element.find_element_by_xpath(value)
 
-    def find_element(self, by: str = By.NAME, value: str = None) -> JABElement:
+    def find_element(self, by: str = By.NAME, value: Any = None) -> JABElement:
         """
         Find an JABElement given a By strategy and locator.
         """
@@ -248,28 +300,32 @@ class JABDriver(Service, ActorScheduler):
         """
         Maximizes the current java window that jabdriver is using
         """
-        # TODO: set func to maximize window
+        self._set_window_maximize(hwnd=self.root_element.hwnd)
 
     def minimize_window(self):
         """
         Invokes the window manager-specific 'minimize' operation
         """
-        # TODO: set func to minimize window
+        self._set_window_minimize(hwnd=self.root_element.hwnd)
 
-    def implicitly_wait(self, time_to_wait):
-        """
-        Sets a sticky timeout to implicitly wait for an element to be found,
-           or a command to complete. This method only needs to be called one
-           time per session. To set the timeout for calls to
-           execute_async_script, see set_script_timeout.
-
-        :Args:
-         - time_to_wait: Amount of time to wait (in seconds)
-
-        :Usage:
-            driver.implicitly_wait(30)
-        """
-        # TODO: set func to implicitly_wait
+    def wait_until_element_exist(
+        self, by: str = By.NAME, value: Any = None, timeout: int = TIMEOUT
+    ) -> JABElement:
+        start = time()
+        while True:
+            current = time()
+            elapsed = round(current - start)
+            remain = round(timeout - elapsed)
+            self.logger.debug("elapsed => {}, remain => {}".format(elapsed, remain))
+            if elapsed >= timeout:
+                raise JABException(
+                    "JABElement does not found in {} seconds".format(timeout)
+                )
+            try:
+                jabelement = self.find_element(by=by, value=value)
+                return jabelement
+            except JABException:
+                self.logger.warning("JABElement does not found")
 
     def get_screenshot_as_file(self, filename):
         """
@@ -295,7 +351,7 @@ class JABDriver(Service, ActorScheduler):
         :Usage:
             driver.get_screenshot_as_base64()
         """
-        self.set_window_foreground(hwnd=self.hwnd.value)
+        self._set_window_foreground(hwnd=self.root_element.hwnd.value)
         self.root_element.set_element_information()
         x = self.root_element.bounds.get("x")
         y = self.root_element.bounds.get("y")
@@ -324,7 +380,7 @@ class JABDriver(Service, ActorScheduler):
         :Usage:
             driver.set_window_size(800,600)
         """
-        # TODO: set func to set_window_size
+        self._set_window_size(hwnd=self.root_element.hwnd, width=width, height=height)
 
     def set_window_position(self, x, y):
         """
@@ -337,7 +393,7 @@ class JABDriver(Service, ActorScheduler):
         :Usage:
             driver.set_window_position(0,0)
         """
-        # TODO: set func to set_window_position
+        self._set_window_position(hwnd=self.root_element.hwnd, left=x, top=y)
 
     def get_window_position(self):
         """
@@ -346,4 +402,4 @@ class JABDriver(Service, ActorScheduler):
         :Usage:
             driver.get_window_position()
         """
-        # TODO: set func to get_window_position
+        return self._get_window_position(hwnd=self.root_element.hwnd)

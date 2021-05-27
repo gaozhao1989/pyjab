@@ -1,2 +1,0 @@
-BRIDGE = None
-VMIDS_OF_HWND = {}

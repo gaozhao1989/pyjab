@@ -1,17 +1,22 @@
-from __future__ import annotations
-from ctypes import CDLL, byref, c_long
-from ctypes.wintypes import HWND
 import re
-from typing import Any, Generator
-from PIL import Image, ImageGrab
-from pyjab.common.win32utils import Win32Utils
-from pyjab.common.shortcutkeys import ShortcutKeys
-from pyjab.common.exceptions import JABException
-from pyjab.accessibleinfo import AccessibleContextInfo
-from pyjab.common.types import JOBJECT64
+from __future__ import annotations
+from ctypes import byref
+from ctypes import CDLL
+from ctypes import c_long
+from ctypes.wintypes import HWND
+from typing import Any
+from typing import Generator
+from PIL import Image
+from PIL import ImageGrab
 from pyjab.common.by import By
+from pyjab.common.exceptions import JABException
 from pyjab.common.logger import Logger
+from pyjab.common.shortcutkeys import ShortcutKeys
+from pyjab.common.types import JOBJECT64
+from pyjab.common.win32utils import Win32Utils
 from pyjab.common.xpathparser import XpathParser
+from pyjab.accessibleinfo import AccessibleContextInfo
+from pyjab.accessibleinfo import AccessibleTextItemsInfo
 
 
 class JABElement(object):
@@ -50,7 +55,7 @@ class JABElement(object):
         self._accessible_selection = False
         self._accessible_text = False
         self._accessible_interfaces = False
-        # TODO: missing attribute text
+        self._text = None
         self.set_element_information()
 
     @property
@@ -205,6 +210,14 @@ class JABElement(object):
     def accessible_interfaces(self, accessible_interfaces: bool) -> None:
         self._accessible_interfaces = accessible_interfaces
 
+    @property
+    def text(self) -> bool:
+        return self._text
+
+    @text.setter
+    def text(self, text: bool) -> None:
+        self._text = text
+
     # Jab Element actions
     def _generate_all_childs(self, jabelement: JABElement = None) -> Generator:
         """generate all child jab elements from a jab element.
@@ -250,9 +263,24 @@ class JABElement(object):
             )
             yield child_element
 
+    def release_jabelement(self, jabelement: JABElement) -> None:
+        """Release the memory used by the Java object object,
+        where object is an object returned to you by Java Access Bridge.
+        Java Access Bridge automatically maintains a reference
+        to all Java objects that it returns to you in the JVM
+        so they are not garbage collected. To prevent memory leaks,
+        you must call ReleaseJavaObject on all Java objects returned
+        to you by Java Access Bridge once you are finished with them.
+        See JavaFerret.c for an illustration of how to do this.
+
+        Args:
+            jabelement (JABElement): The JABElement need to release
+        """
+        self.bridge.releaseJavaObject(self.vmid, jabelement.accessible_context)
+
     def click(self) -> None:
         """Clicks the JABElement."""
-        self.win32_utils.set_window_foreground(hwnd=self.hwnd.value)
+        self.win32_utils._set_window_foreground(hwnd=self.hwnd.value)
         self.set_element_information()
         x = self.bounds.get("x")
         y = self.bounds.get("y")
@@ -262,7 +290,7 @@ class JABElement(object):
             raise ValueError("element width or height is 0")
         position_x = round(x + width / 2)
         position_y = round(y + height / 2)
-        self.win32_utils.click_mouse(x=position_x, y=position_y)
+        self.win32_utils._click_mouse(x=position_x, y=position_y)
 
     def clear(self) -> None:
         """Clears the text if it's a text entry JABElement."""
@@ -480,13 +508,10 @@ class JABElement(object):
                 return False
         return True
 
-    def _get_node_element(
-        self, attributes: list, jabelement: JABElement = None
-    ) -> JABElement:
+    def _get_node_element(self, jabelement: JABElement = None) -> JABElement:
         """Get node JABElement.
 
         Args:
-            attributes (list): root node attributes
             jabelement (JABElement, optional): The JABElement. Defaults to None.
 
         Raises:
@@ -500,7 +525,7 @@ class JABElement(object):
             if jabelement
             else JABElement(self.bridge, self.hwnd, self.vmid, self.accessible_context)
         )
-        is_same = self._is_match_attributes(attributes, jabelement) and bool(
+        is_same = bool(
             self.bridge.isSameObject(
                 self.vmid, self.accessible_context, jabelement.accessible_context
             )
@@ -511,7 +536,9 @@ class JABElement(object):
             )
             if top_object == 0:
                 raise JABException(self.int_func_err_msg.format("getTopLevelObject"))
-            is_top_level = top_object == self.accessible_context
+            is_top_level = bool(
+                self.bridge.isSameObject(self.vmid, self.accessible_context, top_object)
+            )
             if is_top_level:
                 return jabelement
             else:
@@ -534,7 +561,7 @@ class JABElement(object):
             JABException: No JABElement found with specific node
 
         Returns:
-            JABElement: The JABElement
+            JABElement: The child JABElement
         """
         dict_gen = {
             "root": self._generate_all_childs,
@@ -545,16 +572,21 @@ class JABElement(object):
         node_info = self.xpath_parser.get_node_information(node)
         node_role = node_info.get("role")
         node_attributes = node_info.get("attributes")
-        jabelement = self._get_node_element(node_attributes, jabelement)
-        for element in dict_gen[level](jabelement):
-            if node_role not in ["*", element.role_en_us]:
+        jabelement = self._get_node_element(jabelement)
+        child_jabelement = None
+        for _jabelement in dict_gen[level](jabelement):
+            if node_role not in ["*", _jabelement.role_en_us]:
+                self.release_jabelement(_jabelement)
                 continue
-            if self._is_match_attributes(node_attributes, element):
-                return element
+            if self._is_match_attributes(node_attributes, _jabelement):
+                child_jabelement = _jabelement
+                break
+            self.release_jabelement(_jabelement)
         else:
             raise JABException(
                 "no JABElement found in level {} with node '{}'".format(level, node)
             )
+        return child_jabelement
 
     def find_element_by_xpath(self, value: str) -> JABElement:
         """find child JABElement by xpath
@@ -626,6 +658,7 @@ class JABElement(object):
             if is_matched:
                 located_element = jabelement
                 break
+            self.release_jabelement(jabelement)
         else:
             raise JABException(
                 "jab element not found by '{}' with locator '{}'".format(by, value)
@@ -723,13 +756,15 @@ class JABElement(object):
         node_info = self.xpath_parser.get_node_information(node)
         node_role = node_info.get("role")
         node_attributes = node_info.get("attributes")
-        jabelement = self._get_node_element(node_attributes, jabelement)
+        jabelement = self._get_node_element(jabelement)
         jabelements = list()
         for _jabelement in dict_gen[level](jabelement):
             if node_role not in ["*", _jabelement.role_en_us]:
+                self.release_jabelement(_jabelement)
                 continue
             if self._is_match_attributes(node_attributes, _jabelement):
                 jabelements.append(_jabelement)
+            self.release_jabelement(_jabelement)
         return jabelements
 
     def find_elements_by_xpath(self, value: str) -> list[JABElement]:
@@ -741,6 +776,7 @@ class JABElement(object):
         Returns:
             list[JABElement]: List of JABElement find by locator
         """
+
         def generate_node(nodes: list[str]) -> Generator:
             for index, node in enumerate(nodes):
                 level = "root" if index == 0 else "child"
@@ -806,6 +842,7 @@ class JABElement(object):
             )
             if is_matched:
                 jabelements.append(jabelement)
+            self.release_jabelement(jabelement)
         if not jabelements:
             raise JABException(
                 "no JABElement found by '{}' with locator '{}'".format(by, value)
@@ -824,7 +861,7 @@ class JABElement(object):
             form_textfield.send_keys("admin")
         """
         self.clear()
-        self.win32_utils.send_keys(value)
+        self.win32_utils._send_keys(value)
 
     @property
     def size(self) -> dict:
@@ -861,7 +898,7 @@ class JABElement(object):
         :Usage:
             img = element.get_screenshot()
         """
-        self.win32_utils.set_window_foreground(hwnd=self.hwnd.value)
+        self.win32_utils._set_window_foreground(hwnd=self.hwnd.value)
         self.set_element_information()
         x = self.bounds.get("x")
         y = self.bounds.get("y")
@@ -897,11 +934,14 @@ class JABElement(object):
         """Set JABElement information(attributes) from internal jab funcs
 
         Raises:
+            JABException: None value of vmid, hwnd or accessible_context
             JABException: Get Accessible Context Info error(internal jab func error)
             JABException: Get Object Depth error(internal jab func error)
         """
         if not any([self.vmid, self.hwnd, self.accessible_context]):
-            return
+            raise JABException(
+                "JABElement attributes should have vmid, hwnd and accessible_context"
+            )
         info = AccessibleContextInfo()
         result = self.bridge.getAccessibleContextInfo(
             self.vmid, self.accessible_context, byref(info)
@@ -917,20 +957,35 @@ class JABElement(object):
         self.role_en_us = info.role_en_US
         self.states = info.states.split(",")
         self.states_en_us = info.states_en_US.split(",")
-        self.bounds = dict(x=info.x, y=info.y, height=info.height, width=info.width)
+        self.bounds = dict(
+            x=info.x,
+            y=info.y,
+            height=info.height,
+            width=info.width,
+        )
         self.object_depth = object_depth
         self.index_in_parent = info.indexInParent
         self.children_count = info.childrenCount
-        self.accessible_component = info.accessibleComponent
-        self.accessible_action = info.accessibleAction
-        self.accessible_selection = info.accessibleSelection
-        self.accessible_text = info.accessibleText
+        self.accessible_component = bool(info.accessibleComponent)
+        self.accessible_action = bool(info.accessibleAction)
+        self.accessible_selection = bool(info.accessibleSelection)
+        self.accessible_text = bool(info.accessibleText)
+        if self.accessible_text:
+            info = AccessibleTextItemsInfo()
+            result = self.bridge.getAccessibleTextItems(
+                self.vmid, self.accessible_context, byref(info), 0
+            )
+            if result == 0:
+                raise JABException(
+                    self.int_func_err_msg.format("getAccessibleTextItems")
+                )
+            self.text = info.sentence
 
     def get_element_information(self) -> dict:
         """Get dict information of current JABElement
 
         Returns:
-            dict: dict information of current JABElement
+            dict: Dict information of current JABElement
         """
         return dict(
             name=self.name,
@@ -947,4 +1002,5 @@ class JABElement(object):
             accessible_action=self.accessible_action,
             accessible_selection=self.accessible_selection,
             accessible_text=self.accessible_text,
+            text=self.text,
         )

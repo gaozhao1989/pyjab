@@ -1,11 +1,13 @@
-import time
+import os
 from ctypes import cdll
 from ctypes import CDLL
-from ctypes.wintypes import HWND
 
 from pyjab.common.logger import Logger
 from pyjab.common.win32utils import Win32Utils
-from pyjab.config import A11Y_PROPS_CONTENT, A11Y_PROPS_PATH, BRIDGE_DLL, TIMEOUT
+from pyjab.config import A11Y_PROPS_CONTENT
+from pyjab.config import A11Y_PROPS_PATH
+from pyjab.config import JDK_BRIDGE_DLL
+from pyjab.config import JAB_BRIDGE_DLL
 
 
 class Service(Win32Utils):
@@ -13,8 +15,6 @@ class Service(Win32Utils):
         super(Service, self).__init__()
         self.logger = Logger(self.__class__.__name__)
         self.init_bridge()
-        self.service_bridge = self.load_library()
-        self.check_is_running()
 
     def enable_bridge(self) -> None:
         with open(A11Y_PROPS_PATH, "wt") as fp:
@@ -42,30 +42,12 @@ class Service(Win32Utils):
 
     def load_library(self) -> CDLL:
         self.logger.debug("load library of bridge")
+        if os.path.isfile(JDK_BRIDGE_DLL):
+            BRIDGE_DLL = JDK_BRIDGE_DLL
+        elif os.path.isfile(JAB_BRIDGE_DLL):
+            BRIDGE_DLL = JAB_BRIDGE_DLL
+        else:
+            raise FileNotFoundError(
+                "WindowsAccessBridge-32.dll not found, please set correct path for 'JAVA_HOME' or 'JAB_HOME'"
+            )
         return cdll.LoadLibrary(BRIDGE_DLL)
-
-    def check_is_running(self) -> None:
-        is_running = bool(self.service_bridge.Windows_run())
-        self.logger.debug("jab is running => '{}'".format(is_running))
-        if not is_running:
-            raise RuntimeError("oracle form services start failed")
-
-    def is_java_window_present(self, hwnd: HWND = None) -> bool:
-        return bool(self.service_bridge.isJavaWindow(hwnd))
-
-    def wait_java_window_present(
-        self, hwnd: HWND = None, timeout: int = TIMEOUT
-    ) -> HWND:
-        start = time.time()
-        while True:
-            if self.is_java_window_present(hwnd):
-                return hwnd
-            current = time.time()
-            elapsed = round(current - start)
-            if elapsed >= timeout:
-                raise TimeoutError(
-                    "no java window found by hwnd '{}' in '{}'seconds".format(
-                        hwnd, timeout
-                    )
-                )
-            time.sleep(0.1)

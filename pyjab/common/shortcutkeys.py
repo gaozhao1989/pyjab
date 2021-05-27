@@ -1,4 +1,3 @@
-from time import sleep
 from pyjab.common.logger import Logger
 from pyjab.common.win32utils import Win32Utils
 
@@ -8,18 +7,18 @@ class ShortcutKeys(object):
         super().__init__()
         self.logger = Logger(self.__class__.__name__)
         self.win32_utils = Win32Utils()
-        self.press_hold_release_key = self.win32_utils.press_hold_release_key
-        self.press_key = self.win32_utils.press_key
-    
+        self.press_hold_release_key = self.win32_utils._press_hold_release_key
+        self.press_key = self.win32_utils._press_key
+
     # Common shortcut keys
     def clear_text(self) -> None:
         self.logger.debug("send shortcut command clear text")
         self.press_key("home")
-        self.press_hold_release_key("ctrl","shift","end")
-        # TODO: need find out method to clear text
+        self.press_hold_release_key("ctrl", "shift", "end")
+        # TODO: need find out method to clear text for JABElement
         for _ in range(100):
             self.press_key("backspace")
-    
+
     def paste(self) -> None:
         self.logger.debug("paste text from clipboard")
         self.press_hold_release_key("ctrl", "v")

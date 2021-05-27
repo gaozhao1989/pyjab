@@ -5,6 +5,4 @@ class JOBJECT64(c_int64):
     pass
 
 
-ACCESSIBLE_TABLE = JOBJECT64
-
-jint=c_int
+jint = c_int

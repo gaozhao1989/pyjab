@@ -1,4 +1,3 @@
-import contextlib
 import time
 from ctypes.wintypes import HWND
 from typing import Dict, Generator
@@ -234,7 +233,7 @@ class Win32Utils(object):
         except ValueError:
             self.logger.error("no hwnd found by win title =>'{}'".format(title))
             return None
-    
+
     def get_title_by_hwnd(self, hwnd: HWND) -> str:
         return win32api.GetWindowText(hwnd)
 
@@ -248,40 +247,58 @@ class Win32Utils(object):
             elapsed = round(current - start)
             if elapsed >= timeout:
                 raise TimeoutError(
-                    "no hwnd found by title '{}' in '{}'seconds".format(
-                        title, timeout
-                    )
+                    "no hwnd found by title '{}' in '{}'seconds".format(title, timeout)
                 )
-    
-    def set_window_foreground(self, hwnd: HWND)->None:
+
+    def _set_window_foreground(self, hwnd: HWND) -> None:
         win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
         win32gui.ShowWindow(hwnd, win32con.SW_SHOW)
         win32gui.SetForegroundWindow(hwnd)
 
-    def click_mouse(self, x: int, y: int) -> None:
+    def _set_window_maximize(self, hwnd: HWND) -> None:
+        win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+        win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
+
+    def _set_window_minimize(self, hwnd: HWND) -> None:
+        win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+        win32gui.ShowWindow(hwnd, win32con.SW_MINIMIZE)
+
+    def _set_window_size(self, hwnd: HWND, width: int, height: int) -> None:
+        left, top, _, _ = win32gui.GetWindowRect(hwnd)
+        win32gui.MoveWindow(hwnd, left, top, width, height, True)
+
+    def _set_window_position(self, hwnd: HWND, left: int, top: int) -> None:
+        _, _, right, bottom = win32gui.GetWindowRect(hwnd)
+        win32gui.MoveWindow(hwnd, left, top, left - right, top - bottom, True)
+
+    def _get_window_position(self, hwnd: HWND) -> tuple:
+        left, top, _, _ = win32gui.GetWindowRect(hwnd)
+        return left, top
+
+    def _click_mouse(self, x: int, y: int) -> None:
         win32api.SetCursorPos((x, y))
         win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, x, y, 0, 0)
         win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, x, y, 0, 0)
 
-    def get_clipboard(self) -> str:
+    def _get_clipboard(self) -> str:
         win32clipboard.OpenClipboard()
         data = win32clipboard.GetClipboardData(win32con.CF_UNICODETEXT)
         win32clipboard.CloseClipboard()
         return data
 
-    def set_clipboard(self, text: str) -> None:
+    def _set_clipboard(self, text: str) -> None:
         win32clipboard.OpenClipboard()
         win32clipboard.EmptyClipboard()
         # TODO: error occurs when set clipboard
         win32clipboard.SetClipboardData(win32con.CF_UNICODETEXT, text)
         win32clipboard.CloseClipboard()
 
-    def empty_clipboard(self) -> None:
+    def _empty_clipboard(self) -> None:
         win32clipboard.OpenClipboard()
         win32clipboard.EmptyClipboard()
         win32clipboard.CloseClipboard()
 
-    def press_key(self, *keys) -> None:
+    def _press_key(self, *keys) -> None:
         """
         one press, one release.\n
         accepts as many arguments as you want. e.g. press_key('left_arrow', 'a','b').
@@ -292,7 +309,7 @@ class Win32Utils(object):
                 self.virtual_key_code[key], 0, win32con.KEYEVENTF_KEYUP, 0
             )
 
-    def press_and_hold_key(self, *keys) -> None:
+    def _press_and_hold_key(self, *keys) -> None:
         """
         press and hold. Do NOT release.\n
         accepts as many arguments as you want.\n
@@ -301,7 +318,7 @@ class Win32Utils(object):
         for key in keys:
             win32api.keybd_event(self.virtual_key_code[key], 0, 0, 0)
 
-    def press_hold_release_key(self, *keys) -> None:
+    def _press_hold_release_key(self, *keys) -> None:
         """
         press and hold passed in strings. Once held, release\n
         accepts as many arguments as you want.\n
@@ -316,9 +333,8 @@ class Win32Utils(object):
             win32api.keybd_event(
                 self.virtual_key_code[key], 0, win32con.KEYEVENTF_KEYUP, 0
             )
-            
 
-    def release_key(self, *keys) -> None:
+    def _release_key(self, *keys) -> None:
         """
         release depressed keys\n
         accepts as many arguments as you want.\n
@@ -329,7 +345,7 @@ class Win32Utils(object):
                 self.virtual_key_code[key], 0, win32con.KEYEVENTF_KEYUP, 0
             )
 
-    def send_keys(self, text:str) -> None:
+    def _send_keys(self, text: str) -> None:
         """simulate keyboard type for specific text.\n
         characters will typed one by one.\n
         NOT RECOMMEND use this func since most of oracle form text field support auto complete\n
@@ -338,68 +354,68 @@ class Win32Utils(object):
             text (str): text need type
         """
         sp_key = {
-            " ": {"func": self.press_key, "keys": ["spacebar"]},
-            "~": {"func": self.press_hold_release_key, "keys": ["left_shift", "`"]},
-            "!": {"func": self.press_hold_release_key, "keys": ["left_shift", "1"]},
-            "@": {"func": self.press_hold_release_key, "keys": ["left_shift", "2"]},
-            "#": {"func": self.press_hold_release_key, "keys": ["left_shift", "3"]},
-            "$": {"func": self.press_hold_release_key, "keys": ["left_shift", "4"]},
-            "%": {"func": self.press_hold_release_key, "keys": ["left_shift", "5"]},
-            "^": {"func": self.press_hold_release_key, "keys": ["left_shift", "6"]},
-            "&": {"func": self.press_hold_release_key, "keys": ["left_shift", "7"]},
-            "*": {"func": self.press_hold_release_key, "keys": ["left_shift", "8"]},
-            "(": {"func": self.press_hold_release_key, "keys": ["left_shift", "9"]},
-            ")": {"func": self.press_hold_release_key, "keys": ["left_shift", "0"]},
-            "_": {"func": self.press_hold_release_key, "keys": ["left_shift", "-"]},
-            "+": {"func": self.press_hold_release_key, "keys": ["left_shift", "="]},
-            "{": {"func": self.press_hold_release_key, "keys": ["left_shift", "["]},
-            "}": {"func": self.press_hold_release_key, "keys": ["left_shift", "]"]},
-            "|": {"func": self.press_hold_release_key, "keys": ["left_shift", "\\"]},
-            ":": {"func": self.press_hold_release_key, "keys": ["left_shift", ";"]},
-            '"': {"func": self.press_hold_release_key, "keys": ["left_shift", "'"]},
-            "<": {"func": self.press_hold_release_key, "keys": ["left_shift", ","]},
-            ">": {"func": self.press_hold_release_key, "keys": ["left_shift", "."]},
-            "?": {"func": self.press_hold_release_key, "keys": ["left_shift", "/"]},
-            "A": {"func": self.press_hold_release_key, "keys": ["left_shift", "a"]},
-            "B": {"func": self.press_hold_release_key, "keys": ["left_shift", "b"]},
-            "C": {"func": self.press_hold_release_key, "keys": ["left_shift", "c"]},
-            "D": {"func": self.press_hold_release_key, "keys": ["left_shift", "d"]},
-            "E": {"func": self.press_hold_release_key, "keys": ["left_shift", "e"]},
-            "F": {"func": self.press_hold_release_key, "keys": ["left_shift", "f"]},
-            "G": {"func": self.press_hold_release_key, "keys": ["left_shift", "g"]},
-            "H": {"func": self.press_hold_release_key, "keys": ["left_shift", "h"]},
-            "I": {"func": self.press_hold_release_key, "keys": ["left_shift", "i"]},
-            "J": {"func": self.press_hold_release_key, "keys": ["left_shift", "j"]},
-            "K": {"func": self.press_hold_release_key, "keys": ["left_shift", "k"]},
-            "L": {"func": self.press_hold_release_key, "keys": ["left_shift", "l"]},
-            "M": {"func": self.press_hold_release_key, "keys": ["left_shift", "m"]},
-            "N": {"func": self.press_hold_release_key, "keys": ["left_shift", "n"]},
-            "O": {"func": self.press_hold_release_key, "keys": ["left_shift", "o"]},
-            "P": {"func": self.press_hold_release_key, "keys": ["left_shift", "p"]},
-            "Q": {"func": self.press_hold_release_key, "keys": ["left_shift", "q"]},
-            "R": {"func": self.press_hold_release_key, "keys": ["left_shift", "r"]},
-            "S": {"func": self.press_hold_release_key, "keys": ["left_shift", "s"]},
-            "T": {"func": self.press_hold_release_key, "keys": ["left_shift", "t"]},
-            "U": {"func": self.press_hold_release_key, "keys": ["left_shift", "u"]},
-            "V": {"func": self.press_hold_release_key, "keys": ["left_shift", "v"]},
-            "W": {"func": self.press_hold_release_key, "keys": ["left_shift", "w"]},
-            "X": {"func": self.press_hold_release_key, "keys": ["left_shift", "x"]},
-            "Y": {"func": self.press_hold_release_key, "keys": ["left_shift", "y"]},
-            "Z": {"func": self.press_hold_release_key, "keys": ["left_shift", "z"]},
+            " ": {"func": self._press_key, "keys": ["spacebar"]},
+            "~": {"func": self._press_hold_release_key, "keys": ["left_shift", "`"]},
+            "!": {"func": self._press_hold_release_key, "keys": ["left_shift", "1"]},
+            "@": {"func": self._press_hold_release_key, "keys": ["left_shift", "2"]},
+            "#": {"func": self._press_hold_release_key, "keys": ["left_shift", "3"]},
+            "$": {"func": self._press_hold_release_key, "keys": ["left_shift", "4"]},
+            "%": {"func": self._press_hold_release_key, "keys": ["left_shift", "5"]},
+            "^": {"func": self._press_hold_release_key, "keys": ["left_shift", "6"]},
+            "&": {"func": self._press_hold_release_key, "keys": ["left_shift", "7"]},
+            "*": {"func": self._press_hold_release_key, "keys": ["left_shift", "8"]},
+            "(": {"func": self._press_hold_release_key, "keys": ["left_shift", "9"]},
+            ")": {"func": self._press_hold_release_key, "keys": ["left_shift", "0"]},
+            "_": {"func": self._press_hold_release_key, "keys": ["left_shift", "-"]},
+            "+": {"func": self._press_hold_release_key, "keys": ["left_shift", "="]},
+            "{": {"func": self._press_hold_release_key, "keys": ["left_shift", "["]},
+            "}": {"func": self._press_hold_release_key, "keys": ["left_shift", "]"]},
+            "|": {"func": self._press_hold_release_key, "keys": ["left_shift", "\\"]},
+            ":": {"func": self._press_hold_release_key, "keys": ["left_shift", ";"]},
+            '"': {"func": self._press_hold_release_key, "keys": ["left_shift", "'"]},
+            "<": {"func": self._press_hold_release_key, "keys": ["left_shift", ","]},
+            ">": {"func": self._press_hold_release_key, "keys": ["left_shift", "."]},
+            "?": {"func": self._press_hold_release_key, "keys": ["left_shift", "/"]},
+            "A": {"func": self._press_hold_release_key, "keys": ["left_shift", "a"]},
+            "B": {"func": self._press_hold_release_key, "keys": ["left_shift", "b"]},
+            "C": {"func": self._press_hold_release_key, "keys": ["left_shift", "c"]},
+            "D": {"func": self._press_hold_release_key, "keys": ["left_shift", "d"]},
+            "E": {"func": self._press_hold_release_key, "keys": ["left_shift", "e"]},
+            "F": {"func": self._press_hold_release_key, "keys": ["left_shift", "f"]},
+            "G": {"func": self._press_hold_release_key, "keys": ["left_shift", "g"]},
+            "H": {"func": self._press_hold_release_key, "keys": ["left_shift", "h"]},
+            "I": {"func": self._press_hold_release_key, "keys": ["left_shift", "i"]},
+            "J": {"func": self._press_hold_release_key, "keys": ["left_shift", "j"]},
+            "K": {"func": self._press_hold_release_key, "keys": ["left_shift", "k"]},
+            "L": {"func": self._press_hold_release_key, "keys": ["left_shift", "l"]},
+            "M": {"func": self._press_hold_release_key, "keys": ["left_shift", "m"]},
+            "N": {"func": self._press_hold_release_key, "keys": ["left_shift", "n"]},
+            "O": {"func": self._press_hold_release_key, "keys": ["left_shift", "o"]},
+            "P": {"func": self._press_hold_release_key, "keys": ["left_shift", "p"]},
+            "Q": {"func": self._press_hold_release_key, "keys": ["left_shift", "q"]},
+            "R": {"func": self._press_hold_release_key, "keys": ["left_shift", "r"]},
+            "S": {"func": self._press_hold_release_key, "keys": ["left_shift", "s"]},
+            "T": {"func": self._press_hold_release_key, "keys": ["left_shift", "t"]},
+            "U": {"func": self._press_hold_release_key, "keys": ["left_shift", "u"]},
+            "V": {"func": self._press_hold_release_key, "keys": ["left_shift", "v"]},
+            "W": {"func": self._press_hold_release_key, "keys": ["left_shift", "w"]},
+            "X": {"func": self._press_hold_release_key, "keys": ["left_shift", "x"]},
+            "Y": {"func": self._press_hold_release_key, "keys": ["left_shift", "y"]},
+            "Z": {"func": self._press_hold_release_key, "keys": ["left_shift", "z"]},
         }
         for txt in str(text):
-            key_map = sp_key.get(txt, dict(func=self.press_key, keys=[txt]))
+            key_map = sp_key.get(txt, dict(func=self._press_key, keys=[txt]))
             func = key_map.get("func")
             keys = key_map.get("keys")
             func(*keys)
 
-    def paste_text(self, text:str)->None:
+    def _paste_text(self, text: str) -> None:
         """Simulates typing text with paste from clipboard.\n
         RECOMMEND use this for oracle form text field typeing.
 
         Args:
             text (str): text need type
         """
-        self.set_clipboard(text=text)
-        self.press_hold_release_key('ctrl','v')
-        self.empty_clipboard()
+        self._set_clipboard(text=text)
+        self._press_hold_release_key("ctrl", "v")
+        self._empty_clipboard()

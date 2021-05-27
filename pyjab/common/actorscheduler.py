@@ -10,10 +10,11 @@ class ActorScheduler:
         sched.new_actor("jab", jab.setup_msg_pump())\n
         sched.run()\n
     """
+
     def __init__(self):
         self.actors = {}  # Mapping of names to actors
         self.msg_queue = deque()  # Message queue
-        self.logger = Logger()
+        self.logger = Logger(self.__class__.__name__)
 
     def new_actor(self, name, actor):
         """
