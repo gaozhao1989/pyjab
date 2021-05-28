@@ -1,5 +1,5 @@
-import re
 from __future__ import annotations
+import re
 from ctypes import byref
 from ctypes import CDLL
 from ctypes import c_long
