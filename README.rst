@@ -87,3 +87,4 @@ This software is licensed under the `GPLv2 license`_.
 .. _per user site-packages directory: https://www.python.org/dev/peps/pep-0370/
 .. _virtual environments: http://docs.python-guide.org/en/latest/dev/virtualenvs/
 .. _gaozhao89@qq.com: gaozhao89@qq.com
+.. _GPLv2 license: https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html
