@@ -100,13 +100,14 @@ setup(
     install_requires=get_requirements("requirements.txt"),
     python_requires=">=3.8",
     classifiers=[
-        "License :: OSI Approved :: GPLv2 License",
+        "License :: OSI Approved :: GNU General Public License v2 (GPLv2)",
         "Intended Audience :: Developers",
         "Programming Language :: Python",
         "Programming Language :: Python :: 3.8",
         "Development Status :: 5 - Production/Stable",
         "Operating System :: Microsoft :: Windows",
-        "Topic :: Java Access Bridge :: Automation",
+        "Topic :: Software Development :: Libraries :: Java Libraries",
+        "Topic :: Home Automation",
         "Topic :: Utilities",
     ],
 )
