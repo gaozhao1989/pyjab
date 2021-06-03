@@ -97,15 +97,11 @@ setup(
     author_email="gaozhao89@qq.com",
     license="GPLv2",
     packages=find_packages(),
-    data_files=[
-        (find_pth_directory(), ["pyjab.pth"]),
-    ],
     entry_points=dict(
         console_scripts=[
             "pyjab = pyjab.cli:main",
         ]
     ),
-    test_suite="pyjab.tests",
     install_requires=get_requirements("requirements.txt"),
     python_requires=">=3.8",
     classifiers=[
