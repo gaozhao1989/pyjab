@@ -27,7 +27,7 @@ There's actually a multitude of ways to install Python packages (e.g. the `per
 user site-packages directory`_, `virtual environments`_ or just installing
 system wide) and I have no intention of getting into that discussion here, so
 if this intimidates you then read up on your options before returning to these
-instructions 😉.
+instructions.
 
 Optional dependencies
 ~~~~~~~~~~~~~~~~~~~~~

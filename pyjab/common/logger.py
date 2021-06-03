@@ -1,5 +1,4 @@
 import logging
-import coloredlogs
 
 
 class Logger(object):
@@ -13,11 +12,6 @@ class Logger(object):
         self.FORMAT = "%(asctime)-15s %(levelname)s %(name)s %(message)s"
         self.log = logging.getLogger(name)
         logging.basicConfig(format=self.FORMAT, level=level)
-        coloredlogs.install(level="INFO")
-        coloredlogs.install(level="DEBUG")
-        coloredlogs.install(level="WARN")
-        coloredlogs.install(level="ERROR")
-        coloredlogs.install(level="CRITICAL")
 
     def info(self, msg, *args, **kwargs):
         self.log.info(msg, *args, **kwargs)

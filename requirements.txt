@@ -1,4 +1,3 @@
-coloredlogs==15.0
 Pillow==8.2.0
 pypiwin32==223
 pywin32==300
