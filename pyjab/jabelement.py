@@ -764,6 +764,7 @@ class JABElement(object):
                 continue
             if self._is_match_attributes(node_attributes, _jabelement):
                 jabelements.append(_jabelement)
+                continue
             self.release_jabelement(_jabelement)
         return jabelements
 
