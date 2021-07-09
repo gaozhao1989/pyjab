@@ -277,6 +277,10 @@ class JABElement(object):
             jabelement (JABElement): The JABElement need to release
         """
         self.bridge.releaseJavaObject(self.vmid, jabelement.accessible_context)
+    
+    def request_focus(self):
+        """Request focus for a JABElement."""
+        self.bridge.requestFocus(self.vmid, self.accessible_context)
 
     def click(self) -> None:
         """Clicks the JABElement."""
@@ -298,7 +302,8 @@ class JABElement(object):
             raise TypeError(
                 "JABElement role '{}' does not support clear".format(self.role_en_us)
             )
-        self.click()
+        self.win32_utils._set_window_foreground(hwnd=self.hwnd.value)
+        self.request_focus()
         self.shortcut_keys.clear_text()
 
     def is_checked(self) -> bool:
