@@ -277,7 +277,7 @@ class JABElement(object):
             jabelement (JABElement): The JABElement need to release
         """
         self.bridge.releaseJavaObject(self.vmid, jabelement.accessible_context)
-    
+
     def request_focus(self):
         """Request focus for a JABElement."""
         self.bridge.requestFocus(self.vmid, self.accessible_context)
@@ -305,6 +305,20 @@ class JABElement(object):
         self.win32_utils._set_window_foreground(hwnd=self.hwnd.value)
         self.request_focus()
         self.shortcut_keys.clear_text()
+
+    def select(self, value: str) -> None:
+        """Select a dropdown item from selector."""
+        if not self.accessible_selection:
+            raise AttributeError("Current JABElement does not support selection")
+        labels = self.find_elements_by_role("label")
+        for index, label in enumerate(labels):
+            if value == label.name:
+                self.bridge.addAccessibleSelectionFromContext(
+                    self.vmid, self.accessible_context, index
+                )
+                break
+        else:
+            raise ValueError(f"Option '{value}' does not found")
 
     def is_checked(self) -> bool:
         """Returns whether the JABElement is checked.
