@@ -300,13 +300,13 @@ class JABDriver(Service, ActorScheduler):
         """
         Maximizes the current java window that jabdriver is using
         """
-        self._set_window_maximize(hwnd=self.root_element.hwnd)
+        self._set_window_maximize(hwnd=self.root_element.hwnd.value)
 
     def minimize_window(self):
         """
         Invokes the window manager-specific 'minimize' operation
         """
-        self._set_window_minimize(hwnd=self.root_element.hwnd)
+        self._set_window_minimize(hwnd=self.root_element.hwnd.value)
 
     def wait_until_element_exist(
         self, by: str = By.NAME, value: Any = None, timeout: int = TIMEOUT
@@ -380,7 +380,7 @@ class JABDriver(Service, ActorScheduler):
         :Usage:
             driver.set_window_size(800,600)
         """
-        self._set_window_size(hwnd=self.root_element.hwnd, width=width, height=height)
+        self._set_window_size(hwnd=self.root_element.hwnd.value, width=width, height=height)
 
     def set_window_position(self, x, y):
         """
@@ -393,7 +393,7 @@ class JABDriver(Service, ActorScheduler):
         :Usage:
             driver.set_window_position(0,0)
         """
-        self._set_window_position(hwnd=self.root_element.hwnd, left=x, top=y)
+        self._set_window_position(hwnd=self.root_element.hwnd.value, left=x, top=y)
 
     def get_window_position(self):
         """
@@ -402,4 +402,4 @@ class JABDriver(Service, ActorScheduler):
         :Usage:
             driver.get_window_position()
         """
-        return self._get_window_position(hwnd=self.root_element.hwnd)
+        return self._get_window_position(hwnd=self.root_element.hwnd.value)
