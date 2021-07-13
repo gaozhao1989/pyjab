@@ -862,6 +862,7 @@ class JABElement(object):
             )
             if is_matched:
                 jabelements.append(jabelement)
+                continue
             self.release_jabelement(jabelement)
         if not jabelements:
             raise JABException(
