@@ -49,7 +49,7 @@ class Role(str, Enum):
     ROW_HEADER = "row header"
     SCROLL_PANE = "scroll pane"
     SCROLL_BAR = "scroll bar"
-    VIEW_PORT = "view port"
+    VIEW_PORT = "viewport"
     SLIDER = "slider"
     SPLIT_PANE = "split pane"
     TABLE = "table"
