@@ -231,18 +231,22 @@ class Win32Utils(object):
         try:
             return list(dict_hwnd.keys())[list(dict_hwnd.values()).index(title)]
         except ValueError:
-            self.logger.error("no hwnd found by win title =>'{}'".format(title))
             return None
 
     def get_title_by_hwnd(self, hwnd: HWND) -> str:
         return win32api.GetWindowText(hwnd)
 
     def wait_hwnd_by_title(self, title: str, timeout: int = TIMEOUT) -> HWND:
+        latest_log = ""
         start = time.time()
         while True:
             hwnd = self.get_hwnd_by_title(title)
             if hwnd:
                 return hwnd
+            error_log = f"no hwnd found by win title =>'{title}'"
+            if latest_log != error_log:
+                self.logger.error(error_log)
+                latest_log = error_log
             current = time.time()
             elapsed = round(current - start)
             if elapsed >= timeout:
