@@ -13,8 +13,11 @@ from pyjab.common.exceptions import JABException
 from pyjab.common.logger import Logger
 from pyjab.common.shortcutkeys import ShortcutKeys
 from pyjab.common.types import JOBJECT64
+from pyjab.common.types import jint
 from pyjab.common.win32utils import Win32Utils
 from pyjab.common.xpathparser import XpathParser
+from pyjab.accessibleinfo import AccessibleActions
+from pyjab.accessibleinfo import AccessibleActionsToDo
 from pyjab.accessibleinfo import AccessibleContextInfo
 from pyjab.accessibleinfo import AccessibleTextItemsInfo
 
@@ -284,17 +287,30 @@ class JABElement(object):
 
     def click(self) -> None:
         """Clicks the JABElement."""
-        self.win32_utils._set_window_foreground(hwnd=self.hwnd.value)
-        self.set_element_information()
-        x = self.bounds.get("x")
-        y = self.bounds.get("y")
-        width = self.bounds.get("width")
-        height = self.bounds.get("height")
-        if width == 0 or height == 0:
-            raise ValueError("element width or height is 0")
-        position_x = round(x + width / 2)
-        position_y = round(y + height / 2)
-        self.win32_utils._click_mouse(x=position_x, y=position_y)
+        # click by AccessibleActions
+        if self.accessible_action:
+            acc_acts = AccessibleActions()
+            self.bridge.getAccessibleActions(self.vmid, self.accessible_context, byref(acc_acts))
+            act_todo = AccessibleActionsToDo()
+            act_todo.actionsCount = acc_acts.actionsCount
+            for i in range(act_todo.actionsCount):
+                if  acc_acts.actionInfo[i].name.lower() == "click":
+                    act_todo.actions[i].name = acc_acts.actionInfo[i].name
+                    break
+            self.bridge.doAccessibleActions(self.vmid, self.accessible_context, byref(act_todo), jint())
+        # click by win32api
+        else:
+            self.win32_utils._set_window_foreground(hwnd=self.hwnd.value)
+            self.set_element_information()
+            x = self.bounds.get("x")
+            y = self.bounds.get("y")
+            width = self.bounds.get("width")
+            height = self.bounds.get("height")
+            if width == 0 or height == 0:
+                raise ValueError("element width or height is 0")
+            position_x = round(x + width / 2)
+            position_y = round(y + height / 2)
+            self.win32_utils._click_mouse(x=position_x, y=position_y)
 
     def clear(self) -> None:
         """Clears the text if it's a text entry JABElement."""
