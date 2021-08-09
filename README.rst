@@ -47,7 +47,7 @@ Here's an example of how easy it is to get started:
 
 .. code-block:: python
 
-   import pyjab
+   from pyjab.jabdriver import JABDriver
 
    # Create a JABDriver object.
    jabdriver = JABDriver("java app window title")
