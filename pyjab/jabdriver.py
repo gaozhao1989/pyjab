@@ -24,6 +24,7 @@ class JABDriver(Service, ActorScheduler):
     def __init__(self, title: str = "") -> None:
         super(JABDriver, self).__init__()
         self.logger = Logger(self.__class__.__name__)
+        self.latest_log = None
         self._title = title
         self._bridge = None
         self._root_element = None
@@ -126,13 +127,15 @@ class JABDriver(Service, ActorScheduler):
         while True:
             if self._is_java_window(hwnd):
                 break
+            log_out = f"no java window found by hwnd '{hwnd}'"
+            if self.latest_log != log_out:
+                self.logger.warning(log_out)
+                self.latest_log = log_out
             current = time()
             elapsed = round(current - start)
             if elapsed >= timeout:
                 raise TimeoutError(
-                    "no java window found by hwnd '{}' in '{}'seconds".format(
-                        hwnd, timeout
-                    )
+                    f"no java window found by hwnd '{hwnd}' in '{timeout}'seconds"
                 )
 
     # jab driver functions: similar with webdriver
@@ -316,16 +319,19 @@ class JABDriver(Service, ActorScheduler):
             current = time()
             elapsed = round(current - start)
             remain = round(timeout - elapsed)
-            self.logger.debug("elapsed => {}, remain => {}".format(elapsed, remain))
+            self.logger.debug(f"elapsed => {elapsed}, remain => {remain}")
             if elapsed >= timeout:
                 raise JABException(
-                    "JABElement does not found in {} seconds".format(timeout)
+                    f"JABElement with locator '{by}' '{value}' does not found in {timeout} seconds"
                 )
             try:
                 jabelement = self.find_element(by=by, value=value)
                 return jabelement
             except JABException:
-                self.logger.warning("JABElement does not found")
+                log_out = f"JABElement with locator '{by}' '{value}' does not found"
+                if self.latest_log != log_out:
+                    self.logger.warning(log_out)
+                    self.latest_log = log_out
 
     def get_screenshot_as_file(self, filename):
         """
@@ -380,7 +386,9 @@ class JABDriver(Service, ActorScheduler):
         :Usage:
             driver.set_window_size(800,600)
         """
-        self._set_window_size(hwnd=self.root_element.hwnd.value, width=width, height=height)
+        self._set_window_size(
+            hwnd=self.root_element.hwnd.value, width=width, height=height
+        )
 
     def set_window_position(self, x, y):
         """
