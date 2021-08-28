@@ -19,12 +19,28 @@ from pyjab.jabfixedfunc import JABFixedFunc
 
 
 class JABDriver(Service, ActorScheduler):
-    int_func_err_msg = "Java Access Bridge func '{}' error"
+    """Controls a Java application by Java Access Bridge.
 
-    def __init__(self, title: str = "") -> None:
+    Args:
+        Service ([type]): Host system to initialize the JAB and load JAB dll file.
+        ActorScheduler ([type]): Set message pump to interacte with windows system.
+    """
+
+    def __init__(
+        self, title: str = "", bridge_dll: str = "", timeout: int = TIMEOUT
+    ) -> None:
+        """Create a new jab driver.
+
+        Args:
+            title (str, optional): Window title of Java appliction need to bind. Defaults to "".
+            bridge_dll (str, optional): WindowsAccessBridge dll file path. Defaults to "".
+            timeout (int, optional): Default timeout set for JABDriver waitting. Defaults to TIMEOUT.
+        """
         super(JABDriver, self).__init__()
         self.logger = Logger(self.__class__.__name__)
         self.latest_log = None
+        self._bridge_dll = bridge_dll
+        self._timeout = timeout
         self._title = title
         self._bridge = None
         self._root_element = None
@@ -63,15 +79,14 @@ class JABDriver(Service, ActorScheduler):
         accessible_context: JOBJECT64 = None,
     ) -> None:
         # enum window and find hwnd
-        win_hwnd = self.wait_hwnd_by_title(self.title)
-        self.bridge = self.load_library()
+        win_hwnd = self.wait_hwnd_by_title(title=self.title, timeout=self._timeout)
+        self.bridge = self.load_library(self._bridge_dll)
         self.bridge.Windows_run()
         # invoke generator in message queue
         sched = ActorScheduler()
         sched.new_actor("jab", self.setup_msg_pump())
         sched.run()
         # init jab
-        self.bridge.Windows_run()
         self._wait_until_java_window_exist(win_hwnd)
         hwnd = hwnd or win_hwnd
         if hwnd and not vmid:

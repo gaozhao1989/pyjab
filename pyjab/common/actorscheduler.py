@@ -3,12 +3,13 @@ from pyjab.common.logger import Logger
 
 
 class ActorScheduler:
-    """
-    Message queue for run generator func as thread.\n
-    Sample:\n
-        sched = ActorScheduler()\n
-        sched.new_actor("jab", jab.setup_msg_pump())\n
-        sched.run()\n
+    """Message queue for run generator func as thread.
+
+    Sample:
+    
+        sched = ActorScheduler()
+        sched.new_actor("jab", jab.setup_msg_pump())
+        sched.run()
     """
 
     def __init__(self):

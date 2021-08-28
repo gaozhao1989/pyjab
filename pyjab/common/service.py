@@ -42,20 +42,20 @@ class Service(Win32Utils):
         if not self.is_bridge_enable():
             self.enable_bridge()
 
-    def load_library(self) -> CDLL:
+    def load_library(self, bridge_dll: str = "") -> CDLL:
         self.logger.debug("load library of bridge")
         dll_bit = struct.calcsize("P") * 8
-        for bridge_dll in [
+        for dll in [
+            str(bridge_dll),
             JDK_BRIDGE_DLL.format(dll_bit),
             JRE_BRIDGE_DLL.format(dll_bit),
             JAB_BRIDGE_DLL.format(dll_bit),
         ]:
-            if os.path.isfile(bridge_dll):
-                return cdll.LoadLibrary(bridge_dll)
+            if os.path.isfile(dll):
+                return cdll.LoadLibrary(dll)
         else:
             raise FileNotFoundError(
-                "WindowsAccessBridge-{dll_bit}.dll not found, "
-                "please set correct path for 'JAVA_HOME', 'JRE_HOME' or 'JAB_HOME'".format(
-                    dll_bit
-                )
+                "WindowsAccessBridge dll not found, "
+                "please set correct path for environment variable, "
+                "or check the passed customized WindowsAccessBridge dll."
             )
