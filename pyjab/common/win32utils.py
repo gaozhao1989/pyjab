@@ -1,6 +1,6 @@
 import time
 from ctypes.wintypes import HWND
-from typing import Dict, Generator
+from typing import Dict, Generator, List
 import pythoncom
 import win32api
 import win32clipboard
@@ -232,6 +232,14 @@ class Win32Utils(object):
             return list(dict_hwnd.keys())[list(dict_hwnd.values()).index(title)]
         except ValueError:
             return None
+
+    def get_hwnds_by_title(self, title: str) -> List[HWND]:
+        dict_hwnd = self.enum_windows()
+        hwnds = list()
+        for hwnd, win_title in dict_hwnd.items():
+            if title == win_title:
+                hwnds.append(hwnd)
+        return hwnds
 
     def get_title_by_hwnd(self, hwnd: HWND) -> str:
         return win32api.GetWindowText(hwnd)
