@@ -118,7 +118,7 @@ class JABDriver(Service, ActorScheduler):
         sched.new_actor("jab", self.setup_msg_pump())
         sched.run()
         # hwnd, vmid and accessible_context all invalid
-        if self.hwnd or (self.vmid and self.accessible_context):
+        if not (self.hwnd or (self.vmid and self.accessible_context)):
             # get Java Window HWND
             self.hwnd = self._wait_java_window_by_title(
                 title=self.title, timeout=self._timeout
@@ -176,8 +176,6 @@ class JABDriver(Service, ActorScheduler):
         for hwnd in self.get_hwnds_by_title(title=title):
             if self._is_java_window(hwnd):
                 return hwnd
-        else:
-            return None
 
     def _wait_java_window_by_title(self, title: str, timeout: int = TIMEOUT) -> HWND:
         """Wait until a Java Window exist in specific seconds.
