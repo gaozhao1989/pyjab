@@ -165,7 +165,6 @@ class Win32Utils(object):
     def __init__(self) -> None:
         self.logger = Logger(self.__class__.__name__)
 
-    # @contextlib.contextmanager
     def setup_msg_pump(self) -> Generator:
         waitables = self.stop_event, self.other_event
         self.logger.debug("setup message pumpup")
