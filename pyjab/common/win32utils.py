@@ -340,10 +340,12 @@ class Win32Utils(object):
         """
         for key in keys:
             win32api.keybd_event(self.virtual_key_code[key], 0, 0, 0)
+            time.sleep(0.05)
         for key in keys:
             win32api.keybd_event(
                 self.virtual_key_code[key], 0, win32con.KEYEVENTF_KEYUP, 0
             )
+            time.sleep(0.1)
 
     def _release_key(self, *keys) -> None:
         """
@@ -421,12 +423,13 @@ class Win32Utils(object):
             func(*keys)
 
     def _paste_text(self, text: str) -> None:
-        """Simulates typing text with paste from clipboard.\n
-        RECOMMEND use this for oracle form text field typeing.
+        """Simulates typing text with paste from clipboard.
+
+        RECOMMEND use this for text field directly typing or another launage typing support.
 
         Args:
             text (str): text need type
         """
-        self._set_clipboard(text=text)
+        self._set_clipboard(text=str(text))
         self._press_hold_release_key("ctrl", "v")
         self._empty_clipboard()
