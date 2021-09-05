@@ -4,8 +4,9 @@ from ctypes import CDLL
 from ctypes import c_long
 from ctypes.wintypes import HWND
 from time import time, sleep
-from typing import Any, Union
+from typing import Any, Dict, Tuple, Union
 from PIL import ImageGrab
+from pyjab.accessibleinfo import AccessBridgeVersionInfo
 from pyjab.common.actorscheduler import ActorScheduler
 from pyjab.common.by import By
 from pyjab.common.exceptions import JABException
@@ -120,17 +121,14 @@ class JABDriver(Service, ActorScheduler):
         # hwnd, vmid and accessible_context all invalid
         if not (self.hwnd or (self.vmid and self.accessible_context)):
             # get Java Window HWND
-            self.hwnd = self._wait_java_window_by_title(
+            self.hwnd = self.wait_java_window_by_title(
                 title=self.title, timeout=self._timeout
             )
         # get vmid and accessible_context by hwnd
         if self.hwnd and not self.vmid:
-            self.vmid = c_long()
-            self.accessible_context = JOBJECT64()
-            self.bridge.getAccessibleContextFromHWND(
-                self.hwnd, byref(self.vmid), byref(self.accessible_context)
+            self.accessible_context, self.vmid = self._get_accessible_context_from_hwnd(
+                self.hwnd
             )
-            self.vmid = self.vmid.value
         # get hwnd by vmid and accessible_context
         elif self.vmid and self.accessible_context and not self.hwnd:
             # must have vmid and accessible_context
@@ -153,18 +151,55 @@ class JABDriver(Service, ActorScheduler):
         # TODO:fix JABElement not loading complete
         sleep(2)
 
+    # Gateway funcitons
     def _is_java_window(self, hwnd: HWND) -> bool:
         """Return the specific window is or not a Java Window
 
         Args:
-            hwnd (HWND): The hwnd of window. Defaults to None.
+            hwnd (HWND): The hwnd of window.
 
         Returns:
             bool: True if is a Java Window. False is not a Java Window.
         """
         return bool(self.bridge.isJavaWindow(hwnd))
 
-    def _get_java_window_hwnd(self, title: str) -> Union[HWND, None]:
+    def _get_accessible_context_from_hwnd(self, hwnd: HWND) -> Tuple[JOBJECT64, c_long]:
+        """Gets the AccessibleContext and vmID values for the given window.
+
+        Args:
+            hwnd (HWND): hwnd (HWND): The hwnd of window.
+
+        Returns:
+            Tuple: tuple of AccessibleContext and vmID
+        """
+        vmid = c_long()
+        accessible_context = JOBJECT64()
+        self.bridge.getAccessibleContextFromHWND(
+            hwnd, byref(vmid), byref(accessible_context)
+        )
+        vmid = vmid.value
+        return (accessible_context, vmid)
+
+    def get_version_info(self) -> Dict[str, str]:
+        """Gets the version information of the instance of Java Access Bridge instance your application is using.
+
+        Returns:
+            Dict[str]: Dict of AccessBridgeVersionInfo, contains:
+                VMVersion
+                bridgeJavaClassVersion
+                bridgeJavaDLLVersion
+                bridgeWinDLLVersion
+        """
+        info = AccessBridgeVersionInfo()
+        self.bridge.getVersionInfo(self.vmid, byref(info))
+        return {
+            "VMVersion": info.VMVersion,
+            "bridgeJavaClassVersion": info.bridgeJavaClassVersion,
+            "bridgeJavaDLLVersion": info.bridgeJavaDLLVersion,
+            "bridgeWinDLLVersion": info.bridgeWinDLLVersion,
+        }
+
+    def get_java_window_hwnd(self, title: str) -> Union[HWND, None]:
         """Get Java Window hwnd by title.
 
         Args:
@@ -177,7 +212,7 @@ class JABDriver(Service, ActorScheduler):
             if self._is_java_window(hwnd):
                 return hwnd
 
-    def _wait_java_window_by_title(self, title: str, timeout: int = TIMEOUT) -> HWND:
+    def wait_java_window_by_title(self, title: str, timeout: int = TIMEOUT) -> HWND:
         """Wait until a Java Window exist in specific seconds.
 
         Args:
@@ -192,7 +227,7 @@ class JABDriver(Service, ActorScheduler):
         """
         start = time()
         while True:
-            hwnd = self._get_java_window_hwnd(title=title)
+            hwnd = self.get_java_window_hwnd(title=title)
             if hwnd:
                 return hwnd
             log_out = f"no java window found by title '{title}'"
