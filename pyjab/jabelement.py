@@ -15,7 +15,7 @@ from pyjab.common.shortcutkeys import ShortcutKeys
 from pyjab.common.types import JOBJECT64
 from pyjab.common.win32utils import Win32Utils
 from pyjab.common.xpathparser import XpathParser
-from pyjab.accessibleinfo import AccessibleContextInfo
+from pyjab.accessibleinfo import AccessibleContextInfo, AccessibleTableInfo
 from pyjab.accessibleinfo import AccessibleTextItemsInfo
 
 
@@ -56,6 +56,7 @@ class JABElement(object):
         self._accessible_text = False
         self._accessible_interfaces = False
         self._text = None
+        self._table = None
         self.set_element_information()
 
     @property
@@ -211,12 +212,20 @@ class JABElement(object):
         self._accessible_interfaces = accessible_interfaces
 
     @property
-    def text(self) -> bool:
+    def text(self) -> str:
         return self._text
 
     @text.setter
-    def text(self, text: bool) -> None:
+    def text(self, text: str) -> None:
         self._text = text
+
+    @property
+    def table(self) -> dict:
+        return self._table
+
+    @table.setter
+    def table(self, table: dict) -> None:
+        self._table = table
 
     # Jab Element actions
     def _generate_all_childs(self, jabelement: JABElement = None) -> Generator:
@@ -991,6 +1000,15 @@ class JABElement(object):
         self.accessible_action = bool(info.accessibleAction)
         self.accessible_selection = bool(info.accessibleSelection)
         self.accessible_text = bool(info.accessibleText)
+        self._set_element_text_information()
+        self._set_element_table_information()
+
+    def _set_element_text_information(self) -> None:
+        """Set attribute text if element has accessible text
+
+        Raises:
+            JABException: Raise JABException if getAccessibleTextItems get internal error
+        """
         if self.accessible_text:
             info = AccessibleTextItemsInfo()
             result = self.bridge.getAccessibleTextItems(
@@ -1001,6 +1019,91 @@ class JABElement(object):
                     self.int_func_err_msg.format("getAccessibleTextItems")
                 )
             self.text = info.sentence
+
+    def _set_element_table_information(self) -> None:
+        """Get Accessible table information
+
+        Raises:
+            JABException: Raise JABException if
+            getAccessibleTableInfo,
+            getAccessibleTableRowHeader,
+            getAccessibleTableColumnHeader get internal error
+        """
+        if self.role_en_us == "table":
+            info = AccessibleTableInfo()
+            result = self.bridge.getAccessibleTableInfo(
+                self.vmid, self.accessible_context, byref(info)
+            )
+            if result == 0:
+                raise JABException(
+                    self.int_func_err_msg.format("getAccessibleTableInfo")
+                )
+            self.table = {
+                "row_count": info.rowCount,
+                "column_count": info.columnCount,
+            }
+            info = AccessibleTableInfo()
+            result = self.bridge.getAccessibleTableRowHeader(
+                self.vmid, self.accessible_context, byref(info)
+            )
+            if result == 0:
+                raise JABException(
+                    self.int_func_err_msg.format("getAccessibleTableRowHeader")
+                )
+            self.table["row_headers"] = {
+                "row_count": info.rowCount,
+                "column_count": info.columnCount,
+            }
+            info = AccessibleTableInfo()
+            result = self.bridge.getAccessibleTableColumnHeader(
+                self.vmid, self.accessible_context, byref(info)
+            )
+            if result == 0:
+                raise JABException(
+                    self.int_func_err_msg.format("getAccessibleTableColumnHeader")
+                )
+            self.table["column_headers"] = {
+                "row_count": info.rowCount,
+                "column_count": info.columnCount,
+            }
+            row_count = self.bridge.getAccessibleTableRowSelectionCount(
+                self.vmid, self.accessible_context
+            )
+            column_count = self.bridge.getAccessibleTableColumnSelectionCount(
+                self.vmid, self.accessible_context
+            )
+            self.table["selected"] = {
+                "row_count": row_count,
+                "column_count": column_count,
+            }
+
+    def get_cell(self, row: int, column: int) -> JABElement:
+        """Get cell element from table
+
+        Args:
+            row (int): Row index of cell, start from 0
+            column (int): Column index of cell, start from 0
+
+        Raises:
+            JABException: Raise JABException if JAB internal function error 
+
+        Returns:
+            JABElement: Return cell element
+        """
+        if self.role_en_us != "table":
+            raise JABException("JABElement is not table, does not support this func")
+        result = self.bridge.getAccessibleTableIndex(
+            self.vmid, self.accessible_context, row, column
+        )
+        if result == -1:
+            raise JABException(self.int_func_err_msg.format("getAccessibleTableIndex"))
+        for index, cell_jabelement in enumerate(self.find_elements_by_role("label")):
+            if result == index:
+                return cell_jabelement
+        else:
+            raise JABException(
+                f"Cell does not exist with row '{row}' and column '{column}'"
+            )
 
     def get_element_information(self) -> dict:
         """Get dict information of current JABElement
@@ -1024,4 +1127,5 @@ class JABElement(object):
             accessible_selection=self.accessible_selection,
             accessible_text=self.accessible_text,
             text=self.text,
+            table=self.table,
         )
