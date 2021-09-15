@@ -1,21 +1,21 @@
 from __future__ import annotations
 import re
-from ctypes import byref
-from ctypes import CDLL
-from ctypes import c_long
+from ctypes import byref, CDLL, c_long
 from ctypes.wintypes import HWND
-from typing import Any
-from typing import Generator
-from PIL import Image
-from PIL import ImageGrab
+from typing import Any, Generator
+from PIL import Image, ImageGrab
 from pyjab.common.by import By
 from pyjab.common.exceptions import JABException
-from pyjab.common.logger import Logger
 from pyjab.common.shortcutkeys import ShortcutKeys
-from pyjab.common.types import JOBJECT64
+from pyjab.common.types import jint, JOBJECT64
 from pyjab.common.win32utils import Win32Utils
 from pyjab.common.xpathparser import XpathParser
-from pyjab.accessibleinfo import AccessibleContextInfo, AccessibleTableInfo
+from pyjab.accessibleinfo import (
+    AccessibleActions,
+    AccessibleActionsToDo,
+    AccessibleContextInfo,
+    AccessibleTableInfo,
+)
 from pyjab.accessibleinfo import AccessibleTextItemsInfo
 
 
@@ -32,8 +32,6 @@ class JABElement(object):
         vmid: c_long = None,
         accessible_context: JOBJECT64 = None,
     ) -> None:
-        # not recommand instantiation for low performance
-        # self.log = Logger(self.__class__.__name__)
         self._bridge = bridge
         # jab context attributes
         self._hwnd = hwnd
@@ -291,19 +289,46 @@ class JABElement(object):
         """Request focus for a JABElement."""
         self.bridge.requestFocus(self.vmid, self.accessible_context)
 
-    def click(self) -> None:
-        """Clicks the JABElement."""
-        self.win32_utils._set_window_foreground(hwnd=self.hwnd.value)
-        self.set_element_information()
-        x = self.bounds.get("x")
-        y = self.bounds.get("y")
-        width = self.bounds.get("width")
-        height = self.bounds.get("height")
-        if width == 0 or height == 0:
-            raise ValueError("element width or height is 0")
-        position_x = round(x + width / 2)
-        position_y = round(y + height / 2)
-        self.win32_utils._click_mouse(x=position_x, y=position_y)
+    def click(self, simulate: bool = False) -> None:
+        """Click JABElement.
+        Default will use JAB Accessible Action.
+        Set parameter 'simulate' to True if internal action does not work.
+
+        Args:
+            simulate (bool, optional): Simulate user input action by keyboard event. Defaults to False.
+
+        Raises:
+            JABException: Raise JABException when JABElement does not contains 'click' action.
+            ValueError: Raise ValueError when JABElement width or height is 0.
+        """
+        if not simulate:
+            acc_acts = AccessibleActions()
+            self.bridge.getAccessibleActions(
+                self.vmid, self.accessible_context, byref(acc_acts)
+            )
+            act_todo = AccessibleActionsToDo()
+            act_todo.actionsCount = acc_acts.actionsCount
+            for i in range(act_todo.actionsCount):
+                if acc_acts.actionInfo[i].name.lower() == "click":
+                    act_todo.actions[i].name = acc_acts.actionInfo[i].name
+                    break
+            else:
+                raise JABException("This JABElement does not support action 'click'")
+            self.bridge.doAccessibleActions(
+                self.vmid, self.accessible_context, byref(act_todo), jint()
+            )
+        else:
+            self.win32_utils._set_window_foreground(hwnd=self.hwnd.value)
+            self.set_element_information()
+            x = self.bounds.get("x")
+            y = self.bounds.get("y")
+            width = self.bounds.get("width")
+            height = self.bounds.get("height")
+            if width == 0 or height == 0:
+                raise ValueError("element width or height is 0")
+            position_x = round(x + width / 2)
+            position_y = round(y + height / 2)
+            self.win32_utils._click_mouse(x=position_x, y=position_y)
 
     def clear(self) -> None:
         """Clears the text if it's a text entry JABElement."""
@@ -328,6 +353,20 @@ class JABElement(object):
                 break
         else:
             raise ValueError(f"Option '{value}' does not found")
+
+    def send_text(self, value: str) -> None:
+        """Simulates typing into the element.
+
+        :Args:
+            - value - A string for typing.
+
+        Use this to send simple key events or to fill out form fields::
+
+            form_textfield = driver.find_element_by_name('username')
+            form_textfield.send_keys("admin")
+        """
+        self.clear()
+        self.win32_utils._send_keys(value)
 
     def is_checked(self) -> bool:
         """Returns whether the JABElement is checked.
@@ -879,20 +918,6 @@ class JABElement(object):
             )
         return jabelements
 
-    def send_text(self, value: str) -> None:
-        """Simulates typing into the element.
-
-        :Args:
-            - value - A string for typing.
-
-        Use this to send simple key events or to fill out form fields::
-
-            form_textfield = driver.find_element_by_name('username')
-            form_textfield.send_keys("admin")
-        """
-        self.clear()
-        self.win32_utils._send_keys(value)
-
     @property
     def size(self) -> dict:
         """The size of the element."""
@@ -1085,7 +1110,7 @@ class JABElement(object):
             column (int): Column index of cell, start from 0
 
         Raises:
-            JABException: Raise JABException if JAB internal function error 
+            JABException: Raise JABException if JAB internal function error
 
         Returns:
             JABElement: Return cell element
