@@ -307,3 +307,11 @@ class JABFixedFunc(object):
             POINTER(AccessibleKeyBindings),
             errorcheck=True,
         )
+        self._fix_bridge_function(
+            BOOL,
+            "setTextContents",
+            c_long,
+            JOBJECT64,
+            POINTER(c_wchar),
+            errorcheck=True,
+        )

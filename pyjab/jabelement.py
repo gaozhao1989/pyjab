@@ -290,18 +290,37 @@ class JABElement(object):
         self.bridge.requestFocus(self.vmid, self.accessible_context)
 
     def click(self, simulate: bool = False) -> None:
-        """Click JABElement.
+        """Simulates clicking to JABElement.
+
         Default will use JAB Accessible Action.
         Set parameter 'simulate' to True if internal action does not work.
 
         Args:
-            simulate (bool, optional): Simulate user input action by keyboard event. Defaults to False.
+            simulate (bool, optional): Simulate user click action by mouse event. Defaults to False.
 
         Raises:
             JABException: Raise JABException when JABElement does not contains 'click' action.
             ValueError: Raise ValueError when JABElement width or height is 0.
+
+        Use this to send simple mouse events or to click form fields::
+
+            form_button = driver.find_element_by_name('button')
+            form_button.click()
+            form_button.click(simulate=True)
         """
-        if not simulate:
+        if simulate:
+            self.win32_utils._set_window_foreground(hwnd=self.hwnd.value)
+            self.set_element_information()
+            x = self.bounds.get("x")
+            y = self.bounds.get("y")
+            width = self.bounds.get("width")
+            height = self.bounds.get("height")
+            if width == 0 or height == 0:
+                raise ValueError("element width or height is 0")
+            position_x = round(x + width / 2)
+            position_y = round(y + height / 2)
+            self.win32_utils._click_mouse(x=position_x, y=position_y)
+        else:
             acc_acts = AccessibleActions()
             self.bridge.getAccessibleActions(
                 self.vmid, self.accessible_context, byref(acc_acts)
@@ -317,28 +336,32 @@ class JABElement(object):
             self.bridge.doAccessibleActions(
                 self.vmid, self.accessible_context, byref(act_todo), jint()
             )
-        else:
-            self.win32_utils._set_window_foreground(hwnd=self.hwnd.value)
-            self.set_element_information()
-            x = self.bounds.get("x")
-            y = self.bounds.get("y")
-            width = self.bounds.get("width")
-            height = self.bounds.get("height")
-            if width == 0 or height == 0:
-                raise ValueError("element width or height is 0")
-            position_x = round(x + width / 2)
-            position_y = round(y + height / 2)
-            self.win32_utils._click_mouse(x=position_x, y=position_y)
 
-    def clear(self) -> None:
-        """Clears the text if it's a text entry JABElement."""
-        if self.role_en_us not in ["label", "text", "password text"]:
-            raise TypeError(
-                "JABElement role '{}' does not support clear".format(self.role_en_us)
-            )
-        self.win32_utils._set_window_foreground(hwnd=self.hwnd.value)
-        self.request_focus()
-        self.shortcut_keys.clear_text()
+    def clear(self, simulate: bool = False) -> None:
+        """Clear existing text from JABElement.
+
+        Default will use JAB Accessible Action.
+        Set parameter 'simulate' to True if internal action does not work.
+
+        Args:
+            simulate (bool, optional): Simulate user input action by keyboard event. Defaults to False.
+        
+        Use this to send simple key events or to fill out form fields::
+
+            form_textfield = driver.find_element_by_name('username')
+            form_textfield.clear()
+            from_textfield.send_text(simulate=True)
+        """
+        if simulate:
+            self.win32_utils._set_window_foreground(hwnd=self.hwnd.value)
+            self.request_focus()
+            if self.text:
+                self.win32_utils._press_key("end")
+                self.win32_utils._press_hold_release_key("ctrl", "shift", "end")
+                for _ in self.text:
+                    self.win32_utils._press_key("backspace")
+        else:
+            self.send_text(value="", simulate=False)
 
     def select(self, value: str) -> None:
         """Select a dropdown item from selector."""
@@ -354,19 +377,35 @@ class JABElement(object):
         else:
             raise ValueError(f"Option '{value}' does not found")
 
-    def send_text(self, value: str) -> None:
-        """Simulates typing into the element.
+    def send_text(self, value: str, simulate: bool = False) -> None:
+        """Simulates typing into the JABElement.
+
+        Default will use JAB Accessible Action.
+        Set parameter 'simulate' to True if internal action does not work.
 
         :Args:
-            - value - A string for typing.
+            value (str): A string for typing.
+            simulate (bool, optional): Simulate user input action by keyboard event. Defaults to False.
 
         Use this to send simple key events or to fill out form fields::
 
             form_textfield = driver.find_element_by_name('username')
-            form_textfield.send_keys("admin")
+            form_textfield.send_text("admin")
+            from_textfield.send_text("admin", simulate=True)
         """
-        self.clear()
-        self.win32_utils._send_keys(value)
+        value = str(value)
+        if simulate:
+            self.clear(simulate=simulate)
+            self.win32_utils._send_keys(value)
+        else:
+            result = self.bridge.setTextContents(
+                self.vmid, self.accessible_context, value
+            )
+            if result == 0:
+                raise JABException(
+                    self.int_func_err_msg.format("setTextContents")
+                    + ", try set parameter 'simulate' with True"
+                )
 
     def is_checked(self) -> bool:
         """Returns whether the JABElement is checked.
