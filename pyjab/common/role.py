@@ -58,7 +58,6 @@ class Role(str, Enum):
     SLIDER = "slider"
     SPIN_BOX = "spinbox"
     SPLIT_PANE = "split pane"
-    STATUSBAR = "statusbar"
     STATUS_BAR = "status bar"
     TABLE = "table"
     TEXT = "text"
