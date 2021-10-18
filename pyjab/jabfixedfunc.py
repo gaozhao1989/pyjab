@@ -315,3 +315,23 @@ class JABFixedFunc(object):
             POINTER(c_wchar),
             errorcheck=True,
         )
+        self._fix_bridge_function(
+            None,
+            "clearAccessibleSelectionFromContext",
+            c_long,
+            JOBJECT64
+        )
+        self._fix_bridge_function(
+            None,
+            "addAccessibleSelectionFromContext",
+            c_long,
+            JOBJECT64,
+            c_int
+        )
+        self._fix_bridge_function(
+            JOBJECT64,
+            "getAccessibleSelectionFromContext",
+            c_long,
+            JOBJECT64,
+            c_int
+        )
