@@ -361,13 +361,20 @@ class Win32Utils(object):
             )
 
     def _send_keys(self, text: str) -> None:
-        """simulate keyboard type for specific text.\n
-        characters will typed one by one.\n
-        NOT RECOMMEND use this func since most of oracle form text field support auto complete\n
+        """Simulate keyboard type for specific text.
+
+        Characters will typed one by one.
+        
+        None-ASCII characters will directly paste to the field(check the security option before).
+        
+        NOT RECOMMEND use this func for the text field which support auto complete.
 
         Args:
             text (str): text need type
         """
+        if not text.isascii():
+            self._paste_text(text=text)
+            return
         sp_key = {
             " ": {"func": self._press_key, "keys": ["spacebar"]},
             "~": {"func": self._press_hold_release_key, "keys": ["left_shift", "`"]},
