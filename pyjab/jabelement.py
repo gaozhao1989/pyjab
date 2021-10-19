@@ -591,6 +591,15 @@ class JABElement(object):
             self.win32_utils._click_mouse(x=int(x), y=int(y))
             return
         self._do_accessible_action(action=action)
+    
+    def expand(self, simulate: bool = False) -> None:
+        if "expandable" not in self._states_en_us:
+            raise JABException("JABElement does not support 'expand'")
+        if simulate:
+            self.click(simulate=True)
+            self.click(simulate=True)
+            return
+        self._do_accessible_action("toggleexpand")
 
     def send_text(self, value: str, simulate: bool = False) -> None:
         """Simulates typing into the JABElement.
