@@ -458,19 +458,20 @@ class JABElement(object):
             x = x + width / 2
         self.win32_utils._click_mouse(x=int(x), y=int(y), hold=hold)
 
-    def select(self, value: str) -> None:
-        """Select a dropdown item from selector."""
-        if not self.accessible_selection:
-            raise AttributeError("Current JABElement does not support selection")
-        labels = self.find_elements_by_role("label")
-        for index, label in enumerate(labels):
-            if value == label.name:
-                self.bridge.addAccessibleSelectionFromContext(
-                    self.vmid, self.accessible_context, index
-                )
-                break
-        else:
-            raise ValueError(f"Option '{value}' does not found")
+    def select(self, option: str, simulate: bool = False) -> None:
+        """Select a item from JABElement selector.
+        Support select action from combo box, page tab list, list and menu.
+
+        Args:
+            option (str): Item selection from selector.
+            simulate (bool, optional): Simulate user input action by mouse event. Defaults to False.
+        """
+        _ = {
+            "combo box": self._select_from_combobox,
+            "page tab list": self._select_from_page_tab_list,
+            "list": self._select_from_list,
+            "menu": self._select_from_menu,
+        }[self.role_en_us](option=option, simulate=simulate)
     
     def get_selected_element(self) -> JABElement:
         """Get selected JABElement from selection.
