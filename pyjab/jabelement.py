@@ -16,10 +16,10 @@ from pyjab.accessibleinfo import (
     AccessibleActions,
     AccessibleActionsToDo,
     AccessibleContextInfo,
+    AccessibleTableCellInfo,
     AccessibleTableInfo,
     AccessibleTextInfo,
 )
-from pyjab.accessibleinfo import AccessibleTextItemsInfo
 
 
 class JABElement(object):
@@ -605,7 +605,7 @@ class JABElement(object):
         self._do_accessible_action("toggleexpand")
 
     def send_text(self, value: str, simulate: bool = False) -> None:
-        """Simulates typing into the JABElement.
+        """Type into the JABElement.
 
         Default will use JAB Accessible Action.
         Set parameter 'simulate' to True if internal action does not work.
@@ -622,7 +622,7 @@ class JABElement(object):
         """
         value = str(value)
         if simulate:
-            self.clear(simulate=simulate)
+            self.clear(simulate=True)
             self.win32_utils._send_keys(value)
         else:
             result = self.bridge.setTextContents(
@@ -1418,7 +1418,7 @@ class JABElement(object):
             }
 
     def get_cell(self, row: int, column: int) -> JABElement:
-        """Get cell element from table
+        """Get cell JABElement from table
 
         Args:
             row (int): Row index of cell, start from 0
@@ -1428,22 +1428,19 @@ class JABElement(object):
             JABException: Raise JABException if JAB internal function error
 
         Returns:
-            JABElement: Return cell element
+            JABElement: Return specific cell JABElement
         """
         if self.role_en_us != "table":
             raise JABException("JABElement is not table, does not support this func")
-        result = self.bridge.getAccessibleTableIndex(
-            self.vmid, self.accessible_context, row, column
+        info = AccessibleTableCellInfo()
+        result = self.bridge.getAccessibleTableCellInfo(
+            self.vmid, self.accessible_context, row, column, byref(info)
         )
-        if result == -1:
-            raise JABException(self.int_func_err_msg.format("getAccessibleTableIndex"))
-        for index, cell_jabelement in enumerate(self.find_elements_by_role("label")):
-            if result == index:
-                return cell_jabelement
-        else:
+        if not result:
             raise JABException(
-                f"Cell does not exist with row '{row}' and column '{column}'"
+                self.int_func_err_msg.format("getAccessibleTableCellInfo")
             )
+        return JABElement(self.bridge, self.hwnd, self.vmid, info.accessibleContext)
 
     def get_element_information(self) -> dict:
         """Get dict information of current JABElement
