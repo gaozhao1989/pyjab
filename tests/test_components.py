@@ -38,9 +38,9 @@ class TestComponents(object):
         assert combo_box
         self.logger.info(combo_box.get_element_information())
         combo_box.select(option="Cat")
-        assert combo_box.get_selected_option().name == "Cat"
+        assert combo_box.get_selected_element().name == "Cat"
         combo_box.select(option="Rabbit", simulate=True)
-        assert combo_box.get_selected_option().name == "Rabbit"
+        assert combo_box.get_selected_element().name == "Rabbit"
 
     def test_dialog(self) -> None:
         # sample from https://docs.oracle.com/javase/tutorialJWS/samples/uiswing/DialogDemoProject/DialogDemo.jnlp
@@ -91,9 +91,9 @@ class TestComponents(object):
         assert _list
         self.logger.info(_list.get_element_information())
         _list.select("John Smith")
-        assert _list.get_selected_option().name == "John Smith"
+        assert _list.get_selected_element().name == "John Smith"
         _list.select("Kathy Green", simulate=True)
-        assert _list.get_selected_option().name == "Kathy Green"
+        assert _list.get_selected_element().name == "Kathy Green"
 
     def test_menu(self) -> None:
         # sample from https://docs.oracle.com/javase/tutorialJWS/samples/uiswing/MenuDemoProject/MenuDemo.jnlp
@@ -135,12 +135,12 @@ class TestComponents(object):
         assert page_tab_list
         self.logger.info(page_tab_list.get_element_information())
         page_tab_list.select("HSL")
-        assert page_tab_list.get_selected_option().name == "HSL"
+        assert page_tab_list.get_selected_element().name == "HSL"
         page_tab_list.select("RGB", simulate=True)
         import time
 
         time.sleep(0.5)
-        assert page_tab_list.get_selected_option().name == "RGB"
+        assert page_tab_list.get_selected_element().name == "RGB"
 
     def test_panel(self) -> None:
         # sample from https://docs.oracle.com/javase/tutorialJWS/samples/uiswing/ColorChooserDemoProject/ColorChooserDemo.jnlp
