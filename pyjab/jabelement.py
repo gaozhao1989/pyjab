@@ -421,6 +421,42 @@ class JABElement(object):
             x = x + width / 2
             y = y + width + 5
         self.win32_utils._click_mouse(x=int(x), y=int(y), hold=hold)
+    
+    def slide(self, to_bottom: bool = True, hold: int = 5) -> None:
+        """Slide a slider to top or to bottom.
+
+        Need improvement for slide to specific position.
+
+        Args:
+            to_bottom (bool, optional): S;ode to bottom or not, otherwise slide to top. Defaults to True.
+            hold (int, optional): Mouse hold time to slide. Default to 2.
+
+        Raises:
+            JABException: Raise a JABException when JABElement role is not a slider.
+        """
+        if self.role_en_us != "slider":
+            raise JABException("JABElement is not 'slider'")
+        is_horizontal = True if "horizontal" in self.states_en_us else False
+        x = self.bounds["x"]
+        y = self.bounds["y"]
+        height = self.bounds["height"]
+        width = self.bounds["width"]
+        self.win32_utils._set_window_foreground(hwnd=self.hwnd.value)
+        # horizontal slide to bottom(right)
+        if to_bottom and is_horizontal:
+            x = x + width - 5
+            y = y + height / 2
+        # vertical slide to bottom
+        elif to_bottom is True and is_horizontal is False:
+            x = x + width / 2
+            y = y + height - 5
+        # horizontal slide to top(left)
+        elif to_bottom is False and is_horizontal is True:
+            y = y + height / 2
+        # vertical slide to top
+        elif to_bottom is False and is_horizontal is False:
+            x = x + width / 2
+        self.win32_utils._click_mouse(x=int(x), y=int(y), hold=hold)
 
     def select(self, value: str) -> None:
         """Select a dropdown item from selector."""
