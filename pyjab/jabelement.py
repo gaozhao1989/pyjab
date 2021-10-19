@@ -383,6 +383,44 @@ class JABElement(object):
                     self.win32_utils._press_key("backspace")
         else:
             self.send_text(value="", simulate=False)
+    
+    def scroll(self, to_bottom: bool = True, hold: int = 2) -> None:
+        """Scroll a scoll bar to top or to bottom.
+
+        Need improvement for scroll to specific position.
+
+        Args:
+            to_bottom (bool, optional): Scroll to bottom or not, otherwise scroll to top. Defaults to True.
+            hold (int, optional): Mouse hold time to scroll to bar. Default to 2.
+
+        Raises:
+            JABException: Raise a JABException when JABElement role is not a scroll bar.
+        """
+        if self.role_en_us != "scroll bar":
+            raise JABException("JABElement is not 'scroll bar'")
+        is_horizontal = True if "horizontal" in self.states_en_us else False
+        x = self.bounds["x"]
+        y = self.bounds["y"]
+        height = self.bounds["height"]
+        width = self.bounds["width"]
+        self.win32_utils._set_window_foreground(hwnd=self.hwnd.value)
+        # horizontal scroll to bottom(right)
+        if to_bottom and is_horizontal:
+            x = x + width - height - 5
+            y = y + height / 2
+        # vertical scroll to bottom
+        elif to_bottom is True and is_horizontal is False:
+            x = x + width / 2
+            y = y + height - width - 5
+        # horizontal scroll to top(left)
+        elif to_bottom is False and is_horizontal is True:
+            x = x + height + 5
+            y = y + height / 2
+        # vertical scroll to top
+        elif to_bottom is False and is_horizontal is False:
+            x = x + width / 2
+            y = y + width + 5
+        self.win32_utils._click_mouse(x=int(x), y=int(y), hold=hold)
 
     def select(self, value: str) -> None:
         """Select a dropdown item from selector."""
