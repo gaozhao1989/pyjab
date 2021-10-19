@@ -471,6 +471,23 @@ class JABElement(object):
                 break
         else:
             raise ValueError(f"Option '{value}' does not found")
+    
+    def get_selected_element(self) -> JABElement:
+        """Get selected JABElement from selection.
+        Support get selection from combo box, list and page tab list.
+
+        Returns:
+            JABElement: The selected JABElement
+        """
+        selected_acc = self.bridge.getAccessibleSelectionFromContext(
+            self.vmid, self.accessible_context, 0
+        )
+        return JABElement(
+            bridge=self.bridge,
+            hwnd=self.hwnd,
+            vmid=self.vmid,
+            accessible_context=selected_acc,
+        )
 
     def send_text(self, value: str, simulate: bool = False) -> None:
         """Simulates typing into the JABElement.
