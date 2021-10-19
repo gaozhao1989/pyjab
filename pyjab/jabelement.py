@@ -557,6 +557,40 @@ class JABElement(object):
                     break
             return
         self.find_element_by_name(value=option).click(simulate=False)
+    
+    def spin(
+        self, option: str = None, increase: bool = True, simulate: bool = False
+    ) -> None:
+        if self.role_en_us != "spinbox":
+            raise JABException("JABElement is not 'spinbox'")
+        # select spinbox by set text
+        if option:
+            try:
+                text = self.find_element_by_role("text")
+            except JABException:
+                raise JABException(
+                    "Current spinbox does not support set 'option', try with 'increase'"
+                )
+            text.send_text(value=option, simulate=simulate)
+            return
+        # select spinbox by accessible action or simulate click
+        if increase:
+            action = "increment"
+            offset_y_position = -5
+        else:
+            action = "decrement"
+            offset_y_position = 5
+        if simulate:
+            x = self.bounds["x"]
+            y = self.bounds["y"]
+            height = self.bounds["height"]
+            width = self.bounds["width"]
+            self.win32_utils._set_window_foreground(hwnd=self.hwnd.value)
+            x = x + width - 5
+            y = y + height / 2 + offset_y_position
+            self.win32_utils._click_mouse(x=int(x), y=int(y))
+            return
+        self._do_accessible_action(action=action)
 
     def send_text(self, value: str, simulate: bool = False) -> None:
         """Simulates typing into the JABElement.
