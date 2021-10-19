@@ -335,7 +335,6 @@ class JABElement(object):
             simulate (bool, optional): Simulate user click action by mouse event. Defaults to False.
 
         Raises:
-            JABException: Raise JABException when JABElement does not contains 'click' action.
             ValueError: Raise ValueError when JABElement width or height is 0.
 
         Use this to send simple mouse events or to click form fields::
@@ -357,21 +356,7 @@ class JABElement(object):
             position_y = round(y + height / 2)
             self.win32_utils._click_mouse(x=position_x, y=position_y)
         else:
-            acc_acts = AccessibleActions()
-            self.bridge.getAccessibleActions(
-                self.vmid, self.accessible_context, byref(acc_acts)
-            )
-            act_todo = AccessibleActionsToDo()
-            act_todo.actionsCount = acc_acts.actionsCount
-            for i in range(act_todo.actionsCount):
-                if acc_acts.actionInfo[i].name.lower() == "click":
-                    act_todo.actions[i].name = acc_acts.actionInfo[i].name
-                    break
-            else:
-                raise JABException("This JABElement does not support action 'click'")
-            self.bridge.doAccessibleActions(
-                self.vmid, self.accessible_context, byref(act_todo), jint()
-            )
+            self._do_accessible_action(action="click")
 
     def clear(self, simulate: bool = False) -> None:
         """Clear existing text from JABElement.
