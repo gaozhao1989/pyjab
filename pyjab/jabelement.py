@@ -658,6 +658,11 @@ class JABElement(object):
         """Returns whether the JABElement is selected."""
         self.set_element_information()
         return "selected" in self.states_en_us
+    
+    def is_editable(self) -> bool:
+        """Returns whether the JABElement is editable."""
+        self.set_element_information()
+        return "editable" in self.states_en_us
 
     def find_element_by_name(self, value: str) -> JABElement:
         """find child JABElement by name
