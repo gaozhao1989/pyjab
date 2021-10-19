@@ -289,6 +289,42 @@ class JABElement(object):
         """Request focus for a JABElement."""
         self.bridge.requestFocus(self.vmid, self.accessible_context)
 
+    def _do_accessible_action(self, action: str = None) -> None:
+        """Do Accessible Action with current JABElement.
+
+        Args:
+            action (str): Accessible Action name.
+
+        Raises:
+            JABException: Raise JABException if current JABElement does not support this action.
+        """
+        acc_acts = AccessibleActions()
+        self.bridge.getAccessibleActions(
+            self.vmid, self.accessible_context, byref(acc_acts)
+        )
+        acc_acts_count = acc_acts.actionsCount
+        acc_acts_info = acc_acts.actionInfo
+        act_todo = AccessibleActionsToDo()
+        if acc_acts_count < 1:
+            raise JABException("JABElement does not support Accessible Action")
+        if acc_acts_count > 1:
+            if action is None:
+                raise JABException(
+                    "JABElement support multiple Accessible Action, please specifc"
+                )
+            act_todo.actions[0].name = action
+            for index in range(acc_acts_count):
+                if acc_acts_info[index].name.lower() == action:
+                    break
+            else:
+                raise JABException(f"JABElement does not support action '{action}'")
+        if acc_acts_count == 1:
+            act_todo.actions[0].name = acc_acts_info[0].name
+        act_todo.actionsCount = 1
+        self.bridge.doAccessibleActions(
+            self.vmid, self.accessible_context, byref(act_todo), jint()
+        )
+
     def click(self, simulate: bool = False) -> None:
         """Simulates clicking to JABElement.
 
