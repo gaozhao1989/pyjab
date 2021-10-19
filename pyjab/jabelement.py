@@ -488,6 +488,74 @@ class JABElement(object):
             vmid=self.vmid,
             accessible_context=selected_acc,
         )
+    
+    def _add_selection_from_accessible_context(
+        self, parent: JABElement, option: str
+    ) -> None:
+        try:
+            item = parent.find_element_by_name(value=option)
+        except JABException:
+            raise JABException(f"{parent.role_en_us} option '{option}' does not found")
+        item.bridge.addAccessibleSelectionFromContext(
+            parent.vmid, parent.accessible_context, item.index_in_parent
+        )
+
+    def _select_from_checkbox(self, simulate: bool = False) -> None:
+        if self.role_en_us != "check box":
+            raise JABException("JABElement is not 'check box'")
+        self.request_focus()
+        if simulate:
+            self.win32_utils._set_window_foreground(hwnd=self.hwnd.value)
+        self.click(simulate=simulate)
+
+    def _select_from_combobox(self, option: str, simulate: bool = False) -> None:
+        if self.role_en_us != "combo box":
+            raise JABException("JABElement is not 'combo box'")
+        self.request_focus()
+        if simulate:
+            self.win32_utils._set_window_foreground(hwnd=self.hwnd.value)
+            self._do_accessible_action(action="togglepopup")
+            self._add_selection_from_accessible_context(
+                parent=self.find_element_by_role("list"), option=option
+            )
+            self.win32_utils._press_key("enter")
+            return
+        self.bridge.clearAccessibleSelectionFromContext(
+            self.vmid, self.accessible_context
+        )
+        self._add_selection_from_accessible_context(parent=self, option=option)
+
+    def _select_from_page_tab_list(self, option: str, simulate: bool = False) -> None:
+        if self.role_en_us != "page tab list":
+            raise JABException("JABElement is not 'page tab list'")
+        if simulate:
+            self.win32_utils._set_window_foreground(hwnd=self.hwnd.value)
+            self.find_element_by_name(option).click(simulate=True)
+            return
+        self._add_selection_from_accessible_context(self, option=option)
+
+    def _select_from_list(self, option: str, simulate: bool = False) -> None:
+        if self.role_en_us != "list":
+            raise JABException("JABElement is not 'list'")
+        if simulate:
+            self.win32_utils._set_window_foreground(hwnd=self.hwnd.value)
+        self.find_element_by_name(value=option).click(simulate=simulate)
+
+    def _select_from_menu(self, option: str, simulate: bool = False) -> None:
+        if self.role_en_us != "menu":
+            raise JABException("JABElement is not 'menu'")
+        if simulate:
+            self.win32_utils._set_window_foreground(hwnd=self.hwnd.value)
+            self.click(simulate=True)
+            for item in self.find_elements_by_object_depth(self.object_depth + 1):
+                if item.accessible_action is False:
+                    continue
+                self.win32_utils._press_key("down_arrow")
+                if item.name == option:
+                    self.win32_utils._press_key("enter")
+                    break
+            return
+        self.find_element_by_name(value=option).click(simulate=False)
 
     def send_text(self, value: str, simulate: bool = False) -> None:
         """Simulates typing into the JABElement.
