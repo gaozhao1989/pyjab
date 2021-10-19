@@ -1,8 +1,10 @@
 from __future__ import annotations
+import encodings
+import locale
 import re
-from ctypes import byref, CDLL, c_long
+from ctypes import byref, CDLL, c_long, create_string_buffer
 from ctypes.wintypes import HWND
-from typing import Any, Generator
+from typing import Any, Generator, Optional
 from PIL import Image, ImageGrab
 from pyjab.common.by import By
 from pyjab.common.exceptions import JABException
@@ -15,6 +17,7 @@ from pyjab.accessibleinfo import (
     AccessibleActionsToDo,
     AccessibleContextInfo,
     AccessibleTableInfo,
+    AccessibleTextInfo,
 )
 from pyjab.accessibleinfo import AccessibleTextItemsInfo
 
@@ -366,7 +369,7 @@ class JABElement(object):
 
         Args:
             simulate (bool, optional): Simulate user input action by keyboard event. Defaults to False.
-        
+
         Use this to send simple key events or to fill out form fields::
 
             form_textfield = driver.find_element_by_name('username')
@@ -383,7 +386,7 @@ class JABElement(object):
                     self.win32_utils._press_key("backspace")
         else:
             self.send_text(value="", simulate=False)
-    
+
     def scroll(self, to_bottom: bool = True, hold: int = 2) -> None:
         """Scroll a scoll bar to top or to bottom.
 
@@ -421,7 +424,7 @@ class JABElement(object):
             x = x + width / 2
             y = y + width + 5
         self.win32_utils._click_mouse(x=int(x), y=int(y), hold=hold)
-    
+
     def slide(self, to_bottom: bool = True, hold: int = 5) -> None:
         """Slide a slider to top or to bottom.
 
@@ -472,7 +475,7 @@ class JABElement(object):
             "list": self._select_from_list,
             "menu": self._select_from_menu,
         }[self.role_en_us](option=option, simulate=simulate)
-    
+
     def get_selected_element(self) -> JABElement:
         """Get selected JABElement from selection.
         Support get selection from combo box, list and page tab list.
@@ -489,7 +492,7 @@ class JABElement(object):
             vmid=self.vmid,
             accessible_context=selected_acc,
         )
-    
+
     def _add_selection_from_accessible_context(
         self, parent: JABElement, option: str
     ) -> None:
@@ -557,7 +560,7 @@ class JABElement(object):
                     break
             return
         self.find_element_by_name(value=option).click(simulate=False)
-    
+
     def spin(
         self, option: str = None, increase: bool = True, simulate: bool = False
     ) -> None:
@@ -591,7 +594,7 @@ class JABElement(object):
             self.win32_utils._click_mouse(x=int(x), y=int(y))
             return
         self._do_accessible_action(action=action)
-    
+
     def expand(self, simulate: bool = False) -> None:
         if "expandable" not in self._states_en_us:
             raise JABException("JABElement does not support 'expand'")
@@ -658,7 +661,7 @@ class JABElement(object):
         """Returns whether the JABElement is selected."""
         self.set_element_information()
         return "selected" in self.states_en_us
-    
+
     def is_editable(self) -> bool:
         """Returns whether the JABElement is editable."""
         self.set_element_information()
@@ -1296,22 +1299,66 @@ class JABElement(object):
         self._set_element_text_information()
         self._set_element_table_information()
 
+    def _get_text_from_raw_bytes(
+        self,
+        buffer: bytes,
+        chars_len: int,
+        encoding: Optional[str] = None,
+        errors_fallback: str = "replace",
+    ):
+        if encoding is None:
+            if chars_len > 1 and any(buffer[chars_len:]):
+                encoding = "utf_16_le"
+            else:
+                encoding = locale.getpreferredencoding()
+        else:
+            encoding = encodings.normalize_encoding(encoding).lower()
+        if encoding.startswith("utf_16"):
+            num_of_bytes = chars_len * 2
+        elif encoding.startswith("utf_32"):
+            num_of_bytes = chars_len * 4
+        else:
+            num_of_bytes = chars_len
+        raw_text: bytes = buffer[:num_of_bytes]
+        if not any(raw_text):
+            return ""
+        try:
+            text = raw_text.decode(encoding, errors="surrogatepass")
+        except UnicodeDecodeError:
+            text = raw_text.decode(encoding, errors=errors_fallback)
+        return text
+
     def _set_element_text_information(self) -> None:
         """Set attribute text if element has accessible text
 
         Raises:
             JABException: Raise JABException if getAccessibleTextItems get internal error
         """
-        if self.accessible_text:
-            info = AccessibleTextItemsInfo()
-            result = self.bridge.getAccessibleTextItems(
-                self.vmid, self.accessible_context, byref(info), 0
-            )
-            if result == 0:
-                raise JABException(
-                    self.int_func_err_msg.format("getAccessibleTextItems")
-                )
-            self.text = info.sentence
+        if not self.accessible_text:
+            return
+        info = AccessibleTextInfo()
+        result = self.bridge.getAccessibleTextInfo(
+            self.vmid, self.accessible_context, byref(info), 0, 0
+        )
+        if not result:
+            raise JABException(self.int_func_err_msg.format("getAccessibleTextInfo"))
+        chars_start = 0
+        chars_end = info.charCount - 1
+        chars_len = chars_end + 1 - chars_start
+        buffer = create_string_buffer((chars_len + 1) * 2)
+        result = self.bridge.getAccessibleTextRange(
+            self.vmid,
+            self.accessible_context,
+            chars_start,
+            chars_end,
+            buffer,
+            chars_len,
+        )
+        if not result:
+            raise JABException(self.int_func_err_msg.format("getAccessibleTextRange"))
+        self.text = self._get_text_from_raw_bytes(
+            buffer=buffer, chars_len=chars_len, encoding="utf_16"
+        )
 
     def _set_element_table_information(self) -> None:
         """Get Accessible table information
