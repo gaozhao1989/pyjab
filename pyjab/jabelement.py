@@ -1,22 +1,24 @@
 from __future__ import annotations
+from pyjab.common.textreader import TextReader
 import re
-from ctypes import byref
-from ctypes import CDLL
-from ctypes import c_long
+from ctypes import byref, CDLL, c_long, create_string_buffer
 from ctypes.wintypes import HWND
-from typing import Any
-from typing import Generator
-from PIL import Image
-from PIL import ImageGrab
+from typing import Any, Generator
+from PIL import Image, ImageGrab
 from pyjab.common.by import By
 from pyjab.common.exceptions import JABException
-from pyjab.common.logger import Logger
 from pyjab.common.shortcutkeys import ShortcutKeys
-from pyjab.common.types import JOBJECT64
+from pyjab.common.types import jint, JOBJECT64
 from pyjab.common.win32utils import Win32Utils
 from pyjab.common.xpathparser import XpathParser
-from pyjab.accessibleinfo import AccessibleContextInfo
-from pyjab.accessibleinfo import AccessibleTextItemsInfo
+from pyjab.accessibleinfo import (
+    AccessibleActions,
+    AccessibleActionsToDo,
+    AccessibleContextInfo,
+    AccessibleTableCellInfo,
+    AccessibleTableInfo,
+    AccessibleTextInfo,
+)
 
 
 class JABElement(object):
@@ -32,8 +34,6 @@ class JABElement(object):
         vmid: c_long = None,
         accessible_context: JOBJECT64 = None,
     ) -> None:
-        # not recommand instantiation for low performance
-        # self.log = Logger(self.__class__.__name__)
         self._bridge = bridge
         # jab context attributes
         self._hwnd = hwnd
@@ -56,6 +56,7 @@ class JABElement(object):
         self._accessible_text = False
         self._accessible_interfaces = False
         self._text = None
+        self._table = None
         self.set_element_information()
 
     @property
@@ -211,12 +212,20 @@ class JABElement(object):
         self._accessible_interfaces = accessible_interfaces
 
     @property
-    def text(self) -> bool:
+    def text(self) -> str:
         return self._text
 
     @text.setter
-    def text(self, text: bool) -> None:
+    def text(self, text: str) -> None:
         self._text = text
+
+    @property
+    def table(self) -> dict:
+        return self._table
+
+    @table.setter
+    def table(self, table: dict) -> None:
+        self._table = table
 
     # Jab Element actions
     def _generate_all_childs(self, jabelement: JABElement = None) -> Generator:
@@ -282,43 +291,347 @@ class JABElement(object):
         """Request focus for a JABElement."""
         self.bridge.requestFocus(self.vmid, self.accessible_context)
 
-    def click(self) -> None:
-        """Clicks the JABElement."""
-        self.win32_utils._set_window_foreground(hwnd=self.hwnd.value)
-        self.set_element_information()
-        x = self.bounds.get("x")
-        y = self.bounds.get("y")
-        width = self.bounds.get("width")
-        height = self.bounds.get("height")
-        if width == 0 or height == 0:
-            raise ValueError("element width or height is 0")
-        position_x = round(x + width / 2)
-        position_y = round(y + height / 2)
-        self.win32_utils._click_mouse(x=position_x, y=position_y)
+    def _do_accessible_action(self, action: str = None) -> None:
+        """Do Accessible Action with current JABElement.
 
-    def clear(self) -> None:
-        """Clears the text if it's a text entry JABElement."""
-        if self.role_en_us not in ["label", "text", "password text"]:
-            raise TypeError(
-                "JABElement role '{}' does not support clear".format(self.role_en_us)
-            )
-        self.win32_utils._set_window_foreground(hwnd=self.hwnd.value)
-        self.request_focus()
-        self.shortcut_keys.clear_text()
+        Args:
+            action (str): Accessible Action name.
 
-    def select(self, value: str) -> None:
-        """Select a dropdown item from selector."""
-        if not self.accessible_selection:
-            raise AttributeError("Current JABElement does not support selection")
-        labels = self.find_elements_by_role("label")
-        for index, label in enumerate(labels):
-            if value == label.name:
-                self.bridge.addAccessibleSelectionFromContext(
-                    self.vmid, self.accessible_context, index
+        Raises:
+            JABException: Raise JABException if current JABElement does not support this action.
+        """
+        acc_acts = AccessibleActions()
+        self.bridge.getAccessibleActions(
+            self.vmid, self.accessible_context, byref(acc_acts)
+        )
+        acc_acts_count = acc_acts.actionsCount
+        acc_acts_info = acc_acts.actionInfo
+        act_todo = AccessibleActionsToDo()
+        if acc_acts_count < 1:
+            raise JABException("JABElement does not support Accessible Action")
+        if acc_acts_count > 1:
+            if action is None:
+                raise JABException(
+                    "JABElement support multiple Accessible Action, please specifc"
                 )
-                break
+            act_todo.actions[0].name = action
+            for index in range(acc_acts_count):
+                if acc_acts_info[index].name.lower() == action:
+                    break
+            else:
+                raise JABException(f"JABElement does not support action '{action}'")
+        if acc_acts_count == 1:
+            act_todo.actions[0].name = acc_acts_info[0].name
+        act_todo.actionsCount = 1
+        self.bridge.doAccessibleActions(
+            self.vmid, self.accessible_context, byref(act_todo), jint()
+        )
+
+    def click(self, simulate: bool = False) -> None:
+        """Simulates clicking to JABElement.
+
+        Default will use JAB Accessible Action.
+        Set parameter 'simulate' to True if internal action does not work.
+
+        Args:
+            simulate (bool, optional): Simulate user click action by mouse event. Defaults to False.
+
+        Raises:
+            ValueError: Raise ValueError when JABElement width or height is 0.
+
+        Use this to send simple mouse events or to click form fields::
+
+            form_button = driver.find_element_by_name('button')
+            form_button.click()
+            form_button.click(simulate=True)
+        """
+        if simulate:
+            self.win32_utils._set_window_foreground(hwnd=self.hwnd.value)
+            self.set_element_information()
+            x = self.bounds.get("x")
+            y = self.bounds.get("y")
+            width = self.bounds.get("width")
+            height = self.bounds.get("height")
+            if width == 0 or height == 0:
+                raise ValueError("element width or height is 0")
+            position_x = round(x + width / 2)
+            position_y = round(y + height / 2)
+            self.win32_utils._click_mouse(x=position_x, y=position_y)
         else:
-            raise ValueError(f"Option '{value}' does not found")
+            self._do_accessible_action(action="click")
+
+    def clear(self, simulate: bool = False) -> None:
+        """Clear existing text from JABElement.
+
+        Default will use JAB Accessible Action.
+        Set parameter 'simulate' to True if internal action does not work.
+
+        Args:
+            simulate (bool, optional): Simulate user input action by keyboard event. Defaults to False.
+
+        Use this to send simple key events or to fill out form fields::
+
+            form_textfield = driver.find_element_by_name('username')
+            form_textfield.clear()
+            from_textfield.send_text(simulate=True)
+        """
+        if simulate:
+            self.win32_utils._set_window_foreground(hwnd=self.hwnd.value)
+            self.request_focus()
+            if self.text:
+                self.win32_utils._press_key("end")
+                self.win32_utils._press_hold_release_key("ctrl", "shift", "end")
+                for _ in self.text:
+                    self.win32_utils._press_key("backspace")
+        else:
+            self.send_text(value="", simulate=False)
+
+    def scroll(self, to_bottom: bool = True, hold: int = 2) -> None:
+        """Scroll a scoll bar to top or to bottom.
+
+        Need improvement for scroll to specific position.
+
+        Args:
+            to_bottom (bool, optional): Scroll to bottom or not, otherwise scroll to top. Defaults to True.
+            hold (int, optional): Mouse hold time to scroll to bar. Default to 2.
+
+        Raises:
+            JABException: Raise a JABException when JABElement role is not a scroll bar.
+        """
+        if self.role_en_us != "scroll bar":
+            raise JABException("JABElement is not 'scroll bar'")
+        is_horizontal = True if "horizontal" in self.states_en_us else False
+        x = self.bounds["x"]
+        y = self.bounds["y"]
+        height = self.bounds["height"]
+        width = self.bounds["width"]
+        self.win32_utils._set_window_foreground(hwnd=self.hwnd.value)
+        # horizontal scroll to bottom(right)
+        if to_bottom and is_horizontal:
+            x = x + width - height - 5
+            y = y + height / 2
+        # vertical scroll to bottom
+        elif to_bottom is True and is_horizontal is False:
+            x = x + width / 2
+            y = y + height - width - 5
+        # horizontal scroll to top(left)
+        elif to_bottom is False and is_horizontal is True:
+            x = x + height + 5
+            y = y + height / 2
+        # vertical scroll to top
+        elif to_bottom is False and is_horizontal is False:
+            x = x + width / 2
+            y = y + width + 5
+        self.win32_utils._click_mouse(x=int(x), y=int(y), hold=hold)
+
+    def slide(self, to_bottom: bool = True, hold: int = 5) -> None:
+        """Slide a slider to top or to bottom.
+
+        Need improvement for slide to specific position.
+
+        Args:
+            to_bottom (bool, optional): S;ode to bottom or not, otherwise slide to top. Defaults to True.
+            hold (int, optional): Mouse hold time to slide. Default to 2.
+
+        Raises:
+            JABException: Raise a JABException when JABElement role is not a slider.
+        """
+        if self.role_en_us != "slider":
+            raise JABException("JABElement is not 'slider'")
+        is_horizontal = True if "horizontal" in self.states_en_us else False
+        x = self.bounds["x"]
+        y = self.bounds["y"]
+        height = self.bounds["height"]
+        width = self.bounds["width"]
+        self.win32_utils._set_window_foreground(hwnd=self.hwnd.value)
+        # horizontal slide to bottom(right)
+        if to_bottom and is_horizontal:
+            x = x + width - 5
+            y = y + height / 2
+        # vertical slide to bottom
+        elif to_bottom is True and is_horizontal is False:
+            x = x + width / 2
+            y = y + height - 5
+        # horizontal slide to top(left)
+        elif to_bottom is False and is_horizontal is True:
+            y = y + height / 2
+        # vertical slide to top
+        elif to_bottom is False and is_horizontal is False:
+            x = x + width / 2
+        self.win32_utils._click_mouse(x=int(x), y=int(y), hold=hold)
+
+    def select(self, option: str, simulate: bool = False) -> None:
+        """Select a item from JABElement selector.
+        Support select action from combo box, page tab list, list and menu.
+
+        Args:
+            option (str): Item selection from selector.
+            simulate (bool, optional): Simulate user input action by mouse event. Defaults to False.
+        """
+        _ = {
+            "combo box": self._select_from_combobox,
+            "page tab list": self._select_from_page_tab_list,
+            "list": self._select_from_list,
+            "menu": self._select_from_menu,
+        }[self.role_en_us](option=option, simulate=simulate)
+
+    def get_selected_element(self) -> JABElement:
+        """Get selected JABElement from selection.
+        Support get selection from combo box, list and page tab list.
+
+        Returns:
+            JABElement: The selected JABElement
+        """
+        selected_acc = self.bridge.getAccessibleSelectionFromContext(
+            self.vmid, self.accessible_context, 0
+        )
+        return JABElement(
+            bridge=self.bridge,
+            hwnd=self.hwnd,
+            vmid=self.vmid,
+            accessible_context=selected_acc,
+        )
+
+    def _add_selection_from_accessible_context(
+        self, parent: JABElement, option: str
+    ) -> None:
+        try:
+            item = parent.find_element_by_name(value=option)
+        except JABException:
+            raise JABException(f"{parent.role_en_us} option '{option}' does not found")
+        item.bridge.addAccessibleSelectionFromContext(
+            parent.vmid, parent.accessible_context, item.index_in_parent
+        )
+
+    def _select_from_checkbox(self, simulate: bool = False) -> None:
+        if self.role_en_us != "check box":
+            raise JABException("JABElement is not 'check box'")
+        self.request_focus()
+        if simulate:
+            self.win32_utils._set_window_foreground(hwnd=self.hwnd.value)
+        self.click(simulate=simulate)
+
+    def _select_from_combobox(self, option: str, simulate: bool = False) -> None:
+        if self.role_en_us != "combo box":
+            raise JABException("JABElement is not 'combo box'")
+        self.request_focus()
+        if simulate:
+            self.win32_utils._set_window_foreground(hwnd=self.hwnd.value)
+            self._do_accessible_action(action="togglepopup")
+            self._add_selection_from_accessible_context(
+                parent=self.find_element_by_role("list"), option=option
+            )
+            self.win32_utils._press_key("enter")
+            return
+        self.bridge.clearAccessibleSelectionFromContext(
+            self.vmid, self.accessible_context
+        )
+        self._add_selection_from_accessible_context(parent=self, option=option)
+
+    def _select_from_page_tab_list(self, option: str, simulate: bool = False) -> None:
+        if self.role_en_us != "page tab list":
+            raise JABException("JABElement is not 'page tab list'")
+        if simulate:
+            self.win32_utils._set_window_foreground(hwnd=self.hwnd.value)
+            self.find_element_by_name(option).click(simulate=True)
+            return
+        self._add_selection_from_accessible_context(self, option=option)
+
+    def _select_from_list(self, option: str, simulate: bool = False) -> None:
+        if self.role_en_us != "list":
+            raise JABException("JABElement is not 'list'")
+        if simulate:
+            self.win32_utils._set_window_foreground(hwnd=self.hwnd.value)
+        self.find_element_by_name(value=option).click(simulate=simulate)
+
+    def _select_from_menu(self, option: str, simulate: bool = False) -> None:
+        if self.role_en_us != "menu":
+            raise JABException("JABElement is not 'menu'")
+        if simulate:
+            self.win32_utils._set_window_foreground(hwnd=self.hwnd.value)
+            self.click(simulate=True)
+            for item in self.find_elements_by_object_depth(self.object_depth + 1):
+                if item.accessible_action is False:
+                    continue
+                self.win32_utils._press_key("down_arrow")
+                if item.name == option:
+                    self.win32_utils._press_key("enter")
+                    break
+            return
+        self.find_element_by_name(value=option).click(simulate=False)
+
+    def spin(
+        self, option: str = None, increase: bool = True, simulate: bool = False
+    ) -> None:
+        if self.role_en_us != "spinbox":
+            raise JABException("JABElement is not 'spinbox'")
+        # select spinbox by set text
+        if option:
+            try:
+                text = self.find_element_by_role("text")
+            except JABException:
+                raise JABException(
+                    "Current spinbox does not support set 'option', try with 'increase'"
+                )
+            text.send_text(value=option, simulate=simulate)
+            return
+        # select spinbox by accessible action or simulate click
+        if increase:
+            action = "increment"
+            offset_y_position = -5
+        else:
+            action = "decrement"
+            offset_y_position = 5
+        if simulate:
+            x = self.bounds["x"]
+            y = self.bounds["y"]
+            height = self.bounds["height"]
+            width = self.bounds["width"]
+            self.win32_utils._set_window_foreground(hwnd=self.hwnd.value)
+            x = x + width - 5
+            y = y + height / 2 + offset_y_position
+            self.win32_utils._click_mouse(x=int(x), y=int(y))
+            return
+        self._do_accessible_action(action=action)
+
+    def expand(self, simulate: bool = False) -> None:
+        if "expandable" not in self._states_en_us:
+            raise JABException("JABElement does not support 'expand'")
+        if simulate:
+            self.click(simulate=True)
+            self.click(simulate=True)
+            return
+        self._do_accessible_action("toggleexpand")
+
+    def send_text(self, value: str, simulate: bool = False) -> None:
+        """Type into the JABElement.
+
+        Default will use JAB Accessible Action.
+        Set parameter 'simulate' to True if internal action does not work.
+
+        :Args:
+            value (str): A string for typing.
+            simulate (bool, optional): Simulate user input action by keyboard event. Defaults to False.
+
+        Use this to send simple key events or to fill out form fields::
+
+            form_textfield = driver.find_element_by_name('username')
+            form_textfield.send_text("admin")
+            from_textfield.send_text("admin", simulate=True)
+        """
+        value = str(value)
+        if simulate:
+            self.clear(simulate=True)
+            self.win32_utils._send_keys(value)
+        else:
+            result = self.bridge.setTextContents(
+                self.vmid, self.accessible_context, value
+            )
+            if result == 0:
+                raise JABException(
+                    self.int_func_err_msg.format("setTextContents")
+                    + ", try set parameter 'simulate' with True"
+                )
 
     def is_checked(self) -> bool:
         """Returns whether the JABElement is checked.
@@ -347,6 +660,11 @@ class JABElement(object):
         """Returns whether the JABElement is selected."""
         self.set_element_information()
         return "selected" in self.states_en_us
+
+    def is_editable(self) -> bool:
+        """Returns whether the JABElement is editable."""
+        self.set_element_information()
+        return "editable" in self.states_en_us
 
     def find_element_by_name(self, value: str) -> JABElement:
         """find child JABElement by name
@@ -870,20 +1188,6 @@ class JABElement(object):
             )
         return jabelements
 
-    def send_text(self, value: str) -> None:
-        """Simulates typing into the element.
-
-        :Args:
-            - value - A string for typing.
-
-        Use this to send simple key events or to fill out form fields::
-
-            form_textfield = driver.find_element_by_name('username')
-            form_textfield.send_keys("admin")
-        """
-        self.clear()
-        self.win32_utils._send_keys(value)
-
     @property
     def size(self) -> dict:
         """The size of the element."""
@@ -991,16 +1295,122 @@ class JABElement(object):
         self.accessible_action = bool(info.accessibleAction)
         self.accessible_selection = bool(info.accessibleSelection)
         self.accessible_text = bool(info.accessibleText)
-        if self.accessible_text:
-            info = AccessibleTextItemsInfo()
-            result = self.bridge.getAccessibleTextItems(
-                self.vmid, self.accessible_context, byref(info), 0
+        self._set_element_text_information()
+        self._set_element_table_information()
+
+    def _set_element_text_information(self) -> None:
+        """Set attribute text if element has accessible text
+
+        Raises:
+            JABException: Raise JABException if getAccessibleTextItems get internal error
+        """
+        if not self.accessible_text:
+            return
+        info = AccessibleTextInfo()
+        result = self.bridge.getAccessibleTextInfo(
+            self.vmid, self.accessible_context, byref(info), 0, 0
+        )
+        if not result:
+            raise JABException(self.int_func_err_msg.format("getAccessibleTextInfo"))
+        chars_start = 0
+        chars_end = info.charCount - 1
+        chars_len = chars_end + 1 - chars_start
+        buffer = create_string_buffer((chars_len + 1) * 2)
+        result = self.bridge.getAccessibleTextRange(
+            self.vmid,
+            self.accessible_context,
+            chars_start,
+            chars_end,
+            buffer,
+            chars_len,
+        )
+        if not result:
+            raise JABException(self.int_func_err_msg.format("getAccessibleTextRange"))
+        self.text = TextReader().get_text_from_raw_bytes(
+            buffer=buffer, chars_len=chars_len, encoding="utf_16"
+        )
+
+    def _set_element_table_information(self) -> None:
+        """Get Accessible table information
+
+        Raises:
+            JABException: Raise JABException if
+            getAccessibleTableInfo,
+            getAccessibleTableRowHeader,
+            getAccessibleTableColumnHeader get internal error
+        """
+        if self.role_en_us == "table":
+            info = AccessibleTableInfo()
+            result = self.bridge.getAccessibleTableInfo(
+                self.vmid, self.accessible_context, byref(info)
             )
             if result == 0:
                 raise JABException(
-                    self.int_func_err_msg.format("getAccessibleTextItems")
+                    self.int_func_err_msg.format("getAccessibleTableInfo")
                 )
-            self.text = info.sentence
+            self.table = {
+                "row_count": info.rowCount,
+                "column_count": info.columnCount,
+            }
+            info = AccessibleTableInfo()
+            result = self.bridge.getAccessibleTableRowHeader(
+                self.vmid, self.accessible_context, byref(info)
+            )
+            if result == 0:
+                raise JABException(
+                    self.int_func_err_msg.format("getAccessibleTableRowHeader")
+                )
+            self.table["row_headers"] = {
+                "row_count": info.rowCount,
+                "column_count": info.columnCount,
+            }
+            info = AccessibleTableInfo()
+            result = self.bridge.getAccessibleTableColumnHeader(
+                self.vmid, self.accessible_context, byref(info)
+            )
+            if result == 0:
+                raise JABException(
+                    self.int_func_err_msg.format("getAccessibleTableColumnHeader")
+                )
+            self.table["column_headers"] = {
+                "row_count": info.rowCount,
+                "column_count": info.columnCount,
+            }
+            row_count = self.bridge.getAccessibleTableRowSelectionCount(
+                self.vmid, self.accessible_context
+            )
+            column_count = self.bridge.getAccessibleTableColumnSelectionCount(
+                self.vmid, self.accessible_context
+            )
+            self.table["selected"] = {
+                "row_count": row_count,
+                "column_count": column_count,
+            }
+
+    def get_cell(self, row: int, column: int) -> JABElement:
+        """Get cell JABElement from table
+
+        Args:
+            row (int): Row index of cell, start from 0
+            column (int): Column index of cell, start from 0
+
+        Raises:
+            JABException: Raise JABException if JAB internal function error
+
+        Returns:
+            JABElement: Return specific cell JABElement
+        """
+        if self.role_en_us != "table":
+            raise JABException("JABElement is not table, does not support this func")
+        info = AccessibleTableCellInfo()
+        result = self.bridge.getAccessibleTableCellInfo(
+            self.vmid, self.accessible_context, row, column, byref(info)
+        )
+        if not result:
+            raise JABException(
+                self.int_func_err_msg.format("getAccessibleTableCellInfo")
+            )
+        return JABElement(self.bridge, self.hwnd, self.vmid, info.accessibleContext)
 
     def get_element_information(self) -> dict:
         """Get dict information of current JABElement
@@ -1024,4 +1434,5 @@ class JABElement(object):
             accessible_selection=self.accessible_selection,
             accessible_text=self.accessible_text,
             text=self.text,
+            table=self.table,
         )

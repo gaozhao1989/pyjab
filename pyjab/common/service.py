@@ -1,4 +1,5 @@
 import os
+import struct
 from ctypes import cdll
 from ctypes import CDLL
 
@@ -6,8 +7,9 @@ from pyjab.common.logger import Logger
 from pyjab.common.win32utils import Win32Utils
 from pyjab.config import A11Y_PROPS_CONTENT
 from pyjab.config import A11Y_PROPS_PATH
-from pyjab.config import JDK_BRIDGE_DLL
 from pyjab.config import JAB_BRIDGE_DLL
+from pyjab.config import JDK_BRIDGE_DLL
+from pyjab.config import JRE_BRIDGE_DLL
 
 
 class Service(Win32Utils):
@@ -40,14 +42,20 @@ class Service(Win32Utils):
         if not self.is_bridge_enable():
             self.enable_bridge()
 
-    def load_library(self) -> CDLL:
+    def load_library(self, bridge_dll: str = "") -> CDLL:
         self.logger.debug("load library of bridge")
-        if os.path.isfile(JDK_BRIDGE_DLL):
-            BRIDGE_DLL = JDK_BRIDGE_DLL
-        elif os.path.isfile(JAB_BRIDGE_DLL):
-            BRIDGE_DLL = JAB_BRIDGE_DLL
+        dll_bit = struct.calcsize("P") * 8
+        for dll in [
+            str(bridge_dll),
+            JDK_BRIDGE_DLL.format(dll_bit),
+            JRE_BRIDGE_DLL.format(dll_bit),
+            JAB_BRIDGE_DLL.format(dll_bit),
+        ]:
+            if os.path.isfile(dll):
+                return cdll.LoadLibrary(dll)
         else:
             raise FileNotFoundError(
-                "WindowsAccessBridge-32.dll not found, please set correct path for 'JAVA_HOME' or 'JAB_HOME'"
+                "WindowsAccessBridge dll not found, "
+                "please set correct path for environment variable, "
+                "or check the passed customized WindowsAccessBridge dll."
             )
-        return cdll.LoadLibrary(BRIDGE_DLL)

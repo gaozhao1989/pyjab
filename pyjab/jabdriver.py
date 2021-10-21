@@ -4,8 +4,9 @@ from ctypes import CDLL
 from ctypes import c_long
 from ctypes.wintypes import HWND
 from time import time, sleep
-from typing import Any
+from typing import Any, Dict, Tuple, Union
 from PIL import ImageGrab
+from pyjab.accessibleinfo import AccessBridgeVersionInfo
 from pyjab.common.actorscheduler import ActorScheduler
 from pyjab.common.by import By
 from pyjab.common.exceptions import JABException
@@ -19,16 +20,45 @@ from pyjab.jabfixedfunc import JABFixedFunc
 
 
 class JABDriver(Service, ActorScheduler):
-    int_func_err_msg = "Java Access Bridge func '{}' error"
+    """Controls a Java application by Java Access Bridge.
 
-    def __init__(self, title: str = "") -> None:
+    Args:
+        Service ([type]): Host system to initialize the JAB and load JAB dll file.
+        ActorScheduler ([type]): Set message pump to interacte with windows system.
+    """
+
+    def __init__(
+        self,
+        title: str = "",
+        bridge_dll: str = "",
+        hwnd: HWND = None,
+        vmid: c_long = None,
+        accessible_context: JOBJECT64 = None,
+        timeout: int = TIMEOUT,
+    ) -> None:
+        """Create a new jab driver.
+
+        Args:
+            title (str, optional): Window title of Java appliction need to bind. Defaults to "".
+            bridge_dll (str, optional): WindowsAccessBridge dll file path. Defaults to "".
+            hwnd (HWND, optional): HWND of Java Window. Defaults to None.
+            vmid (c_long, optional): vmid of Java Window. Defaults to None.
+            accessible_context (JOBJECT64, optional): Any Accessible Context Component in Java Window.
+            Defaults to None.
+            timeout (int, optional): Default timeout set for JABDriver waitting. Defaults to TIMEOUT.
+        """
         super(JABDriver, self).__init__()
         self.logger = Logger(self.__class__.__name__)
         self.latest_log = None
+        self._bridge_dll = bridge_dll
+        self._timeout = timeout
         self._title = title
+        self._hwnd = hwnd
+        self._vmid = vmid
+        self._accessible_context = accessible_context
         self._bridge = None
         self._root_element = None
-        self.init_jab_service()
+        self.init_jab()
         JABFixedFunc(self._bridge)._fix_bridge_functions()
         self.xpath_parser = XpathParser()
 
@@ -39,6 +69,30 @@ class JABDriver(Service, ActorScheduler):
     @title.setter
     def title(self, title: str) -> None:
         self._title = title
+
+    @property
+    def hwnd(self) -> HWND:
+        return self._hwnd
+
+    @hwnd.setter
+    def hwnd(self, hwnd: HWND) -> None:
+        self._hwnd = hwnd
+
+    @property
+    def vmid(self) -> c_long:
+        return self._vmid
+
+    @vmid.setter
+    def vmid(self, vmid: c_long) -> None:
+        self._vmid = vmid
+
+    @property
+    def accessible_context(self) -> JOBJECT64:
+        return self._accessible_context
+
+    @accessible_context.setter
+    def accessible_context(self, accessible_context: JOBJECT64) -> None:
+        self._accessible_context = accessible_context
 
     @property
     def bridge(self) -> CDLL:
@@ -56,78 +110,127 @@ class JABDriver(Service, ActorScheduler):
     def root_element(self, root_element: JABElement) -> None:
         self._root_element = root_element
 
-    def init_jab_service(
-        self,
-        hwnd: HWND = None,
-        vmid: c_long = None,
-        accessible_context: JOBJECT64 = None,
-    ) -> None:
-        # enum window and find hwnd
-        win_hwnd = self.wait_hwnd_by_title(self.title)
-        self.bridge = self.load_library()
+    def init_jab(self) -> None:
+        # load AccessBridge dll file
+        self.bridge = self.load_library(self._bridge_dll)
         self.bridge.Windows_run()
         # invoke generator in message queue
         sched = ActorScheduler()
         sched.new_actor("jab", self.setup_msg_pump())
         sched.run()
-        # init jab
-        self.bridge.Windows_run()
-        self._wait_until_java_window_exist(win_hwnd)
-        hwnd = hwnd or win_hwnd
-        if hwnd and not vmid:
-            # must have hwnd
-            vmid = c_long()
-            accessible_context = JOBJECT64()
-            self.bridge.getAccessibleContextFromHWND(
-                hwnd, byref(vmid), byref(accessible_context)
+        # hwnd, vmid and accessible_context all invalid
+        if not (self.hwnd or (self.vmid and self.accessible_context)):
+            # get Java Window HWND
+            self.hwnd = self.wait_java_window_by_title(
+                title=self.title, timeout=self._timeout
             )
-            vmid = vmid.value
-        elif vmid and accessible_context and not hwnd:
+        # get vmid and accessible_context by hwnd
+        if self.hwnd and not self.vmid:
+            self.accessible_context, self.vmid = self._get_accessible_context_from_hwnd(
+                self.hwnd
+            )
+        # get hwnd by vmid and accessible_context
+        elif self.vmid and self.accessible_context and not self.hwnd:
             # must have vmid and accessible_context
-            top_level_object = self.bridge.getTopLevelObject(vmid, accessible_context)
-            hwnd = self.bridge.getHWNDFromAccessibleContext(vmid, top_level_object)
+            top_level_object = self.bridge.getTopLevelObject(
+                self.vmid, self.accessible_context
+            )
+            self.hwnd = self.bridge.getHWNDFromAccessibleContext(
+                self.vmid, top_level_object
+            )
         else:
             raise RuntimeError(
                 "At least hwnd or vmid and accessible_context is required"
             )
         self.root_element = JABElement(
             bridge=self.bridge,
-            hwnd=HWND(hwnd),
-            vmid=c_long(vmid),
-            accessible_context=accessible_context,
+            hwnd=HWND(self.hwnd),
+            vmid=c_long(self.vmid),
+            accessible_context=self.accessible_context,
         )
         # TODO:fix JABElement not loading complete
         sleep(2)
 
+    # Gateway funcitons
     def _is_java_window(self, hwnd: HWND) -> bool:
         """Return the specific window is or not a Java Window
 
         Args:
-            hwnd (HWND): The hwnd of window. Defaults to None.
+            hwnd (HWND): The hwnd of window.
 
         Returns:
             bool: True if is a Java Window. False is not a Java Window.
         """
         return bool(self.bridge.isJavaWindow(hwnd))
 
-    def _wait_until_java_window_exist(self, hwnd: HWND, timeout: int = TIMEOUT) -> None:
+    def _get_accessible_context_from_hwnd(self, hwnd: HWND) -> Tuple[JOBJECT64, c_long]:
+        """Gets the AccessibleContext and vmID values for the given window.
+
+        Args:
+            hwnd (HWND): hwnd (HWND): The hwnd of window.
+
+        Returns:
+            Tuple: tuple of AccessibleContext and vmID
+        """
+        vmid = c_long()
+        accessible_context = JOBJECT64()
+        self.bridge.getAccessibleContextFromHWND(
+            hwnd, byref(vmid), byref(accessible_context)
+        )
+        vmid = vmid.value
+        return (accessible_context, vmid)
+
+    def get_version_info(self) -> Dict[str, str]:
+        """Gets the version information of the instance of Java Access Bridge instance your application is using.
+
+        Returns:
+            Dict[str]: Dict of AccessBridgeVersionInfo, contains:
+                VMVersion
+                bridgeJavaClassVersion
+                bridgeJavaDLLVersion
+                bridgeWinDLLVersion
+        """
+        info = AccessBridgeVersionInfo()
+        self.bridge.getVersionInfo(self.vmid, byref(info))
+        return {
+            "VMVersion": info.VMVersion,
+            "bridgeJavaClassVersion": info.bridgeJavaClassVersion,
+            "bridgeJavaDLLVersion": info.bridgeJavaDLLVersion,
+            "bridgeWinDLLVersion": info.bridgeWinDLLVersion,
+        }
+
+    def get_java_window_hwnd(self, title: str) -> Union[HWND, None]:
+        """Get Java Window hwnd by title.
+
+        Args:
+            title (str): Java window title
+
+        Returns:
+            Union[HWND, None]: HWND if found Java Window, otherwise return None
+        """
+        for hwnd in self.get_hwnds_by_title(title=title):
+            if self._is_java_window(hwnd):
+                return hwnd
+
+    def wait_java_window_by_title(self, title: str, timeout: int = TIMEOUT) -> HWND:
         """Wait until a Java Window exist in specific seconds.
 
         Args:
-            hwnd (HWND): The hwnd of specific Java Window need to wait.
+            title (str): The title of specific Java Window need to wait.
             timeout (int, optional): The timeout seconds. Defaults to TIMEOUT.
 
         Raises:
             TimeoutError: Timeout error occurs when wait time over the specific timeout
 
         Returns:
-            None
+            HWND of Java window found in specific seconds.
         """
         start = time()
         while True:
-            if self._is_java_window(hwnd):
-                break
-            log_out = f"no java window found by hwnd '{hwnd}'"
+            hwnd = self.get_java_window_hwnd(title=title)
+            if hwnd:
+                return hwnd
+            log_out = f"no java window found by title '{title}'"
             if self.latest_log != log_out:
                 self.logger.warning(log_out)
                 self.latest_log = log_out
@@ -135,7 +238,7 @@ class JABDriver(Service, ActorScheduler):
             elapsed = round(current - start)
             if elapsed >= timeout:
                 raise TimeoutError(
-                    f"no java window found by hwnd '{hwnd}' in '{timeout}'seconds"
+                    f"no java window found by title '{title}' in '{timeout}'seconds"
                 )
 
     # jab driver functions: similar with webdriver

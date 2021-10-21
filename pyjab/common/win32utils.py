@@ -1,6 +1,6 @@
 import time
 from ctypes.wintypes import HWND
-from typing import Dict, Generator
+from typing import Dict, Generator, List
 import pythoncom
 import win32api
 import win32clipboard
@@ -165,7 +165,6 @@ class Win32Utils(object):
     def __init__(self) -> None:
         self.logger = Logger(self.__class__.__name__)
 
-    # @contextlib.contextmanager
     def setup_msg_pump(self) -> Generator:
         waitables = self.stop_event, self.other_event
         self.logger.debug("setup message pumpup")
@@ -233,6 +232,14 @@ class Win32Utils(object):
         except ValueError:
             return None
 
+    def get_hwnds_by_title(self, title: str) -> List[HWND]:
+        dict_hwnd = self.enum_windows()
+        hwnds = list()
+        for hwnd, win_title in dict_hwnd.items():
+            if title == win_title:
+                hwnds.append(hwnd)
+        return hwnds
+
     def get_title_by_hwnd(self, hwnd: HWND) -> str:
         return win32api.GetWindowText(hwnd)
 
@@ -279,9 +286,11 @@ class Win32Utils(object):
         left, top, _, _ = win32gui.GetWindowRect(hwnd)
         return left, top
 
-    def _click_mouse(self, x: int, y: int) -> None:
+    def _click_mouse(self, x: int, y: int, hold: int = 0) -> None:
         win32api.SetCursorPos((x, y))
         win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, x, y, 0, 0)
+        if hold:
+            time.sleep(hold)
         win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, x, y, 0, 0)
 
     def _get_clipboard(self) -> str:
@@ -333,10 +342,12 @@ class Win32Utils(object):
         """
         for key in keys:
             win32api.keybd_event(self.virtual_key_code[key], 0, 0, 0)
+            time.sleep(0.05)
         for key in keys:
             win32api.keybd_event(
                 self.virtual_key_code[key], 0, win32con.KEYEVENTF_KEYUP, 0
             )
+            time.sleep(0.1)
 
     def _release_key(self, *keys) -> None:
         """
@@ -350,13 +361,20 @@ class Win32Utils(object):
             )
 
     def _send_keys(self, text: str) -> None:
-        """simulate keyboard type for specific text.\n
-        characters will typed one by one.\n
-        NOT RECOMMEND use this func since most of oracle form text field support auto complete\n
+        """Simulate keyboard type for specific text.
+
+        Characters will typed one by one.
+        
+        None-ASCII characters will directly paste to the field(check the security option before).
+        
+        NOT RECOMMEND use this func for the text field which support auto complete.
 
         Args:
             text (str): text need type
         """
+        if not text.isascii():
+            self._paste_text(text=text)
+            return
         sp_key = {
             " ": {"func": self._press_key, "keys": ["spacebar"]},
             "~": {"func": self._press_hold_release_key, "keys": ["left_shift", "`"]},
@@ -414,12 +432,13 @@ class Win32Utils(object):
             func(*keys)
 
     def _paste_text(self, text: str) -> None:
-        """Simulates typing text with paste from clipboard.\n
-        RECOMMEND use this for oracle form text field typeing.
+        """Simulates typing text with paste from clipboard.
+
+        RECOMMEND use this for text field directly typing or another launage typing support.
 
         Args:
             text (str): text need type
         """
-        self._set_clipboard(text=text)
+        self._set_clipboard(text=str(text))
         self._press_hold_release_key("ctrl", "v")
         self._empty_clipboard()

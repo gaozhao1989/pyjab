@@ -10,10 +10,10 @@ MAX_ACTIONS_TO_DO = 32
 TIMEOUT = 30
 
 # set JAB dll
-JDK_BRIDGE_DLL = (
-    os.environ.get("JAVA_HOME", ".\\") + "\\jre\\bin\\WindowsAccessBridge-32.dll"
-)
-JAB_BRIDGE_DLL = os.environ.get("JAB_HOME", ".\\") + "\\WindowsAccessBridge-32.dll"
+WAB_DLL = "WindowsAccessBridge-{}.dll"
+JDK_BRIDGE_DLL = os.environ.get("JAVA_HOME", ".") + f"\\jre\\bin\\{WAB_DLL}"
+JRE_BRIDGE_DLL = os.environ.get("JRE_HOME", ".") + f"\\bin\\{WAB_DLL}"
+JAB_BRIDGE_DLL = os.environ.get("JAB_HOME", ".") + f"\\{WAB_DLL}"
 
 #: The path to the user's .accessibility.properties file, used
 #: to enable JAB.
