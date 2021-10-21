@@ -7,7 +7,7 @@ The `pyjab` package enables run UI automation(selenium like) through with
 Java UI application.
 Package will invoke `Java Access Bridge`_ API to get information form 
 Java application.
-And this package is only support for Windows(current for x86 version).
+And this package is only support for Windows.
 Sources code referenced from `NVDA`_.
 
 .. contents::
