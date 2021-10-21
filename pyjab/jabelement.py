@@ -1,11 +1,9 @@
 from __future__ import annotations
-import encodings
-import locale
 from pyjab.common.textreader import TextReader
 import re
 from ctypes import byref, CDLL, c_long, create_string_buffer
 from ctypes.wintypes import HWND
-from typing import Any, Generator, Optional
+from typing import Any, Generator
 from PIL import Image, ImageGrab
 from pyjab.common.by import By
 from pyjab.common.exceptions import JABException
