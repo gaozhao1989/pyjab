@@ -111,6 +111,9 @@ class JABDriver(Service, ActorScheduler):
         self._root_element = root_element
 
     def init_jab(self) -> None:
+        # enum window and find hwnd
+        if not (self.hwnd or (self.vmid and self.accessible_context)):
+            self.hwnd = self.wait_hwnd_by_title(title=self.title, timeout=self._timeout)
         # load AccessBridge dll file
         self.bridge = self.load_library(self._bridge_dll)
         self.bridge.Windows_run()
@@ -118,12 +121,9 @@ class JABDriver(Service, ActorScheduler):
         sched = ActorScheduler()
         sched.new_actor("jab", self.setup_msg_pump())
         sched.run()
-        # hwnd, vmid and accessible_context all invalid
-        if not (self.hwnd or (self.vmid and self.accessible_context)):
-            # get Java Window HWND
-            self.hwnd = self.wait_java_window_by_title(
-                title=self.title, timeout=self._timeout
-            )
+        # check if Java Window HWND valid
+        if not self._is_java_window(self.hwnd):
+            raise RuntimeError("HWND is not Java Window, please check!")
         # get vmid and accessible_context by hwnd
         if self.hwnd and not self.vmid:
             self.accessible_context, self.vmid = self._get_accessible_context_from_hwnd(
