@@ -260,8 +260,18 @@ class Win32Utils(object):
                 raise TimeoutError(
                     "no hwnd found by title '{}' in '{}'seconds".format(title, timeout)
                 )
+    
+    def _get_foreground_window(self) -> HWND:
+        return win32gui.GetForegroundWindow()
 
     def _set_window_foreground(self, hwnd: HWND) -> None:
+        if hwnd == self._get_foreground_window():
+            return
+        win32gui.SetForegroundWindow(hwnd)
+        # TODO: need find another way to set lag here, otherwise foreground will return 0
+        time.sleep(0.1)
+        if hwnd == self._get_foreground_window():
+            return
         win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
         win32gui.ShowWindow(hwnd, win32con.SW_SHOW)
         win32gui.SetForegroundWindow(hwnd)
