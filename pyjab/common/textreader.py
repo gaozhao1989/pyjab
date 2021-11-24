@@ -1,8 +1,9 @@
 import encodings
 import locale
 from typing import Optional
+from pyjab.common.singleton import singleton
 
-
+@singleton
 class TextReader(object):
     """Text reader for retrieve text or transfer text in different types."""
 
