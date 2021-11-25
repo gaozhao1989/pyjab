@@ -15,7 +15,7 @@ from pyjab.config import JRE_BRIDGE_DLL
 class Service(Win32Utils):
     def __init__(self) -> None:
         super(Service, self).__init__()
-        self.logger = Logger(self.__class__.__name__)
+        self.logger = Logger("pyjab")
         self.init_bridge()
 
     def enable_bridge(self) -> None:

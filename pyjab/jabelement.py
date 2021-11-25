@@ -1,4 +1,5 @@
 from __future__ import annotations
+from pyjab.common.logger import Logger
 from pyjab.common.textreader import TextReader
 import re
 from ctypes import byref, CDLL, c_long, create_string_buffer
@@ -34,6 +35,7 @@ class JABElement(object):
         vmid: c_long = None,
         accessible_context: JOBJECT64 = None,
     ) -> None:
+        self.logger = Logger("pyjab")
         self._bridge = bridge
         # jab context attributes
         self._hwnd = hwnd

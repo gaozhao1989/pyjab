@@ -27,7 +27,7 @@ from pyjab.common.types import JOBJECT64
 
 class JABFixedFunc(object):
     def __init__(self, bridge: CDLL) -> None:
-        self.log = Logger(self.__class__.__name__)
+        self.log = Logger("pyjab")
         self.bridge = bridge
 
     def _check_error(self, result, func, args):

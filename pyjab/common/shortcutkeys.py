@@ -1,12 +1,10 @@
 from pyjab.common.logger import Logger
 from pyjab.common.win32utils import Win32Utils
-from pyjab.common.singleton import singleton
 
-@singleton
 class ShortcutKeys(object):
     def __init__(self) -> None:
         super().__init__()
-        self.logger = Logger(self.__class__.__name__)
+        self.logger = Logger("pyjab")
         self.win32_utils = Win32Utils()
         self.press_hold_release_key = self.win32_utils._press_hold_release_key
         self.press_key = self.win32_utils._press_key

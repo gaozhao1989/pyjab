@@ -1,13 +1,13 @@
 import re
 from pyjab.common.role import Role
 from pyjab.common.exceptions import XpathParserException
-from pyjab.common.singleton import singleton
+from pyjab.common.logger import Logger
 
 # TODO: this is very simple parser, need refactor in future
-@singleton
 class XpathParser(object):
     def __init__(self) -> None:
         super().__init__()
+        self.logger = Logger("pyjab")
 
     def split_nodes(self, xpath: str) -> list:
         if not xpath.startswith("/"):
