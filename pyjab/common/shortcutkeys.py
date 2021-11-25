@@ -1,7 +1,8 @@
 from pyjab.common.logger import Logger
 from pyjab.common.win32utils import Win32Utils
+from pyjab.common.singleton import singleton
 
-
+@singleton
 class ShortcutKeys(object):
     def __init__(self) -> None:
         super().__init__()

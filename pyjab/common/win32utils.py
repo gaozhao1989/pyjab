@@ -8,9 +8,10 @@ import win32con
 import win32event
 import win32gui
 from pyjab.common.logger import Logger
+from pyjab.common.singleton import singleton
 from pyjab.config import TIMEOUT
 
-
+@singleton
 class Win32Utils(object):
     stop_event = win32event.CreateEvent(None, 0, 0, None)
     other_event = win32event.CreateEvent(None, 0, 0, None)

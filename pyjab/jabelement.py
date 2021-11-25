@@ -272,7 +272,7 @@ class JABElement(object):
             )
             yield child_element
 
-    def release_jabelement(self, jabelement: JABElement) -> None:
+    def release_jabelement(self, jabelement: JABElement = None) -> None:
         """Release the memory used by the Java object object,
         where object is an object returned to you by Java Access Bridge.
         Java Access Bridge automatically maintains a reference
@@ -285,7 +285,10 @@ class JABElement(object):
         Args:
             jabelement (JABElement): The JABElement need to release
         """
-        self.bridge.releaseJavaObject(self.vmid, jabelement.accessible_context)
+        accessible_context = (
+            jabelement.accessible_context if jabelement else self.accessible_context
+        )
+        self.bridge.releaseJavaObject(self.vmid, accessible_context)
 
     def request_focus(self):
         """Request focus for a JABElement."""
