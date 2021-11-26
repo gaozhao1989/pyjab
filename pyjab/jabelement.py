@@ -230,7 +230,7 @@ class JABElement(object):
         self._table = table
 
     # Jab Element actions
-    def _generate_all_childs(self, jabelement: JABElement = None) -> Generator:
+    def _generate_all_childs(self, jabelement: JABElement = None) -> Generator[JABElement]:
         """generate all child jab elements from a jab element.
 
         Args:
