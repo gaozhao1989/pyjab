@@ -3,7 +3,7 @@ from ctypes import byref
 from ctypes import CDLL
 from ctypes import c_long
 from ctypes.wintypes import HWND
-from time import time, sleep
+from time import sleep, time
 from typing import Any, Dict, Tuple, Union
 from PIL import ImageGrab
 from pyjab.accessibleinfo import AccessBridgeVersionInfo
@@ -19,12 +19,11 @@ from pyjab.jabelement import JABElement
 from pyjab.jabfixedfunc import JABFixedFunc
 
 
-class JABDriver(Service, ActorScheduler):
+class JABDriver(Service):
     """Controls a Java application by Java Access Bridge.
 
     Args:
         Service ([type]): Host system to initialize the JAB and load JAB dll file.
-        ActorScheduler ([type]): Set message pump to interacte with windows system.
     """
 
     def __init__(
@@ -48,7 +47,7 @@ class JABDriver(Service, ActorScheduler):
             timeout (int, optional): Default timeout set for JABDriver waitting. Defaults to TIMEOUT.
         """
         super(JABDriver, self).__init__()
-        self.logger = Logger(self.__class__.__name__)
+        self.logger = Logger("pyjab")
         self.latest_log = None
         self._bridge_dll = bridge_dll
         self._timeout = timeout
@@ -60,7 +59,6 @@ class JABDriver(Service, ActorScheduler):
         self._root_element = None
         self.init_jab()
         JABFixedFunc(self._bridge)._fix_bridge_functions()
-        self.xpath_parser = XpathParser()
 
     @property
     def title(self) -> str:
@@ -109,28 +107,31 @@ class JABDriver(Service, ActorScheduler):
     @root_element.setter
     def root_element(self, root_element: JABElement) -> None:
         self._root_element = root_element
+    
+    def _run_actor_sched(self)->None:
+        # invoke generator in message queue
+        sched = ActorScheduler()
+        sched.new_actor("pyjab", self.setup_msg_pump())
+        sched.run()
 
     def init_jab(self) -> None:
         # enum window and find hwnd
-        if not (self.hwnd or (self.vmid and self.accessible_context)):
-            self.hwnd = self.wait_hwnd_by_title(title=self.title, timeout=self._timeout)
+        self.logger.info("init jab")
         # load AccessBridge dll file
         self.bridge = self.load_library(self._bridge_dll)
         self.bridge.Windows_run()
-        # invoke generator in message queue
-        sched = ActorScheduler()
-        sched.new_actor("jab", self.setup_msg_pump())
-        sched.run()
-        # check if Java Window HWND valid
-        if not self._is_java_window(self.hwnd):
-            raise RuntimeError("HWND is not Java Window, please check!")
+        # setup message queue for actor scheduler
+        self._run_actor_sched()
+        # wait java window by title and get hwnd if not specific hwnd and vmid
+        if not (self.hwnd or (self.vmid and self.accessible_context)):
+            self.hwnd = self.wait_java_window_by_title(title=self.title, timeout=self._timeout)
         # get vmid and accessible_context by hwnd
-        if self.hwnd and not self.vmid:
+        if self.hwnd:
             self.accessible_context, self.vmid = self._get_accessible_context_from_hwnd(
                 self.hwnd
             )
         # get hwnd by vmid and accessible_context
-        elif self.vmid and self.accessible_context and not self.hwnd:
+        elif self.vmid and self.accessible_context:
             # must have vmid and accessible_context
             top_level_object = self.bridge.getTopLevelObject(
                 self.vmid, self.accessible_context
@@ -142,14 +143,15 @@ class JABDriver(Service, ActorScheduler):
             raise RuntimeError(
                 "At least hwnd or vmid and accessible_context is required"
             )
+        # check if Java Window HWND valid
+        if not self._is_java_window(self.hwnd):
+            raise RuntimeError(f"HWND:{self.hwnd} is not Java Window, please check!")
         self.root_element = JABElement(
             bridge=self.bridge,
             hwnd=HWND(self.hwnd),
             vmid=c_long(self.vmid),
             accessible_context=self.accessible_context,
         )
-        # TODO:fix JABElement not loading complete
-        sleep(2)
 
     # Gateway funcitons
     def _is_java_window(self, hwnd: HWND) -> bool:
@@ -240,6 +242,7 @@ class JABDriver(Service, ActorScheduler):
                 raise TimeoutError(
                     f"no java window found by title '{title}' in '{timeout}'seconds"
                 )
+            self._run_actor_sched()
 
     # jab driver functions: similar with webdriver
     def find_element_by_name(self, value: str) -> JABElement:
