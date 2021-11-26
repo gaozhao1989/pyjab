@@ -3,7 +3,7 @@ from ctypes import byref
 from ctypes import CDLL
 from ctypes import c_long
 from ctypes.wintypes import HWND
-from time import sleep, time
+from time import time
 from typing import Any, Dict, Tuple, Union
 from PIL import ImageGrab
 from pyjab.accessibleinfo import AccessBridgeVersionInfo
@@ -12,14 +12,14 @@ from pyjab.common.by import By
 from pyjab.common.exceptions import JABException
 from pyjab.common.logger import Logger
 from pyjab.common.service import Service
+from pyjab.common.win32utils import Win32Utils
 from pyjab.common.types import JOBJECT64
-from pyjab.common.xpathparser import XpathParser
 from pyjab.config import TIMEOUT
 from pyjab.jabelement import JABElement
 from pyjab.jabfixedfunc import JABFixedFunc
 
 
-class JABDriver(Service):
+class JABDriver(object):
     """Controls a Java application by Java Access Bridge.
 
     Args:
@@ -47,6 +47,8 @@ class JABDriver(Service):
             timeout (int, optional): Default timeout set for JABDriver waitting. Defaults to TIMEOUT.
         """
         super(JABDriver, self).__init__()
+        self.win32utils = Win32Utils()
+        self.serv = Service()
         self.logger = Logger("pyjab")
         self.latest_log = None
         self._bridge_dll = bridge_dll
@@ -111,14 +113,14 @@ class JABDriver(Service):
     def _run_actor_sched(self)->None:
         # invoke generator in message queue
         sched = ActorScheduler()
-        sched.new_actor("pyjab", self.setup_msg_pump())
+        sched.new_actor("pyjab", self.win32utils.setup_msg_pump())
         sched.run()
 
     def init_jab(self) -> None:
         # enum window and find hwnd
         self.logger.info("init jab")
         # load AccessBridge dll file
-        self.bridge = self.load_library(self._bridge_dll)
+        self.bridge = self.serv.load_library(self._bridge_dll)
         self.bridge.Windows_run()
         # setup message queue for actor scheduler
         self._run_actor_sched()
@@ -210,7 +212,7 @@ class JABDriver(Service):
         Returns:
             Union[HWND, None]: HWND if found Java Window, otherwise return None
         """
-        for hwnd in self.get_hwnds_by_title(title=title):
+        for hwnd in self.win32utils.get_hwnds_by_title(title=title):
             if self._is_java_window(hwnd):
                 return hwnd
 
@@ -409,13 +411,13 @@ class JABDriver(Service):
         """
         Maximizes the current java window that jabdriver is using
         """
-        self._set_window_maximize(hwnd=self.root_element.hwnd.value)
+        self.win32utils._set_window_maximize(hwnd=self.root_element.hwnd.value)
 
     def minimize_window(self):
         """
         Invokes the window manager-specific 'minimize' operation
         """
-        self._set_window_minimize(hwnd=self.root_element.hwnd.value)
+        self.win32utils._set_window_minimize(hwnd=self.root_element.hwnd.value)
 
     def wait_until_element_exist(
         self, by: str = By.NAME, value: Any = None, timeout: int = TIMEOUT
@@ -463,7 +465,7 @@ class JABDriver(Service):
         :Usage:
             driver.get_screenshot_as_base64()
         """
-        self._set_window_foreground(hwnd=self.root_element.hwnd.value)
+        self.win32utils._set_window_foreground(hwnd=self.root_element.hwnd.value)
         self.root_element.set_element_information()
         x = self.root_element.bounds.get("x")
         y = self.root_element.bounds.get("y")
@@ -492,7 +494,7 @@ class JABDriver(Service):
         :Usage:
             driver.set_window_size(800,600)
         """
-        self._set_window_size(
+        self.win32utils._set_window_size(
             hwnd=self.root_element.hwnd.value, width=width, height=height
         )
 
@@ -507,7 +509,7 @@ class JABDriver(Service):
         :Usage:
             driver.set_window_position(0,0)
         """
-        self._set_window_position(hwnd=self.root_element.hwnd.value, left=x, top=y)
+        self.win32utils._set_window_position(hwnd=self.root_element.hwnd.value, left=x, top=y)
 
     def get_window_position(self):
         """
@@ -516,4 +518,4 @@ class JABDriver(Service):
         :Usage:
             driver.get_window_position()
         """
-        return self._get_window_position(hwnd=self.root_element.hwnd.value)
+        return self.win32utils._get_window_position(hwnd=self.root_element.hwnd.value)

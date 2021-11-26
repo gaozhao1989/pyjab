@@ -10,7 +10,7 @@ class ActorScheduler:
     Sample:
     
         sched = ActorScheduler()
-        sched.new_actor("jab", jab.setup_msg_pump())
+        sched.new_actor("jab", win32utils.setup_msg_pump())
         sched.run()
     """
 
