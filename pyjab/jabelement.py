@@ -8,7 +8,6 @@ from typing import Any, Generator
 from PIL import Image, ImageGrab
 from pyjab.common.by import By
 from pyjab.common.exceptions import JABException
-from pyjab.common.shortcutkeys import ShortcutKeys
 from pyjab.common.types import jint, JOBJECT64
 from pyjab.common.win32utils import Win32Utils
 from pyjab.common.xpathparser import XpathParser
@@ -25,7 +24,6 @@ from pyjab.accessibleinfo import (
 class JABElement(object):
     int_func_err_msg = "Java Access Bridge func '{}' error"
     win32_utils = Win32Utils()
-    shortcut_keys = ShortcutKeys()
     xpath_parser = XpathParser()
 
     def __init__(
