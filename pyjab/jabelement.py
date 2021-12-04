@@ -248,7 +248,7 @@ class JABElement(object):
                 yield from self._generate_all_childs(jabelement)
             yield jabelement
 
-    def _generate_childs_from_element(self, jabelement: JABElement = None) -> Generator:
+    def _generate_childs_from_element(self, jabelement: JABElement = None) -> Generator[JABElement]:
         """generate child jab elements from a jab element.
 
         Args:
@@ -433,7 +433,7 @@ class JABElement(object):
         Need improvement for slide to specific position.
 
         Args:
-            to_bottom (bool, optional): S;ode to bottom or not, otherwise slide to top. Defaults to True.
+            to_bottom (bool, optional): Slide to bottom or not, otherwise slide to top. Defaults to True.
             hold (int, optional): Mouse hold time to slide. Default to 2.
 
         Raises:
