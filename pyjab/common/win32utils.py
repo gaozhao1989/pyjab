@@ -11,6 +11,7 @@ from pyjab.common.logger import Logger
 from pyjab.common.singleton import singleton
 from pyjab.config import TIMEOUT
 
+
 @singleton
 class Win32Utils(object):
     stop_event = win32event.CreateEvent(None, 0, 0, None)
@@ -261,7 +262,7 @@ class Win32Utils(object):
                 raise TimeoutError(
                     "no hwnd found by title '{}' in '{}'seconds".format(title, timeout)
                 )
-    
+
     def _get_foreground_window(self) -> HWND:
         return win32gui.GetForegroundWindow()
 
@@ -375,9 +376,9 @@ class Win32Utils(object):
         """Simulate keyboard type for specific text.
 
         Characters will typed one by one.
-        
+
         None-ASCII characters will directly paste to the field(check the security option before).
-        
+
         NOT RECOMMEND use this func for the text field which support auto complete.
 
         Args:

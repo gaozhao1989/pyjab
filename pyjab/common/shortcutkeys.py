@@ -1,6 +1,7 @@
 from pyjab.common.logger import Logger
 from pyjab.common.win32utils import Win32Utils
 
+
 class ShortcutKeys(object):
     def __init__(self) -> None:
         self.logger = Logger("pyjab")

@@ -8,7 +8,7 @@ class ActorScheduler:
     """Message queue for run generator func as thread.
 
     Sample:
-    
+
         sched = ActorScheduler()
         sched.new_actor("jab", win32utils.setup_msg_pump())
         sched.run()

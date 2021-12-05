@@ -11,6 +11,7 @@ from pyjab.config import JAB_BRIDGE_DLL
 from pyjab.config import JDK_BRIDGE_DLL
 from pyjab.config import JRE_BRIDGE_DLL
 
+
 @singleton
 class Service(object):
     def __init__(self) -> None:

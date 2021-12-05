@@ -2,6 +2,7 @@ import encodings
 import locale
 from typing import Optional
 
+
 class TextReader(object):
     """Text reader for retrieve text or transfer text in different types."""
 

@@ -215,12 +215,16 @@ class TestComponents(object):
     def test_scroll_bar(self) -> None:
         # sample from https://docs.oracle.com/javase/tutorialJWS/samples/uiswing/ScrollDemoProject/ScrollDemo.jnlp
         jabdriver = JABDriver("ScrollDemo")
-        scroll_bar_ver = jabdriver.find_element_by_xpath("//scroll bar[@states=contains('vertical')]")
+        scroll_bar_ver = jabdriver.find_element_by_xpath(
+            "//scroll bar[@states=contains('vertical')]"
+        )
         assert scroll_bar_ver
         self.logger.info(scroll_bar_ver.get_element_information())
         scroll_bar_ver.scroll(to_bottom=True)
         scroll_bar_ver.scroll(to_bottom=False)
-        scroll_bar_hor = jabdriver.find_element_by_xpath("//scroll bar[@states=contains('horizontal')]")
+        scroll_bar_hor = jabdriver.find_element_by_xpath(
+            "//scroll bar[@states=contains('horizontal')]"
+        )
         scroll_bar_hor.scroll(to_bottom=True)
         scroll_bar_hor.scroll(to_bottom=False)
 
@@ -238,7 +242,7 @@ class TestComponents(object):
         assert separator
         self.logger.info(separator.get_element_information())
 
-    def test_slider(self)->None:
+    def test_slider(self) -> None:
         # sample from https://docs.oracle.com/javase/tutorialJWS/samples/uiswing/SliderDemoProject/SliderDemo.jnlp
         jabdriver = JABDriver("SliderDemo")
         slider = jabdriver.find_element_by_role("slider")
@@ -247,7 +251,7 @@ class TestComponents(object):
         slider.slide(to_bottom=True)
         slider.slide(to_bottom=False)
 
-    def test_slider2(self)->None:
+    def test_slider2(self) -> None:
         # sample from https://docs.oracle.com/javase/tutorialJWS/samples/uiswing/SliderDemo2Project/SliderDemo2.jnlp
         jabdriver = JABDriver("SliderDemo")
         slider = jabdriver.find_element_by_role("slider")
@@ -255,8 +259,8 @@ class TestComponents(object):
         self.logger.info(slider.get_element_information())
         slider.slide(to_bottom=True)
         slider.slide(to_bottom=False)
-    
-    def test_spinnbox(self)->None:
+
+    def test_spinnbox(self) -> None:
         # sample from https://docs.oracle.com/javase/tutorialJWS/samples/uiswing/SpinnerDemoProject/SpinnerDemo.jnlp
         jabdriver = JABDriver("SpinnerDemo")
         spinner = jabdriver.find_element_by_role("spinbox")
@@ -265,7 +269,9 @@ class TestComponents(object):
         spinner.spin(option="May")
         spinner.set_element_information()
         assert spinner.text == "May\n"
-        spinner_year = jabdriver.find_element_by_xpath("//spinbox[@name=contains('Year')]")
+        spinner_year = jabdriver.find_element_by_xpath(
+            "//spinbox[@name=contains('Year')]"
+        )
         spinner_year.spin(increase=True)
         spinner_year.set_element_information()
         assert spinner_year.text == "2022\n"
@@ -273,29 +279,29 @@ class TestComponents(object):
         spinner_year.set_element_information()
         assert spinner_year.text == "2021\n"
 
-    def test_split_pane(self)->None:
+    def test_split_pane(self) -> None:
         # sample from https://docs.oracle.com/javase/tutorialJWS/samples/uiswing/SplitPaneDemoProject/SplitPaneDemo.jnlp
         jabdriver = JABDriver("SplitPaneDemo")
         split_pane = jabdriver.find_element_by_role("split pane")
         assert split_pane
         self.logger.info(split_pane.get_element_information())
 
-    def test_status_bar(self)->None:
+    def test_status_bar(self) -> None:
         jabdriver = JABDriver("StatusBarDemo")
         status_bar = jabdriver.find_element_by_role("status bar")
         assert status_bar
         self.logger.info(status_bar.get_element_information())
-    
-    def test_table(self)->None:
+
+    def test_table(self) -> None:
         # sample from https://docs.oracle.com/javase/tutorialJWS/samples/uiswing/TableDemoProject/TableDemo.jnlp
         jabdriver = JABDriver("TableDemo")
         table = jabdriver.find_element_by_role("table")
         assert table
         self.logger.info(table.get_element_information())
-        assert table.get_cell(0,0).name == "Kathy"
-        assert table.get_cell(2,2).name == "Knitting"
-    
-    def test_text_area(self)->None:
+        assert table.get_cell(0, 0).name == "Kathy"
+        assert table.get_cell(2, 2).name == "Knitting"
+
+    def test_text_area(self) -> None:
         # sample from https://docs.oracle.com/javase/tutorialJWS/samples/uiswing/TextAreaDemoProject/TextAreaDemo.jnlp
         jabdriver = JABDriver("TextAreaDemo")
         text = jabdriver.find_element_by_role("text")
@@ -313,15 +319,15 @@ class TestComponents(object):
         text.send_text("ashfueiw^&*$^%$测试文本", simulate=True)
         text.set_element_information()
         assert text.text == "ashfueiw^&*$^%$测试文本"
-    
-    def test_tool_bar(self)->None:
+
+    def test_tool_bar(self) -> None:
         # sample from https://docs.oracle.com/javase/tutorialJWS/samples/uiswing/ToolBarDemoProject/ToolBarDemo.jnlp
         jabdriver = JABDriver("ToolBarDemo")
         tool_bar = jabdriver.find_element_by_role("tool bar")
         assert tool_bar
         self.logger.info(tool_bar.get_element_information())
-    
-    def test_tree(self)->None:
+
+    def test_tree(self) -> None:
         # sample from https://docs.oracle.com/javase/tutorialJWS/samples/uiswing/TreeDemoProject/TreeDemo.jnlp
         jabdriver = JABDriver("TreeDemo")
         tree = jabdriver.find_element_by_role("tree")
@@ -330,9 +336,19 @@ class TestComponents(object):
         tree.find_element_by_name("Books for Java Programmers").expand()
         assert tree.find_element_by_name("The Java Developers Almanac")
 
-    def test_viewport(self)->None:
+    def test_viewport(self) -> None:
         # sample from https://docs.oracle.com/javase/tutorialJWS/samples/uiswing/TreeDemoProject/TreeDemo.jnlp
         jabdriver = JABDriver("TreeDemo")
         viewport = jabdriver.find_element_by_role("viewport")
         assert viewport
         self.logger.info(viewport.get_element_information())
+
+    def test_table_edit(self) -> None:
+        # sample from https://docs.oracle.com/javase/tutorialJWS/samples/uiswing/TableFTFEditDemoProject/TableFTFEditDemo.jnlp
+        jabdriver = JABDriver("TableFTFEditDemo")
+        table = jabdriver.find_element_by_role("table")
+        cell = table.get_cell(2, 2, True)
+        assert cell
+        print(cell.get_element_information())
+        cell.request_focus()
+        cell.send_text("i", simulate=True)
