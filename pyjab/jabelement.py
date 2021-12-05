@@ -18,6 +18,7 @@ from pyjab.accessibleinfo import (
     AccessibleTableCellInfo,
     AccessibleTableInfo,
     AccessibleTextInfo,
+    VisibleChildenInfo,
 )
 
 
@@ -228,12 +229,16 @@ class JABElement(object):
         self._table = table
 
     # Jab Element actions
-    def _generate_all_childs(self, jabelement: JABElement = None) -> Generator[JABElement]:
+    def _generate_all_childs(
+        self, jabelement: JABElement = None, visible: bool = False
+    ) -> Generator[JABElement]:
         """generate all child jab elements from a jab element.
 
         Args:
             jabelement (JABElement, optional): The parent jab element to generate child jab elements.
             Defaults to None use current element.
+            visible (bool, optional): The switch for find only visible child jab elements or not.
+            Defaults to False to find all child elements.
 
         Yields:
             Generator: Generator of all child jab elements from this parent jab element.
@@ -243,17 +248,25 @@ class JABElement(object):
             if jabelement
             else JABElement(self.bridge, self.hwnd, self.vmid, self.accessible_context)
         )
-        for jabelement in self._generate_childs_from_element(jabelement):
+        for jabelement in self._generate_childs_from_element(
+            jabelement=jabelement, visible=visible
+        ):
             if jabelement.children_count != 0:
-                yield from self._generate_all_childs(jabelement)
+                yield from self._generate_all_childs(
+                    jabelement=jabelement, visible=visible
+                )
             yield jabelement
 
-    def _generate_childs_from_element(self, jabelement: JABElement = None) -> Generator[JABElement]:
+    def _generate_childs_from_element(
+        self, jabelement: JABElement = None, visible: bool = False
+    ) -> Generator[JABElement]:
         """generate child jab elements from a jab element.
 
         Args:
             jabelement (JABElement, optional): The parent jab element to generate child jab elements.
             Defaults to None use current element.
+            visible (bool, optional): The switch for find only visible child jab elements or not.
+            Defaults to False to find all child elements.
 
         Yields:
             Generator: Generator of child jab elements from this parent jab element.
@@ -263,14 +276,30 @@ class JABElement(object):
             if jabelement
             else JABElement(self.bridge, self.hwnd, self.vmid, self.accessible_context)
         )
-        for index in range(jabelement.children_count):
-            child_acc = jabelement.bridge.getAccessibleChildFromContext(
-                jabelement.vmid, jabelement.accessible_context, index
+        if visible:
+            children_count = jabelement.bridge.getVisibleChildrenCount(
+                jabelement.vmid, jabelement.accessible_context
             )
-            child_element = JABElement(
-                jabelement.bridge, jabelement.hwnd, jabelement.vmid, child_acc
+            info = VisibleChildenInfo()
+            jabelement.bridge.getVisibleChildren(
+                jabelement.vmid, jabelement.accessible_context, 0, byref(info)
             )
-            yield child_element
+            for index in range(children_count):
+                yield JABElement(
+                    jabelement.bridge,
+                    jabelement.hwnd,
+                    jabelement.vmid,
+                    info.children[index],
+                )
+        else:
+            for index in range(jabelement.children_count):
+                child_acc = jabelement.bridge.getAccessibleChildFromContext(
+                    jabelement.vmid, jabelement.accessible_context, index
+                )
+                child_element = JABElement(
+                    jabelement.bridge, jabelement.hwnd, jabelement.vmid, child_acc
+                )
+                yield child_element
 
     def release_jabelement(self, jabelement: JABElement = None) -> None:
         """Release the memory used by the Java object object,
@@ -669,71 +698,89 @@ class JABElement(object):
         self.set_element_information()
         return "editable" in self.states_en_us
 
-    def find_element_by_name(self, value: str) -> JABElement:
+    def find_element_by_name(self, value: str, visible: bool = False) -> JABElement:
         """find child JABElement by name
 
         Args:
             value (str): Locator of JABElement need to find.
+            visible (bool, optional): The switch for find only visible child jab element or not.
+            Defaults to False to find available child element.
 
         Returns:
             JABElement: The JABElement find by locator
         """
-        return self.find_element(by=By.NAME, value=value)
+        return self.find_element(by=By.NAME, value=value, visible=visible)
 
-    def find_element_by_role(self, value: str) -> JABElement:
+    def find_element_by_role(self, value: str, visible: bool = False) -> JABElement:
         """find child JABElement by role
 
         Args:
             value (str): Locator of JABElement need to find.
+            visible (bool, optional): The switch for find only visible child jab element or not.
+            Defaults to False to find available child element.
 
         Returns:
             JABElement: The JABElement find by locator
         """
-        return self.find_element(by=By.ROLE, value=value)
+        return self.find_element(by=By.ROLE, value=value, visible=visible)
 
-    def find_element_by_states(self, value: list) -> JABElement:
+    def find_element_by_states(self, value: list, visible: bool = False) -> JABElement:
         """find child JABElement by states
 
         Args:
             value (list): Locator of JABElement need to find.
+            visible (bool, optional): The switch for find only visible child jab element or not.
+            Defaults to False to find available child element.
 
         Returns:
             JABElement: The JABElement find by locator
         """
-        return self.find_element(by=By.STATES, value=value)
+        return self.find_element(by=By.STATES, value=value, visible=visible)
 
-    def find_element_by_object_depth(self, value: int) -> JABElement:
+    def find_element_by_object_depth(
+        self, value: int, visible: bool = False
+    ) -> JABElement:
         """find child JABElement by object depth
 
         Args:
             value (int): Locator of JABElement need to find.
+            visible (bool, optional): The switch for find only visible child jab element or not.
+            Defaults to False to find available child element.
 
         Returns:
             JABElement: The JABElement find by locator
         """
-        return self.find_element(by=By.OBJECT_DEPTH, value=value)
+        return self.find_element(by=By.OBJECT_DEPTH, value=value, visible=visible)
 
-    def find_element_by_children_count(self, value: int) -> JABElement:
+    def find_element_by_children_count(
+        self, value: int, visible: bool = False
+    ) -> JABElement:
         """find child JABElement by children count
 
         Args:
             value (int): Locator of JABElement need to find.
+            visible (bool, optional): The switch for find only visible child jab element or not.
+            Defaults to False to find available child element.
 
         Returns:
             JABElement: The JABElement find by locator
         """
-        return self.find_element(by=By.CHILDREN_COUNT, value=value)
+        return self.find_element(by=By.CHILDREN_COUNT, value=value, visible=visible)
 
-    def find_element_by_index_in_parent(self, value: int) -> JABElement:
+    def find_element_by_index_in_parent(
+        self, value: int, visible: bool = False
+    ) -> JABElement:
         """find child JABElement by index in parent
 
         Args:
             value (int): Locator of JABElement need to find.
+            visible (bool, optional): The switch for find only visible child jab element or not.
+            Defaults to False to find available child element.
 
         Returns:
             JABElement: The JABElement find by locator
         """
-        return self.find_element(by=By.INDEX_IN_PARENT, value=value)
+        return self.find_element(by=By.INDEX_IN_PARENT, value=value, visible=visible)
 
     def _is_match_attr_name(self, attr_val: str, jabelement: JABElement) -> bool:
         """Return the attribute value is matched or not by name.
@@ -887,14 +934,23 @@ class JABElement(object):
             return jabelement
 
     def _get_element_by_node(
-        self, node: str, level: str = "root", jabelement: JABElement = None
+        self,
+        node: str,
+        level: str = "root",
+        jabelement: JABElement = None,
+        visible: bool = False,
     ) -> JABElement:
-        """Get child JABElement by specific node
+        """Get child JABElement by specific node.
 
         Args:
-            node (str): Node content for every single content in xpath.\n
-            level (str, optional): Level for node, two options: "root" and "child". Defaults to "root".\n
+            node (str): Node content for every single content in xpath.
+
+            level (str, optional): Level for node, two options: "root" and "child". Defaults to "root".
+
             jabelement (JABElement, optional): The parent JABElement. Defaults to None.
+
+            visible (bool, optional): The switch for find only visible child jab element or not.
+            Defaults to False to find available child element.
 
         Raises:
             ValueError: Incorect level set
@@ -914,7 +970,7 @@ class JABElement(object):
         node_attributes = node_info.get("attributes")
         jabelement = self._get_node_element(jabelement)
         child_jabelement = None
-        for _jabelement in dict_gen[level](jabelement):
+        for _jabelement in dict_gen[level](jabelement=jabelement, visible=visible):
             if node_role not in ["*", _jabelement.role_en_us]:
                 self.release_jabelement(_jabelement)
                 continue
@@ -928,11 +984,13 @@ class JABElement(object):
             )
         return child_jabelement
 
-    def find_element_by_xpath(self, value: str) -> JABElement:
+    def find_element_by_xpath(self, value: str, visible: bool = False) -> JABElement:
         """find child JABElement by xpath
 
         Args:
             value (str): Locator of JABElement need to find.
+            visible (bool, optional): The switch for find only visible child jab element or not.
+            Defaults to False to find available child element.
 
         Example:
             find_element_by_xpath("//internal frame/panel")\n
@@ -954,17 +1012,21 @@ class JABElement(object):
         for node in nodes:
             level = "root" if nodes.index(node) == 0 else "child"
             jabelement = self._get_element_by_node(
-                node=node, level=level, jabelement=jabelement
+                node=node, level=level, jabelement=jabelement, visible=visible
             )
         return jabelement
 
-    def find_element(self, by: str = By.NAME, value: Any = None) -> JABElement:
+    def find_element(
+        self, by: str = By.NAME, value: Any = None, visible: bool = False
+    ) -> JABElement:
         """Find an jab element given a By strategy and locator.
 
         Args:
             by (str, optional): By strategy of element need to find. Defaults to By.NAME.
             value (Any, optional): Locator of element need to find.
             Defaults to None will select the first child jab element.
+            visible (bool, optional): The switch for find only visible child jab element or not.
+            Defaults to False to find available child element.
 
         Returns:
             JABElement: The element find by locator
@@ -980,9 +1042,9 @@ class JABElement(object):
         ]:
             raise JABException("incorrect by strategy '{}'".format(by))
         if by == By.XPATH:
-            self.find_element_by_xpath(value)
+            self.find_element_by_xpath(value=value, visible=visible)
         located_element = None
-        for jabelement in self._generate_all_childs():
+        for jabelement in self._generate_all_childs(visible=visible):
             is_matched = (
                 (value is None)
                 or (by == By.NAME and jabelement.name == value)
@@ -1005,81 +1067,114 @@ class JABElement(object):
             )
         return located_element
 
-    def find_elements_by_name(self, value: str) -> list[JABElement]:
+    def find_elements_by_name(
+        self, value: str, visible: bool = False
+    ) -> list[JABElement]:
         """Find list of child JABElement by name
 
         Args:
             value (str): Locator of list JABElement need to find.
+            visible (bool, optional): The switch for find only visible child jab elements or not.
+            Defaults to False to find all child elements.
 
         Returns:
             list[JABElement]: List of JABElement find by locator
         """
-        return self.find_elements(by=By.NAME, value=value)
+        return self.find_elements(by=By.NAME, value=value, visible=visible)
 
-    def find_elements_by_role(self, value: str) -> list[JABElement]:
+    def find_elements_by_role(
+        self, value: str, visible: bool = False
+    ) -> list[JABElement]:
         """Find list of child JABElement by role
 
         Args:
             value (str): Locator of list JABElement need to find.
+            visible (bool, optional): The switch for find only visible child jab elements or not.
+            Defaults to False to find all child elements.
 
         Returns:
             list[JABElement]: List of JABElement find by locator
         """
-        return self.find_elements(by=By.ROLE, value=value)
+        return self.find_elements(by=By.ROLE, value=value, visible=visible)
 
-    def find_elements_by_states(self, value: list) -> list[JABElement]:
+    def find_elements_by_states(
+        self, value: list, visible: bool = False
+    ) -> list[JABElement]:
         """Find list of child JABElement by states
 
         Args:
             value (str): Locator of list JABElement need to find.
+            visible (bool, optional): The switch for find only visible child jab elements or not.
+            Defaults to False to find all child elements.
 
         Returns:
             list[JABElement]: List of JABElement find by locator
         """
-        return self.find_elements(by=By.STATES, value=value)
+        return self.find_elements(by=By.STATES, value=value, visible=visible)
 
-    def find_elements_by_object_depth(self, value: int) -> list[JABElement]:
+    def find_elements_by_object_depth(
+        self, value: int, visible: bool = False
+    ) -> list[JABElement]:
         """Find list of child JABElement by object depth
 
         Args:
             value (str): Locator of list JABElement need to find.
+            visible (bool, optional): The switch for find only visible child jab elements or not.
+            Defaults to False to find all child elements.
 
         Returns:
             list[JABElement]: List of JABElement find by locator
         """
-        return self.find_elements(by=By.OBJECT_DEPTH, value=value)
+        return self.find_elements(by=By.OBJECT_DEPTH, value=value, visible=visible)
 
-    def find_elements_by_children_count(self, value: int) -> list[JABElement]:
+    def find_elements_by_children_count(
+        self, value: int, visible: bool = False
+    ) -> list[JABElement]:
         """Find list of child JABElement by children count
 
         Args:
             value (str): Locator of list JABElement need to find.
+            visible (bool, optional): The switch for find only visible child jab elements or not.
+            Defaults to False to find all child elements.
 
         Returns:
             list[JABElement]: List of JABElement find by locator
         """
-        return self.find_elements(by=By.CHILDREN_COUNT, value=value)
+        return self.find_elements(by=By.CHILDREN_COUNT, value=value, visible=visible)
 
-    def find_elements_by_index_in_parent(self, value: int) -> list[JABElement]:
+    def find_elements_by_index_in_parent(
+        self, value: int, visible: bool = False
+    ) -> list[JABElement]:
         """Find list of child JABElement by index inparent
 
         Args:
             value (str): Locator of list JABElement need to find.
+            visible (bool, optional): The switch for find only visible child jab elements or not.
+            Defaults to False to find all child elements.
 
         Returns:
             list[JABElement]: List of JABElement find by locator
         """
-        return self.find_elements(by=By.INDEX_IN_PARENT, value=value)
+        return self.find_elements(by=By.INDEX_IN_PARENT, value=value, visible=visible)
 
     def _get_elements_by_node(
-        self, node: str, level: str = "root", jabelement: JABElement = None
+        self,
+        node: str,
+        level: str = "root",
+        jabelement: JABElement = None,
+        visible: bool = False,
     ) -> list[JABElement]:
         """Get list of child JABElement by specific node
 
         Args:
-            node (str): Node content for every single content in xpath.\n
-            level (str, optional): Level for node, two options: "root" and "child". Defaults to "root".\n
+            node (str): Node content for every single content in xpath.
+
+            level (str, optional): Level for node, two options: "root" and "child". Defaults to "root".
+
             jabelement (JABElement, optional): The parent JABElement. Defaults to None.
+
+            visible (bool, optional): The switch for find only visible child jab elements or not.
+            Defaults to False to find all child elements.
 
         Raises:
             ValueError: Incorect level set
@@ -1098,7 +1193,7 @@ class JABElement(object):
         node_attributes = node_info.get("attributes")
         jabelement = self._get_node_element(jabelement)
         jabelements = list()
-        for _jabelement in dict_gen[level](jabelement):
+        for _jabelement in dict_gen[level](jabelement=jabelement, visible=visible):
             if node_role not in ["*", _jabelement.role_en_us]:
                 self.release_jabelement(_jabelement)
                 continue
@@ -1108,11 +1203,15 @@ class JABElement(object):
             self.release_jabelement(_jabelement)
         return jabelements
 
-    def find_elements_by_xpath(self, value: str) -> list[JABElement]:
+    def find_elements_by_xpath(
+        self, value: str, visible: bool = False
+    ) -> list[JABElement]:
         """Find list of child JABElement by xpath
 
         Args:
             value (str): Locator of JABElement need to find.
+            visible (bool, optional): The switch for find only visible child jab elements or not.
+            Defaults to False to find all child elements.
 
         Returns:
             list[JABElement]: List of JABElement find by locator
@@ -1124,12 +1223,18 @@ class JABElement(object):
                 yield node, level
 
         def get_child_jabelements(
-            node: str, level: str, parent_jabelements: list[JABElement]
+            node: str,
+            level: str,
+            parent_jabelements: list[JABElement],
+            visible: bool = False,
         ) -> list(JABElement):
             child_jabelements = list()
             for parent_jabelement in parent_jabelements:
                 jabelements = self._get_elements_by_node(
-                    node=node, level=level, jabelement=parent_jabelement
+                    node=node,
+                    level=level,
+                    jabelement=parent_jabelement,
+                    visible=visible,
                 )
                 child_jabelements.extend(jabelements)
             return child_jabelements
@@ -1141,16 +1246,22 @@ class JABElement(object):
         for node, level in generate_node(nodes):
             if not jabelements:
                 raise JABException("no JABElement found")
-            jabelements = get_child_jabelements(node, level, jabelements)
+            jabelements = get_child_jabelements(
+                node=node, level=level, parent_jabelements=jabelements, visible=visible
+            )
         return jabelements
 
-    def find_elements(self, by: str = By.NAME, value: str = None) -> list[JABElement]:
+    def find_elements(
+        self, by: str = By.NAME, value: str = None, visible: bool = False
+    ) -> list[JABElement]:
         """Find list of JABElement given a By strategy and locator.
 
         Args:
             by (str, optional): By strategy of element need to find. Defaults to By.NAME.
             value (Any, optional): Locator of element need to find.
             Defaults to None will select the first child jab element.
+            visible (bool, optional): The switch for find only visible child jab elements or not.
+            Defaults to False to find all child elements.
 
         Returns:
             list: List of JABElement find by locator
@@ -1166,9 +1277,9 @@ class JABElement(object):
         ]:
             raise JABException("incorrect by strategy '{}'".format(by))
         if by == By.XPATH:
-            self.find_elements_by_xpath(value)
+            self.find_elements_by_xpath(value=value, visible=visible)
         jabelements = list()
-        for jabelement in self._generate_all_childs():
+        for jabelement in self._generate_all_childs(visible=visible):
             is_matched = (
                 (value is None)
                 or (by == By.NAME and jabelement.name == value)
@@ -1390,12 +1501,14 @@ class JABElement(object):
                 "column_count": column_count,
             }
 
-    def get_cell(self, row: int, column: int) -> JABElement:
+    def get_cell(self, row: int, column: int, visible: bool = False) -> JABElement:
         """Get cell JABElement from table
 
         Args:
-            row (int): Row index of cell, start from 0
-            column (int): Column index of cell, start from 0
+            row (int): Row index of cell, start from 0.
+            column (int): Column index of cell, start from 0.
+            visible (bool, optional): The switch for find only visible cell element or not.
+            Defaults to False to find available cell element.
 
         Raises:
             JABException: Raise JABException if JAB internal function error
@@ -1413,7 +1526,17 @@ class JABElement(object):
             raise JABException(
                 self.int_func_err_msg.format("getAccessibleTableCellInfo")
             )
-        return JABElement(self.bridge, self.hwnd, self.vmid, info.accessibleContext)
+        index = info.index
+        accessible_context = info.accessibleContext
+        if visible:
+            info = VisibleChildenInfo()
+            result = self.bridge.getVisibleChildren(
+                self.vmid, self.accessible_context, 0, byref(info)
+            )
+            if not result:
+                raise JABException(self.int_func_err_msg.format("getVisibleChildren"))
+            accessible_context = info.children[index]
+        return JABElement(self.bridge, self.hwnd, self.vmid, accessible_context)
 
     def get_element_information(self) -> dict:
         """Get dict information of current JABElement

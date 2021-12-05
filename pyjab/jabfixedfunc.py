@@ -21,6 +21,7 @@ from pyjab.accessibleinfo import AccessibleTextInfo
 from pyjab.accessibleinfo import AccessibleTextItemsInfo
 from pyjab.accessibleinfo import AccessibleTextRectInfo
 from pyjab.accessibleinfo import AccessibleTextSelectionInfo
+from pyjab.accessibleinfo import VisibleChildenInfo
 from pyjab.common.logger import Logger
 from pyjab.common.types import JOBJECT64
 
@@ -316,22 +317,26 @@ class JABFixedFunc(object):
             errorcheck=True,
         )
         self._fix_bridge_function(
-            None,
-            "clearAccessibleSelectionFromContext",
-            c_long,
-            JOBJECT64
+            None, "clearAccessibleSelectionFromContext", c_long, JOBJECT64
         )
         self._fix_bridge_function(
-            None,
-            "addAccessibleSelectionFromContext",
-            c_long,
-            JOBJECT64,
-            c_int
+            None, "addAccessibleSelectionFromContext", c_long, JOBJECT64, c_int
         )
         self._fix_bridge_function(
-            JOBJECT64,
-            "getAccessibleSelectionFromContext",
+            JOBJECT64, "getAccessibleSelectionFromContext", c_long, JOBJECT64, c_int
+        )
+        self._fix_bridge_function(
+            c_int,
+            "getVisibleChildrenCount",
             c_long,
             JOBJECT64,
-            c_int
+        )
+        self._fix_bridge_function(
+            BOOL,
+            "getVisibleChildren",
+            c_long,
+            JOBJECT64,
+            c_int,
+            POINTER(VisibleChildenInfo),
+            errorcheck=True,
         )

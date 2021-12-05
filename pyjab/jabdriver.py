@@ -109,8 +109,8 @@ class JABDriver(object):
     @root_element.setter
     def root_element(self, root_element: JABElement) -> None:
         self._root_element = root_element
-    
-    def _run_actor_sched(self)->None:
+
+    def _run_actor_sched(self) -> None:
         # invoke generator in message queue
         sched = ActorScheduler()
         sched.new_actor("pyjab", self.win32utils.setup_msg_pump())
@@ -126,7 +126,9 @@ class JABDriver(object):
         self._run_actor_sched()
         # wait java window by title and get hwnd if not specific hwnd and vmid
         if not (self.hwnd or (self.vmid and self.accessible_context)):
-            self.hwnd = self.wait_java_window_by_title(title=self.title, timeout=self._timeout)
+            self.hwnd = self.wait_java_window_by_title(
+                title=self.title, timeout=self._timeout
+            )
         # get vmid and accessible_context by hwnd
         if self.hwnd:
             self.accessible_context, self.vmid = self._get_accessible_context_from_hwnd(
@@ -154,6 +156,7 @@ class JABDriver(object):
             vmid=c_long(self.vmid),
             accessible_context=self.accessible_context,
         )
+        self.logger.info("init jab success")
 
     # Gateway funcitons
     def _is_java_window(self, hwnd: HWND) -> bool:
@@ -247,67 +250,83 @@ class JABDriver(object):
             self._run_actor_sched()
 
     # jab driver functions: similar with webdriver
-    def find_element_by_name(self, value: str) -> JABElement:
+    def find_element_by_name(self, value: str, visible: bool = False) -> JABElement:
         """
         Find an JABElement given a name locator.
         """
         if value == self.root_element.name:
             return self.root_element
         else:
-            return self.root_element.find_element_by_name(value)
+            return self.root_element.find_element_by_name(value=value, visible=visible)
 
-    def find_element_by_role(self, value: str) -> JABElement:
+    def find_element_by_role(self, value: str, visible: bool = False) -> JABElement:
         """
         Find an JABElement given a role locator.
         """
         if value == self.root_element.role:
             return self.root_element
         else:
-            return self.root_element.find_element_by_role(value)
+            return self.root_element.find_element_by_role(value=value, visible=visible)
 
-    def find_element_by_states(self, value: str) -> JABElement:
+    def find_element_by_states(self, value: str, visible: bool = False) -> JABElement:
         """
         Find an JABElement given a states locator.
         """
         if value == self.root_element.states:
             return self.root_element
         else:
-            return self.root_element.find_element_by_states(value)
+            return self.root_element.find_element_by_states(
+                value=value, visible=visible
+            )
 
-    def find_element_by_object_depth(self, value: int) -> JABElement:
+    def find_element_by_object_depth(
+        self, value: int, visible: bool = False
+    ) -> JABElement:
         """
         Find an JABElement given a object depth locator.
         """
         if value == self.root_element.object_depth:
             return self.root_element
         else:
-            return self.root_element.find_element_by_object_depth(value)
+            return self.root_element.find_element_by_object_depth(
+                value=value, visible=visible
+            )
 
-    def find_element_by_children_count(self, value: int) -> JABElement:
+    def find_element_by_children_count(
+        self, value: int, visible: bool = False
+    ) -> JABElement:
         """
         Find an JABElement given a children count locator.
         """
         if value == self.root_element.children_count:
             return self.root_element
         else:
-            return self.root_element.find_element_by_children_count(value)
+            return self.root_element.find_element_by_children_count(
+                value=value, visible=visible
+            )
 
-    def find_element_by_index_in_parent(self, value: int) -> JABElement:
+    def find_element_by_index_in_parent(
+        self, value: int, visible: bool = False
+    ) -> JABElement:
         """
         Find an JABElement given a index in parent locator.
         """
         if value == self.root_element.index_in_parent:
             return self.root_element
         else:
-            return self.root_element.find_element_by_index_in_parent(value)
+            return self.root_element.find_element_by_index_in_parent(
+                value=value, visible=visible
+            )
 
-    def find_element_by_xpath(self, value: str) -> JABElement:
+    def find_element_by_xpath(self, value: str, visible: bool = False) -> JABElement:
         """
         Find an JABElement given a index in parent locator.
         """
-        return self.root_element.find_element_by_xpath(value)
+        return self.root_element.find_element_by_xpath(value=value, visible=visible)
 
-    def find_element(self, by: str = By.NAME, value: Any = None) -> JABElement:
+    def find_element(
+        self, by: str = By.NAME, value: Any = None, visible: bool = False
+    ) -> JABElement:
         """
         Find an JABElement given a By strategy and locator.
         """
@@ -322,75 +341,109 @@ class JABDriver(object):
         }
         if by not in dict_find.keys():
             raise JABException("incorrect by strategy '{}'".format(by))
-        return dict_find[by](value)
+        return dict_find[by](value=value, visible=visible)
 
-    def find_elements_by_name(self, value: str) -> list[JABElement]:
+    def find_elements_by_name(
+        self, value: str, visible: bool = False
+    ) -> list[JABElement]:
         """
         Find list of JABElement given a name locator.
         """
         jabelements = list()
         if value == self.root_element.name:
             jabelements.append(self.root_element)
-        jabelements.extend(self.root_element.find_elements_by_name(value))
+        jabelements.extend(
+            self.root_element.find_elements_by_name(value=value, visible=visible)
+        )
         return jabelements
 
-    def find_elements_by_role(self, value: str) -> list[JABElement]:
+    def find_elements_by_role(
+        self, value: str, visible: bool = False
+    ) -> list[JABElement]:
         """
         Find list of JABElement given a role locator.
         """
         jabelements = list()
         if value == self.root_element.role:
             jabelements.append(self.root_element)
-        jabelements.extend(self.root_element.find_elements_by_role(value))
+        jabelements.extend(
+            self.root_element.find_elements_by_role(value=value, visible=visible)
+        )
         return jabelements
 
-    def find_elements_by_states(self, value: str) -> list[JABElement]:
+    def find_elements_by_states(
+        self, value: str, visible: bool = False
+    ) -> list[JABElement]:
         """
         Find list of JABElement given a states locator.
         """
         jabelements = list()
         if value == self.root_element.states:
             jabelements.append(self.root_element)
-        jabelements.extend(self.root_element.find_elements_by_states(value))
+        jabelements.extend(
+            self.root_element.find_elements_by_states(value=value, visible=visible)
+        )
         return jabelements
 
-    def find_elements_by_object_depth(self, value: int) -> list[JABElement]:
+    def find_elements_by_object_depth(
+        self, value: int, visible: bool = False
+    ) -> list[JABElement]:
         """
         Find list of JABElement given a object depth locator.
         """
         jabelements = list()
         if value == self.root_element.object_depth:
             jabelements.append(self.root_element)
-        jabelements.extend(self.root_element.find_elements_by_object_depth(value))
+        jabelements.extend(
+            self.root_element.find_elements_by_object_depth(
+                value=value, visible=visible
+            )
+        )
         return jabelements
 
-    def find_elements_by_children_count(self, value: int) -> list[JABElement]:
+    def find_elements_by_children_count(
+        self, value: int, visible: bool = False
+    ) -> list[JABElement]:
         """
         Find list of JABElement given a children count locator.
         """
         jabelements = list()
         if value == self.root_element.children_count:
             jabelements.append(self.root_element)
-        jabelements.extend(self.root_element.find_elements_by_children_count(value))
+        jabelements.extend(
+            self.root_element.find_elements_by_children_count(
+                value=value, visible=visible
+            )
+        )
         return jabelements
 
-    def find_elements_by_index_in_parent(self, value: int) -> list[JABElement]:
+    def find_elements_by_index_in_parent(
+        self, value: int, visible: bool = False
+    ) -> list[JABElement]:
         """
         Find list of JABElement given a index in parent locator.
         """
         jabelements = list()
         if value == self.root_element.index_in_parent:
             jabelements.append(self.root_element)
-        jabelements.extend(self.root_element.find_elements_by_index_in_parent(value))
+        jabelements.extend(
+            self.root_element.find_elements_by_index_in_parent(
+                value=value, visible=visible
+            )
+        )
         return jabelements
 
-    def find_elements_by_xpath(self, value: str) -> list[JABElement]:
+    def find_elements_by_xpath(
+        self, value: str, visible: bool = False
+    ) -> list[JABElement]:
         """
         Find list of JABElement given a index in parent locator.
         """
-        return self.root_element.find_elements_by_xpath(value)
+        return self.root_element.find_elements_by_xpath(value=value, visible=visible)
 
-    def find_elements(self, by: str = By.NAME, value: str = None) -> list[JABElement]:
+    def find_elements(
+        self, by: str = By.NAME, value: str = None, visible: bool = False
+    ) -> list[JABElement]:
         """
         Find list of JABElement given a By strategy and locator.
         """
@@ -405,7 +458,7 @@ class JABDriver(object):
         }
         if by not in dict_finds.keys():
             raise JABException("incorrect by strategy '{}'".format(by))
-        return dict_finds[by](value)
+        return dict_finds[by](value=value, visible=visible)
 
     def maximize_window(self):
         """
@@ -509,7 +562,9 @@ class JABDriver(object):
         :Usage:
             driver.set_window_position(0,0)
         """
-        self.win32utils._set_window_position(hwnd=self.root_element.hwnd.value, left=x, top=y)
+        self.win32utils._set_window_position(
+            hwnd=self.root_element.hwnd.value, left=x, top=y
+        )
 
     def get_window_position(self):
         """
