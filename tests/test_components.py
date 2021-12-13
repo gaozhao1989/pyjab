@@ -350,5 +350,5 @@ class TestComponents(object):
         cell = table.get_cell(2, 2, True)
         assert cell
         print(cell.get_element_information())
-        cell.request_focus()
+        cell._request_focus()
         cell.send_text("i", simulate=True)
