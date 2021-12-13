@@ -298,12 +298,14 @@ class Win32Utils(object):
         left, top, _, _ = win32gui.GetWindowRect(hwnd)
         return left, top
 
-    def _click_mouse(self, x: int, y: int, hold: int = 0) -> None:
+    def _click_mouse(self, x: int, y: int, hold: int = 0, button: str = "left") -> None:
+        mouse_down_act = win32con.MOUSEEVENTF_LEFTDOWN if button == "left" else win32con.MOUSEEVENTF_RIGHTDOWN
+        mouse_up_act = win32con.MOUSEEVENTF_LEFTUP if button == "left" else win32con.MOUSEEVENTF_RIGHTUP
         win32api.SetCursorPos((x, y))
-        win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, x, y, 0, 0)
+        win32api.mouse_event(mouse_down_act, x, y, 0, 0)
         if hold:
             time.sleep(hold)
-        win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, x, y, 0, 0)
+        win32api.mouse_event(mouse_up_act, x, y, 0, 0)
 
     def _get_clipboard(self) -> str:
         win32clipboard.OpenClipboard()
