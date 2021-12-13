@@ -2,7 +2,7 @@ from __future__ import annotations
 from pyjab.common.logger import Logger
 from pyjab.common.textreader import TextReader
 import re
-from ctypes import byref, CDLL, c_long, create_string_buffer
+from ctypes import Array, byref, CDLL, c_char, c_long, create_string_buffer
 from ctypes.wintypes import HWND
 from typing import Any, Generator
 from PIL import Image, ImageGrab
@@ -277,13 +277,10 @@ class JABElement(object):
             else JABElement(self.bridge, self.hwnd, self.vmid, self.accessible_context)
         )
         if visible:
-            children_count = jabelement.bridge.getVisibleChildrenCount(
-                jabelement.vmid, jabelement.accessible_context
+            children_count = self._get_visible_children_count(
+                jabelement.accessible_context
             )
-            info = VisibleChildenInfo()
-            jabelement.bridge.getVisibleChildren(
-                jabelement.vmid, jabelement.accessible_context, 0, byref(info)
-            )
+            info = self._get_visible_children(jabelement.accessible_context)
             for index in range(children_count):
                 yield JABElement(
                     jabelement.bridge,
@@ -301,6 +298,7 @@ class JABElement(object):
                 )
                 yield child_element
 
+    # JAB apis
     def release_jabelement(self, jabelement: JABElement = None) -> None:
         """Release the memory used by the Java object object,
         where object is an object returned to you by Java Access Bridge.
@@ -319,9 +317,344 @@ class JABElement(object):
         )
         self.bridge.releaseJavaObject(self.vmid, accessible_context)
 
-    def request_focus(self):
-        """Request focus for a JABElement."""
-        self.bridge.requestFocus(self.vmid, self.accessible_context)
+    def _request_focus(self, accessible_context: JOBJECT64 = None) -> None:
+        """Request focus for a component. Returns whether successful."""
+        accessible_context = (
+            accessible_context if accessible_context else self.accessible_context
+        )
+        self.bridge.requestFocus(self.vmid, accessible_context)
+
+    def _get_accessible_selection_from_context(
+        self, accessible_context: JOBJECT64 = None
+    ) -> JOBJECT64:
+        accessible_context = (
+            accessible_context if accessible_context else self.accessible_context
+        )
+        return self.bridge.getAccessibleSelectionFromContext(
+            self.vmid, accessible_context, 0
+        )
+
+    def _add_accessible_selection_from_context(
+        self, index: int, accessible_context: JOBJECT64 = None
+    ) -> None:
+        accessible_context = (
+            accessible_context if accessible_context else self.accessible_context
+        )
+        self.bridge.addAccessibleSelectionFromContext(
+            self.vmid, accessible_context, index
+        )
+
+    def _clear_accessible_selection_from_context(
+        self, accessible_context: JOBJECT64
+    ) -> None:
+        accessible_context = (
+            accessible_context if accessible_context else self.accessible_context
+        )
+        self.bridge.clearAccessibleSelectionFromContext(self.vmid, accessible_context)
+
+    def _is_same_object(self, obj1: JOBJECT64, obj2: JOBJECT64) -> bool:
+        """Returns whether two object references refer to the same object.
+
+        Args:
+            obj1 (JOBJECT64): Object 1.
+            obj2 (JOBJECT64): Object 2.
+
+        Returns:
+            bool: Rerturns whether two object is same or not.
+        """
+        return bool(self.bridge.isSameObject(self.vmid, obj1, obj2))
+
+    def _get_top_level_object(self, accessible_context: JOBJECT64 = None) -> JOBJECT64:
+        """Returns the AccessibleContext for the top level object in a Java window.
+        This is same AccessibleContext that is obtained from GetAccessibleContextFromHWND for that window.
+        Returns (AccessibleContext)0 on error.
+
+        Args:
+            accessible_context (JOBJECT64, optional): Accessible Context. Defaults to None.
+
+        Raises:
+            JABException: Get top level object error.
+
+        Returns:
+            JOBJECT64: Top level object.
+        """
+        accessible_context = (
+            accessible_context if accessible_context else self.accessible_context
+        )
+        top_object = self.bridge.getTopLevelObject(self.vmid, accessible_context)
+        if top_object == 0:
+            raise JABException(self.int_func_err_msg.format("getTopLevelObject"))
+        return top_object
+
+    def _get_accessible_parent_from_context(
+        self, accessible_context: JOBJECT64 = None
+    ) -> JOBJECT64:
+        """Returns an AccessibleContext object that represents the parent of object ac.
+
+        Args:
+            accessible_context (JOBJECT64, optional): Accessible Context. Defaults to None.
+
+        Returns:
+            JOBJECT64: Parent Accessible Context.
+        """
+        accessible_context = (
+            accessible_context if accessible_context else self.accessible_context
+        )
+        return self.bridge.getAccessibleParentFromContext(self.vmid, accessible_context)
+
+    def _get_accessible_context_info(
+        self, accessible_context: JOBJECT64 = None
+    ) -> AccessibleContextInfo:
+        """Retrieves an AccessibleContextInfo object of the AccessibleContext object ac.
+
+        Args:
+            accessible_context (JOBJECT64, optional): Accessible Context. Defaults to None.
+
+        Raises:
+            JABException: Get Accessible Context Info error.
+
+        Returns:
+            AccessibleContextInfo: Accessible Context Info.
+        """
+        info = AccessibleContextInfo()
+        accessible_context = (
+            accessible_context if accessible_context else self.accessible_context
+        )
+        result = self.bridge.getAccessibleContextInfo(
+            self.vmid, accessible_context, byref(info)
+        )
+        if result == 0:
+            raise JABException(self.int_func_err_msg.format("GetAccessibleContextInfo"))
+        return info
+
+    def _get_object_depth(self, accessible_context: JOBJECT64 = None) -> int:
+        """Returns how deep in the object hierarchy a given object is.
+        The top most object in the object hierarchy has an object depth of 0.
+        Returns -1 on error.
+
+        Args:
+            accessible_context (JOBJECT64, optional): Accessible Context. Defaults to None.
+
+        Raises:
+            JABException: Get Object Depth error.
+
+        Returns:
+            int: Object depth.
+        """
+        accessible_context = (
+            accessible_context if accessible_context else self.accessible_context
+        )
+        object_depth = self.bridge.getObjectDepth(self.vmid, accessible_context)
+        if object_depth == -1:
+            raise JABException(self.int_func_err_msg.format("getObjectDepth"))
+        return object_depth
+
+    def _get_accessible_text_info(
+        self, accessible_context: JOBJECT64 = None
+    ) -> AccessibleTextInfo:
+        info = AccessibleTextInfo()
+        accessible_context = (
+            accessible_context if accessible_context else self.accessible_context
+        )
+        result = self.bridge.getAccessibleTextInfo(
+            self.vmid, accessible_context, byref(info), 0, 0
+        )
+        if not result:
+            raise JABException(self.int_func_err_msg.format("getAccessibleTextInfo"))
+        return info
+
+    def _get_accessible_text_range(
+        self,
+        start: int,
+        end: int,
+        text: Array[c_char],
+        length: int,
+        accessible_context: JOBJECT64 = None,
+    ) -> None:
+        accessible_context = (
+            accessible_context if accessible_context else self.accessible_context
+        )
+        result = self.bridge.getAccessibleTextRange(
+            self.vmid, accessible_context, start, end, text, length
+        )
+        if not result:
+            raise JABException(self.int_func_err_msg.format("getAccessibleTextRange"))
+
+    def _get_accessible_table_info(
+        self, accessible_context: JOBJECT64 = None
+    ) -> AccessibleTableInfo:
+        """Returns information about the table, for example, caption, summary,
+        row and column count, and the AccessibleTable.
+
+        Args:
+            accessible_context (JOBJECT64, optional): Accessible Context. Defaults to None.
+
+        Raises:
+            JABException: Get Accessible Table Info error.
+
+        Returns:
+            AccessibleTableInfo: Accessible Table Info.
+        """
+        info = AccessibleTableInfo()
+        accessible_context = (
+            accessible_context if accessible_context else self.accessible_context
+        )
+        result = self.bridge.getAccessibleTableInfo(
+            self.vmid, accessible_context, byref(info)
+        )
+        if result == 0:
+            raise JABException(self.int_func_err_msg.format("getAccessibleTableInfo"))
+        return info
+
+    def _get_accessible_table_row_header(
+        self, accessible_context: JOBJECT64 = None
+    ) -> AccessibleTableInfo:
+        """Returns the table row headers of the specified table as a table.
+
+        Args:
+            accessible_context (JOBJECT64, optional): Accessible Context. Defaults to None.
+
+        Raises:
+            JABException: Get Accessible Table Info error.
+
+        Returns:
+            AccessibleTableInfo: Accessible Table Info.
+        """
+        info = AccessibleTableInfo()
+        accessible_context = (
+            accessible_context if accessible_context else self.accessible_context
+        )
+        result = self.bridge.getAccessibleTableRowHeader(
+            self.vmid, accessible_context, byref(info)
+        )
+        if result == 0:
+            raise JABException(
+                self.int_func_err_msg.format("getAccessibleTableRowHeader")
+            )
+        return info
+
+    def _get_accessible_table_column_header(
+        self, accessible_context: JOBJECT64 = None
+    ) -> AccessibleTableInfo:
+        """Returns the table column headers of the specified table as a table.
+
+        Args:
+            accessible_context (JOBJECT64, optional): Accessible Context. Defaults to None.
+
+        Raises:
+            JABException: Get Accessible Table Info error.
+
+        Returns:
+            AccessibleTableInfo: Accessible Table Info.
+        """
+        info = AccessibleTableInfo()
+        accessible_context = (
+            accessible_context if accessible_context else self.accessible_context
+        )
+        result = self.bridge.getAccessibleTableColumnHeader(
+            self.vmid, accessible_context, byref(info)
+        )
+        if result == 0:
+            raise JABException(
+                self.int_func_err_msg.format("getAccessibleTableColumnHeader")
+            )
+        return info
+
+    def _get_accessible_table_row_selection_count(
+        self, accessible_context: JOBJECT64 = None
+    ) -> int:
+        """Returns how many rows in the table are selected.
+
+        Args:
+            accessible_context (JOBJECT64, optional): Accessible Context. Defaults to None.
+
+        Returns:
+            int: Accessible table row selection count.
+        """
+        accessible_context = (
+            accessible_context if accessible_context else self.accessible_context
+        )
+        return self.bridge.getAccessibleTableRowSelectionCount(
+            self.vmid, accessible_context
+        )
+
+    def _get_accessible_table_column_selection_count(
+        self, accessible_context: JOBJECT64 = None
+    ) -> int:
+        """Returns how many columns in the table are selected.
+
+        Args:
+            accessible_context (JOBJECT64, optional): Accessible Context. Defaults to None.
+
+        Returns:
+            int: Accessible table column selection count.
+        """
+        accessible_context = (
+            accessible_context if accessible_context else self.accessible_context
+        )
+        return self.bridge.getAccessibleTableColumnSelectionCount(
+            self.vmid, accessible_context
+        )
+
+    def _get_accessible_table_cell_info(
+        self, row: int, column: int, accessible_context: JOBJECT64 = None
+    ) -> AccessibleTableCellInfo:
+        """Returns information about the specified table cell. The row and column specifiers are zero-based.
+
+        Args:
+            row (int): Row index in table.
+            column (int): Column index in table.
+            accessible_context (JOBJECT64, optional): Accessible Context. Defaults to None.
+
+        Raises:
+            JABException: Get Accesible Table Cell Info error.
+
+        Returns:
+            AccessibleTableCellInfo: Accessible Table Cell Info.
+        """
+        info = AccessibleTableCellInfo()
+        accessible_context = (
+            accessible_context if accessible_context else self.accessible_context
+        )
+        result = self.bridge.getAccessibleTableCellInfo(
+            self.vmid, accessible_context, row, column, byref(info)
+        )
+        if not result:
+            raise JABException(
+                self.int_func_err_msg.format("getAccessibleTableCellInfo")
+            )
+        return info
+
+    def _get_visible_children_count(self, accessible_context: JOBJECT64 = None) -> int:
+        """Returns the number of visible children of a component. Returns -1 on error.
+
+        Args:
+            accessible_context (JOBJECT64, optional): Accessible Context. Defaults to None.
+
+        Returns:
+            int: [description]
+        """
+        accessible_context = (
+            accessible_context if accessible_context else self.accessible_context
+        )
+        result = self.bridge.getVisibleChildrenCount(self.vmid, accessible_context)
+        if result == -1:
+            raise JABException(self.int_func_err_msg.format("getVisibleChildrenCount"))
+        return result
+
+    def _get_visible_children(
+        self, accessible_context: JOBJECT64 = None
+    ) -> VisibleChildenInfo:
+        info = VisibleChildenInfo()
+        accessible_context = (
+            accessible_context if accessible_context else self.accessible_context
+        )
+        result = self.bridge.getVisibleChildren(
+            self.vmid, accessible_context, 0, byref(info)
+        )
+        if not result:
+            raise JABException(self.int_func_err_msg.format("getVisibleChildren"))
+        return info
 
     def _do_accessible_action(self, action: str = None) -> None:
         """Do Accessible Action with current JABElement.
@@ -409,7 +742,7 @@ class JABElement(object):
         """
         if simulate:
             self.win32_utils._set_window_foreground(hwnd=self.hwnd.value)
-            self.request_focus()
+            self._request_focus()
             if self.text:
                 self.win32_utils._press_key("end")
                 self.win32_utils._press_hold_release_key("ctrl", "shift", "end")
@@ -514,8 +847,8 @@ class JABElement(object):
         Returns:
             JABElement: The selected JABElement
         """
-        selected_acc = self.bridge.getAccessibleSelectionFromContext(
-            self.vmid, self.accessible_context, 0
+        selected_acc = self._get_accessible_selection_from_context(
+            self.accessible_context
         )
         return JABElement(
             bridge=self.bridge,
@@ -531,14 +864,14 @@ class JABElement(object):
             item = parent.find_element_by_name(value=option)
         except JABException:
             raise JABException(f"{parent.role_en_us} option '{option}' does not found")
-        item.bridge.addAccessibleSelectionFromContext(
-            parent.vmid, parent.accessible_context, item.index_in_parent
+        self._add_accessible_selection_from_context(
+            item.index_in_parent, parent.accessible_context
         )
 
     def _select_from_checkbox(self, simulate: bool = False) -> None:
         if self.role_en_us != "check box":
             raise JABException("JABElement is not 'check box'")
-        self.request_focus()
+        self._request_focus()
         if simulate:
             self.win32_utils._set_window_foreground(hwnd=self.hwnd.value)
         self.click(simulate=simulate)
@@ -546,7 +879,7 @@ class JABElement(object):
     def _select_from_combobox(self, option: str, simulate: bool = False) -> None:
         if self.role_en_us != "combo box":
             raise JABException("JABElement is not 'combo box'")
-        self.request_focus()
+        self._request_focus()
         if simulate:
             self.win32_utils._set_window_foreground(hwnd=self.hwnd.value)
             self._do_accessible_action(action="togglepopup")
@@ -555,9 +888,7 @@ class JABElement(object):
             )
             self.win32_utils._press_key("enter")
             return
-        self.bridge.clearAccessibleSelectionFromContext(
-            self.vmid, self.accessible_context
-        )
+        self._clear_accessible_selection_from_context(self.accessible_context)
         self._add_selection_from_accessible_context(parent=self, option=option)
 
     def _select_from_page_tab_list(self, option: str, simulate: bool = False) -> None:
@@ -901,9 +1232,6 @@ class JABElement(object):
         Args:
             jabelement (JABElement, optional): The JABElement. Defaults to None.
 
-        Raises:
-            JABException: internal JAB func getTopLevelObject error
-
         Returns:
             JABElement: Node JABElement
         """
@@ -912,20 +1240,12 @@ class JABElement(object):
             if jabelement
             else JABElement(self.bridge, self.hwnd, self.vmid, self.accessible_context)
         )
-        is_same = bool(
-            self.bridge.isSameObject(
-                self.vmid, self.accessible_context, jabelement.accessible_context
-            )
+        is_same = self._is_same_object(
+            self.accessible_context, jabelement.accessible_context
         )
         if is_same:
-            top_object = self.bridge.getTopLevelObject(
-                self.vmid, self.accessible_context
-            )
-            if top_object == 0:
-                raise JABException(self.int_func_err_msg.format("getTopLevelObject"))
-            is_top_level = bool(
-                self.bridge.isSameObject(self.vmid, self.accessible_context, top_object)
-            )
+            top_object = self._get_top_level_object(self.accessible_context)
+            is_top_level = self._is_same_object(self.accessible_context, top_object)
             if is_top_level:
                 return jabelement
             else:
@@ -1359,9 +1679,7 @@ class JABElement(object):
     def parent(self):
         """Internal reference to the JabDriver instance this element was found from."""
         self.set_element_information()
-        parent_acc = self.bridge.getAccessibleParentFromContext(
-            self.vmid, self.accessible_context
-        )
+        parent_acc = self._get_accessible_parent_from_context()
         return JABElement(
             bridge=self.bridge,
             hwnd=self.hwnd,
@@ -1381,15 +1699,8 @@ class JABElement(object):
             raise JABException(
                 "JABElement attributes should have vmid, hwnd and accessible_context"
             )
-        info = AccessibleContextInfo()
-        result = self.bridge.getAccessibleContextInfo(
-            self.vmid, self.accessible_context, byref(info)
-        )
-        if result == 0:
-            raise JABException(self.int_func_err_msg.format("GetAccessibleContextInfo"))
-        object_depth = self.bridge.getObjectDepth(self.vmid, self.accessible_context)
-        if object_depth == -1:
-            raise JABException(self.int_func_err_msg.format("getObjectDepth"))
+        info = self._get_accessible_context_info()
+        object_depth = self._get_object_depth()
         self.name = info.name
         self.description = info.description
         self.role = info.role
@@ -1420,82 +1731,36 @@ class JABElement(object):
         """
         if not self.accessible_text:
             return
-        info = AccessibleTextInfo()
-        result = self.bridge.getAccessibleTextInfo(
-            self.vmid, self.accessible_context, byref(info), 0, 0
-        )
-        if not result:
-            raise JABException(self.int_func_err_msg.format("getAccessibleTextInfo"))
+        info = self._get_accessible_text_info()
         chars_start = 0
         chars_end = info.charCount - 1
         chars_len = chars_end + 1 - chars_start
         buffer = create_string_buffer((chars_len + 1) * 2)
-        result = self.bridge.getAccessibleTextRange(
-            self.vmid,
-            self.accessible_context,
-            chars_start,
-            chars_end,
-            buffer,
-            chars_len,
-        )
-        if not result:
-            raise JABException(self.int_func_err_msg.format("getAccessibleTextRange"))
+        self._get_accessible_text_range(chars_start, chars_end, buffer, chars_len)
         self.text = TextReader().get_text_from_raw_bytes(
             buffer=buffer, chars_len=chars_len, encoding="utf_16"
         )
 
     def _set_element_table_information(self) -> None:
-        """Get Accessible table information
-
-        Raises:
-            JABException: Raise JABException if
-            getAccessibleTableInfo,
-            getAccessibleTableRowHeader,
-            getAccessibleTableColumnHeader get internal error
-        """
+        """Get Accessible table information."""
         if self.role_en_us == "table":
-            info = AccessibleTableInfo()
-            result = self.bridge.getAccessibleTableInfo(
-                self.vmid, self.accessible_context, byref(info)
-            )
-            if result == 0:
-                raise JABException(
-                    self.int_func_err_msg.format("getAccessibleTableInfo")
-                )
+            info = self._get_accessible_table_info()
             self.table = {
                 "row_count": info.rowCount,
                 "column_count": info.columnCount,
             }
-            info = AccessibleTableInfo()
-            result = self.bridge.getAccessibleTableRowHeader(
-                self.vmid, self.accessible_context, byref(info)
-            )
-            if result == 0:
-                raise JABException(
-                    self.int_func_err_msg.format("getAccessibleTableRowHeader")
-                )
+            info = self._get_accessible_table_row_header()
             self.table["row_headers"] = {
                 "row_count": info.rowCount,
                 "column_count": info.columnCount,
             }
-            info = AccessibleTableInfo()
-            result = self.bridge.getAccessibleTableColumnHeader(
-                self.vmid, self.accessible_context, byref(info)
-            )
-            if result == 0:
-                raise JABException(
-                    self.int_func_err_msg.format("getAccessibleTableColumnHeader")
-                )
+            info = self._get_accessible_table_column_header()
             self.table["column_headers"] = {
                 "row_count": info.rowCount,
                 "column_count": info.columnCount,
             }
-            row_count = self.bridge.getAccessibleTableRowSelectionCount(
-                self.vmid, self.accessible_context
-            )
-            column_count = self.bridge.getAccessibleTableColumnSelectionCount(
-                self.vmid, self.accessible_context
-            )
+            row_count = self._get_accessible_table_row_selection_count()
+            column_count = self._get_accessible_table_column_selection_count()
             self.table["selected"] = {
                 "row_count": row_count,
                 "column_count": column_count,
@@ -1518,23 +1783,11 @@ class JABElement(object):
         """
         if self.role_en_us != "table":
             raise JABException("JABElement is not table, does not support this func")
-        info = AccessibleTableCellInfo()
-        result = self.bridge.getAccessibleTableCellInfo(
-            self.vmid, self.accessible_context, row, column, byref(info)
-        )
-        if not result:
-            raise JABException(
-                self.int_func_err_msg.format("getAccessibleTableCellInfo")
-            )
+        info = self._get_accessible_table_cell_info(row, column)
         index = info.index
         accessible_context = info.accessibleContext
         if visible:
-            info = VisibleChildenInfo()
-            result = self.bridge.getVisibleChildren(
-                self.vmid, self.accessible_context, 0, byref(info)
-            )
-            if not result:
-                raise JABException(self.int_func_err_msg.format("getVisibleChildren"))
+            info = self._get_visible_children()
             accessible_context = info.children[index]
         return JABElement(self.bridge, self.hwnd, self.vmid, accessible_context)
 
