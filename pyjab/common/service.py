@@ -4,7 +4,7 @@ from ctypes import cdll
 from ctypes import CDLL
 
 from pyjab.common.logger import Logger
-from pyjab.common.win32utils import Win32Utils
+from pyjab.common.singleton import singleton
 from pyjab.config import A11Y_PROPS_CONTENT
 from pyjab.config import A11Y_PROPS_PATH
 from pyjab.config import JAB_BRIDGE_DLL
@@ -12,10 +12,10 @@ from pyjab.config import JDK_BRIDGE_DLL
 from pyjab.config import JRE_BRIDGE_DLL
 
 
-class Service(Win32Utils):
+@singleton
+class Service(object):
     def __init__(self) -> None:
-        super(Service, self).__init__()
-        self.logger = Logger(self.__class__.__name__)
+        self.logger = Logger("pyjab")
         self.init_bridge()
 
     def enable_bridge(self) -> None:

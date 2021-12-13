@@ -1,6 +1,8 @@
 import logging
+from pyjab.common.singleton import singleton
 
 
+@singleton
 class Logger(object):
     LOGGER_INFO = logging.INFO
     LOGGER_DEBUG = logging.DEBUG

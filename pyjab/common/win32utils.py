@@ -8,9 +8,11 @@ import win32con
 import win32event
 import win32gui
 from pyjab.common.logger import Logger
+from pyjab.common.singleton import singleton
 from pyjab.config import TIMEOUT
 
 
+@singleton
 class Win32Utils(object):
     stop_event = win32event.CreateEvent(None, 0, 0, None)
     other_event = win32event.CreateEvent(None, 0, 0, None)
@@ -163,7 +165,7 @@ class Win32Utils(object):
     }
 
     def __init__(self) -> None:
-        self.logger = Logger(self.__class__.__name__)
+        self.logger = Logger("pyjab")
 
     def setup_msg_pump(self) -> Generator:
         waitables = self.stop_event, self.other_event
@@ -261,7 +263,17 @@ class Win32Utils(object):
                     "no hwnd found by title '{}' in '{}'seconds".format(title, timeout)
                 )
 
+    def _get_foreground_window(self) -> HWND:
+        return win32gui.GetForegroundWindow()
+
     def _set_window_foreground(self, hwnd: HWND) -> None:
+        if hwnd == self._get_foreground_window():
+            return
+        win32gui.SetForegroundWindow(hwnd)
+        # TODO: need find another way to set lag here, otherwise foreground will return 0
+        time.sleep(0.1)
+        if hwnd == self._get_foreground_window():
+            return
         win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
         win32gui.ShowWindow(hwnd, win32con.SW_SHOW)
         win32gui.SetForegroundWindow(hwnd)
@@ -286,12 +298,14 @@ class Win32Utils(object):
         left, top, _, _ = win32gui.GetWindowRect(hwnd)
         return left, top
 
-    def _click_mouse(self, x: int, y: int, hold: int = 0) -> None:
+    def _click_mouse(self, x: int, y: int, hold: int = 0, button: str = "left") -> None:
+        mouse_down_act = win32con.MOUSEEVENTF_LEFTDOWN if button == "left" else win32con.MOUSEEVENTF_RIGHTDOWN
+        mouse_up_act = win32con.MOUSEEVENTF_LEFTUP if button == "left" else win32con.MOUSEEVENTF_RIGHTUP
         win32api.SetCursorPos((x, y))
-        win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, x, y, 0, 0)
+        win32api.mouse_event(mouse_down_act, x, y, 0, 0)
         if hold:
             time.sleep(hold)
-        win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, x, y, 0, 0)
+        win32api.mouse_event(mouse_up_act, x, y, 0, 0)
 
     def _get_clipboard(self) -> str:
         win32clipboard.OpenClipboard()
@@ -364,9 +378,9 @@ class Win32Utils(object):
         """Simulate keyboard type for specific text.
 
         Characters will typed one by one.
-        
+
         None-ASCII characters will directly paste to the field(check the security option before).
-        
+
         NOT RECOMMEND use this func for the text field which support auto complete.
 
         Args:

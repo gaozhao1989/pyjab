@@ -8,6 +8,7 @@ from ctypes.wintypes import WCHAR
 from pyjab.common.types import JOBJECT64
 from pyjab.config import (
     MAX_STRING_SIZE,
+    MAX_VISIBLE_CHILDREN,
     SHORT_STRING_SIZE,
     MAX_KEY_BINDINGS,
     MAX_RELATION_TARGETS,
@@ -172,4 +173,11 @@ class AccessibleKeyBindings(Structure):
     _fields_ = [
         ("keyBindingsCount", c_int),
         ("keyBindingInfo", AccessibleKeyBindingInfo * MAX_KEY_BINDINGS),
+    ]
+
+
+class VisibleChildenInfo(Structure):
+    _fields_ = [
+        ("returnedChildrenCount", c_int),
+        ("children", JOBJECT64 * MAX_VISIBLE_CHILDREN),
     ]

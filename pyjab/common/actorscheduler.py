@@ -1,21 +1,23 @@
 from collections import deque
 from pyjab.common.logger import Logger
+from pyjab.common.singleton import singleton
 
 
+@singleton
 class ActorScheduler:
     """Message queue for run generator func as thread.
 
     Sample:
-    
+
         sched = ActorScheduler()
-        sched.new_actor("jab", jab.setup_msg_pump())
+        sched.new_actor("jab", win32utils.setup_msg_pump())
         sched.run()
     """
 
     def __init__(self):
         self.actors = {}  # Mapping of names to actors
         self.msg_queue = deque()  # Message queue
-        self.logger = Logger(self.__class__.__name__)
+        self.logger = Logger("pyjab")
 
     def new_actor(self, name, actor):
         """
