@@ -40,25 +40,7 @@ class JABElement(object):
         self._hwnd = hwnd
         self._vmid = vmid
         self._accessible_context = accessible_context
-        # infor attributes
-        self._name = None
-        self._description = None
-        self._role = None
-        self._role_en_us = None
-        self._states = None
-        self._states_en_us = None
-        self._object_depth = 0
-        self._index_in_parent = 0
-        self._children_count = 0
-        self._bounds = dict(x=0, y=0, width=0, height=0)
-        self._accessible_component = False
-        self._accessible_action = False
-        self._accessible_selection = False
-        self._accessible_text = False
-        self._accessible_interfaces = False
-        self._text = None
-        self._table = None
-        self.set_element_information()
+        self._acc_info = self._get_accessible_context_info()
 
     @property
     def bridge(self) -> CDLL:
@@ -94,139 +76,113 @@ class JABElement(object):
 
     @property
     def name(self) -> str:
-        return self._name
-
-    @name.setter
-    def name(self, name: str) -> None:
-        self._name = name
+        return self._acc_info.name
 
     @property
     def description(self) -> str:
-        return self._description
-
-    @description.setter
-    def description(self, description: str) -> None:
-        self._description = description
+        return self._acc_info.description
 
     @property
     def role(self) -> str:
-        return self._role
-
-    @role.setter
-    def role(self, role: str) -> None:
-        self._role = role
+        return self._acc_info.role
 
     @property
     def role_en_us(self) -> str:
-        return self._role_en_us
-
-    @role_en_us.setter
-    def role_en_us(self, role_en_us: str) -> None:
-        self._role_en_us = role_en_us
+        return self._acc_info.role_en_US
 
     @property
     def states(self) -> str:
-        return self._states
-
-    @states.setter
-    def states(self, states: str) -> None:
-        self._states = states
+        return self._acc_info.states.split(",")
 
     @property
     def states_en_us(self) -> str:
-        return self._states_en_us
-
-    @states_en_us.setter
-    def states_en_us(self, states_en_us: str) -> None:
-        self._states_en_us = states_en_us
+        return self._acc_info.states_en_US.split(",")
 
     @property
     def object_depth(self) -> int:
-        return self._object_depth
-
-    @object_depth.setter
-    def object_depth(self, object_depth: int) -> None:
-        self._object_depth = object_depth
+        return self._get_object_depth()
 
     @property
     def index_in_parent(self) -> int:
-        return self._index_in_parent
-
-    @index_in_parent.setter
-    def index_in_parent(self, index_in_parent: int) -> None:
-        self._index_in_parent = index_in_parent
+        return self._acc_info.indexInParent
 
     @property
     def children_count(self) -> int:
-        return self._children_count
-
-    @children_count.setter
-    def children_count(self, children_count: int) -> None:
-        self._children_count = children_count
+        return self._acc_info.childrenCount
 
     @property
     def bounds(self) -> dict:
-        return self._bounds
-
-    @bounds.setter
-    def bounds(self, bounds: dict) -> None:
-        self._bounds = bounds
+        return {
+            "x": self._acc_info.x,
+            "y": self._acc_info.y,
+            "height": self._acc_info.height,
+            "width": self._acc_info.width,
+        }
 
     @property
     def accessible_component(self) -> bool:
-        return self._accessible_component
-
-    @accessible_component.setter
-    def accessible_component(self, accessible_component: bool) -> None:
-        self._accessible_component = accessible_component
+        return bool(self._acc_info.accessibleComponent)
 
     @property
     def accessible_action(self) -> bool:
-        return self._accessible_action
-
-    @accessible_action.setter
-    def accessible_action(self, accessible_action: bool) -> None:
-        self._accessible_action = accessible_action
+        return bool(self._acc_info.accessibleAction)
 
     @property
     def accessible_selection(self) -> bool:
-        return self._accessible_selection
-
-    @accessible_selection.setter
-    def accessible_selection(self, accessible_selection: bool) -> None:
-        self._accessible_selection = accessible_selection
+        return bool(self._acc_info.accessibleSelection)
 
     @property
     def accessible_text(self) -> bool:
-        return self._accessible_text
-
-    @accessible_text.setter
-    def accessible_text(self, accessible_text: bool) -> None:
-        self._accessible_text = accessible_text
+        return bool(self._acc_info.accessibleText)
 
     @property
     def accessible_interfaces(self) -> bool:
-        return self._accessible_interfaces
-
-    @accessible_interfaces.setter
-    def accessible_interfaces(self, accessible_interfaces: bool) -> None:
-        self._accessible_interfaces = accessible_interfaces
+        # TODO: need handle acc iterface
+        return False
 
     @property
     def text(self) -> str:
-        return self._text
-
-    @text.setter
-    def text(self, text: str) -> None:
-        self._text = text
+        if self.accessible_text:
+            txt_info = self._get_accessible_text_info()
+            chars_start = 0
+            chars_end = txt_info.charCount - 1
+            chars_len = chars_end + 1 - chars_start
+            buffer = create_string_buffer((chars_len + 1) * 2)
+            self._get_accessible_text_range(chars_start, chars_end, buffer, chars_len)
+            return TextReader().get_text_from_raw_bytes(
+                buffer=buffer, chars_len=chars_len, encoding="utf_16"
+            )
+        else:
+            self.logger.warning("current JABElement does not suuport Accessible Text")
 
     @property
     def table(self) -> dict:
-        return self._table
-
-    @table.setter
-    def table(self, table: dict) -> None:
-        self._table = table
+        if self.role_en_us == "table":
+            tb = {}
+            info = self._get_accessible_table_info()
+            tb = {
+                "row_count": info.rowCount,
+                "column_count": info.columnCount,
+            }
+            info = self._get_accessible_table_row_header()
+            tb["row_headers"] = {
+                "row_count": info.rowCount,
+                "column_count": info.columnCount,
+            }
+            info = self._get_accessible_table_column_header()
+            tb["column_headers"] = {
+                "row_count": info.rowCount,
+                "column_count": info.columnCount,
+            }
+            row_count = self._get_accessible_table_row_selection_count()
+            column_count = self._get_accessible_table_column_selection_count()
+            tb["selected"] = {
+                "row_count": row_count,
+                "column_count": column_count,
+            }
+            return tb
+        else:
+            self.logger.warning("current JABElement does not Accessible Table")
 
     # Jab Element actions
     def _generate_all_childs(
@@ -712,7 +668,6 @@ class JABElement(object):
         """
         if simulate:
             self.win32_utils._set_window_foreground(hwnd=self.hwnd.value)
-            self.set_element_information()
             x = self.bounds.get("x")
             y = self.bounds.get("y")
             width = self.bounds.get("width")
@@ -1001,32 +956,26 @@ class JABElement(object):
 
         Can be used to check if a checkbox or radio button is checked.
         """
-        self.set_element_information()
         return "checked" in self.states_en_us
 
     def is_enabled(self) -> bool:
         """Returns whether the JABElement is enabled."""
-        self.set_element_information()
         return "enabled" in self.states_en_us
 
     def is_visible(self) -> bool:
         """Returns whether the JABElement is visible."""
-        self.set_element_information()
         return "visible" in self.states_en_us
 
     def is_showing(self) -> bool:
         """Returns whether the JABElement is showing."""
-        self.set_element_information()
         return "showing" in self.states_en_us
 
     def is_selected(self) -> bool:
         """Returns whether the JABElement is selected."""
-        self.set_element_information()
         return "selected" in self.states_en_us
 
     def is_editable(self) -> bool:
         """Returns whether the JABElement is editable."""
-        self.set_element_information()
         return "editable" in self.states_en_us
 
     def find_element_by_name(self, value: str, visible: bool = False) -> JABElement:
@@ -1625,13 +1574,11 @@ class JABElement(object):
     @property
     def size(self) -> dict:
         """The size of the element."""
-        self.set_element_information()
         return dict(height=self.bounds.get("height"), width=self.bounds.get("width"))
 
     @property
     def location(self) -> dict:
         """The location of the element in the renderable canvas."""
-        self.set_element_information()
         return dict(x=self.bounds.get("x"), y=self.bounds.get("y"))
 
     def get_screenshot_as_file(self, filename: str) -> None:
@@ -1658,7 +1605,6 @@ class JABElement(object):
             img = element.get_screenshot()
         """
         self.win32_utils._set_window_foreground(hwnd=self.hwnd.value)
-        self.set_element_information()
         x = self.bounds.get("x")
         y = self.bounds.get("y")
         width = self.bounds.get("width")
@@ -1678,7 +1624,6 @@ class JABElement(object):
     @property
     def parent(self):
         """Internal reference to the JabDriver instance this element was found from."""
-        self.set_element_information()
         parent_acc = self._get_accessible_parent_from_context()
         return JABElement(
             bridge=self.bridge,
@@ -1686,85 +1631,6 @@ class JABElement(object):
             vmid=self.vmid,
             accessible_context=parent_acc,
         )
-
-    def set_element_information(self) -> None:
-        """Set JABElement information(attributes) from internal jab funcs
-
-        Raises:
-            JABException: None value of vmid, hwnd or accessible_context
-            JABException: Get Accessible Context Info error(internal jab func error)
-            JABException: Get Object Depth error(internal jab func error)
-        """
-        if not any([self.vmid, self.hwnd, self.accessible_context]):
-            raise JABException(
-                "JABElement attributes should have vmid, hwnd and accessible_context"
-            )
-        info = self._get_accessible_context_info()
-        object_depth = self._get_object_depth()
-        self.name = info.name
-        self.description = info.description
-        self.role = info.role
-        self.role_en_us = info.role_en_US
-        self.states = info.states.split(",")
-        self.states_en_us = info.states_en_US.split(",")
-        self.bounds = dict(
-            x=info.x,
-            y=info.y,
-            height=info.height,
-            width=info.width,
-        )
-        self.object_depth = object_depth
-        self.index_in_parent = info.indexInParent
-        self.children_count = info.childrenCount
-        self.accessible_component = bool(info.accessibleComponent)
-        self.accessible_action = bool(info.accessibleAction)
-        self.accessible_selection = bool(info.accessibleSelection)
-        self.accessible_text = bool(info.accessibleText)
-        self._set_element_text_information()
-        self._set_element_table_information()
-
-    def _set_element_text_information(self) -> None:
-        """Set attribute text if element has accessible text
-
-        Raises:
-            JABException: Raise JABException if getAccessibleTextItems get internal error
-        """
-        if not self.accessible_text:
-            return
-        info = self._get_accessible_text_info()
-        chars_start = 0
-        chars_end = info.charCount - 1
-        chars_len = chars_end + 1 - chars_start
-        buffer = create_string_buffer((chars_len + 1) * 2)
-        self._get_accessible_text_range(chars_start, chars_end, buffer, chars_len)
-        self.text = TextReader().get_text_from_raw_bytes(
-            buffer=buffer, chars_len=chars_len, encoding="utf_16"
-        )
-
-    def _set_element_table_information(self) -> None:
-        """Get Accessible table information."""
-        if self.role_en_us == "table":
-            info = self._get_accessible_table_info()
-            self.table = {
-                "row_count": info.rowCount,
-                "column_count": info.columnCount,
-            }
-            info = self._get_accessible_table_row_header()
-            self.table["row_headers"] = {
-                "row_count": info.rowCount,
-                "column_count": info.columnCount,
-            }
-            info = self._get_accessible_table_column_header()
-            self.table["column_headers"] = {
-                "row_count": info.rowCount,
-                "column_count": info.columnCount,
-            }
-            row_count = self._get_accessible_table_row_selection_count()
-            column_count = self._get_accessible_table_column_selection_count()
-            self.table["selected"] = {
-                "row_count": row_count,
-                "column_count": column_count,
-            }
 
     def get_cell(self, row: int, column: int, visible: bool = False) -> JABElement:
         """Get cell JABElement from table
@@ -1792,26 +1658,32 @@ class JABElement(object):
         return JABElement(self.bridge, self.hwnd, self.vmid, accessible_context)
 
     def get_element_information(self) -> dict:
-        """Get dict information of current JABElement
+        """Get dict information of current JABElement.
+        
+        Notice:
+            This dict of component value will NOT update after property changes.
 
         Returns:
             dict: Dict information of current JABElement
         """
-        return dict(
-            name=self.name,
-            description=self.description,
-            role=self.role,
-            role_en_us=self.role_en_us,
-            states=self.states,
-            states_en_us=self.states_en_us,
-            bounds=self.bounds,
-            object_depth=self.object_depth,
-            index_in_parent=self.index_in_parent,
-            children_count=self.children_count,
-            accessible_component=self.accessible_component,
-            accessible_action=self.accessible_action,
-            accessible_selection=self.accessible_selection,
-            accessible_text=self.accessible_text,
-            text=self.text,
-            table=self.table,
-        )
+        info = {
+            "name": self.name,
+            "description": self.description,
+            "role": self.role,
+            "role_en_us": self.role_en_us,
+            "states": self.states,
+            "states_en_us": self.states_en_us,
+            "bounds": self.bounds,
+            "object_depth": self.object_depth,
+            "index_in_parent": self.index_in_parent,
+            "children_count": self.children_count,
+            "accessible_component": self.accessible_component,
+            "accessible_action": self.accessible_action,
+            "accessible_selection": self.accessible_selection,
+            "accessible_text": self.accessible_text,
+        }
+        if self.accessible_text:
+            info["text"] = self.text
+        if self.role_en_us == "table":
+            info["table"] = self.table
+        return info

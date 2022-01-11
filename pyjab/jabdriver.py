@@ -519,11 +519,11 @@ class JABDriver(object):
             driver.get_screenshot_as_base64()
         """
         self.win32utils._set_window_foreground(hwnd=self.root_element.hwnd.value)
-        self.root_element.set_element_information()
-        x = self.root_element.bounds.get("x")
-        y = self.root_element.bounds.get("y")
-        width = self.root_element.bounds.get("width")
-        height = self.root_element.bounds.get("height")
+        bounds = self.root_element.bounds
+        x = bounds.get("x")
+        y = bounds.get("y")
+        width = bounds.get("width")
+        height = bounds.get("height")
         im = ImageGrab.grab(
             bbox=(
                 x,
