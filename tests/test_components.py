@@ -156,9 +156,7 @@ class TestComponents(object):
         assert password
         self.logger.info(password.get_element_information())
         password.send_text("test password")
-        password.set_element_information()
         assert password.text != "test password"
-        password.set_element_information()
         password.send_text("test password2", simulate=True)
         assert password.text != "test password2"
 
@@ -188,7 +186,6 @@ class TestComponents(object):
         assert middle_button.is_enabled() == False
         right_button = jabdriver.find_element_by_name("Enable middle button")
         right_button.click(simulate=True)
-        middle_button.set_element_information()
         assert middle_button.is_enabled() == True
 
     def test_radio_button(self) -> None:
@@ -198,11 +195,9 @@ class TestComponents(object):
         assert cat
         self.logger.info(cat.get_element_information())
         cat.click()
-        cat.set_element_information()
         assert cat.is_checked() == True
         dog = jabdriver.find_element_by_name("Dog")
         dog.click(simulate=True)
-        dog.set_element_information()
         assert dog.is_checked() == True
 
     def test_root_pane(self) -> None:
@@ -267,16 +262,13 @@ class TestComponents(object):
         assert spinner
         self.logger.info(spinner.get_element_information())
         spinner.spin(option="May")
-        spinner.set_element_information()
         assert spinner.text == "May\n"
         spinner_year = jabdriver.find_element_by_xpath(
             "//spinbox[@name=contains('Year')]"
         )
         spinner_year.spin(increase=True)
-        spinner_year.set_element_information()
         assert spinner_year.text == "2022\n"
         spinner_year.spin(increase=False, simulate=True)
-        spinner_year.set_element_information()
         assert spinner_year.text == "2021\n"
 
     def test_split_pane(self) -> None:
@@ -306,19 +298,17 @@ class TestComponents(object):
         jabdriver = JABDriver("TextAreaDemo")
         text = jabdriver.find_element_by_role("text")
         assert text
-        self.logger.info(text.get_element_information())
+        text.clear()
+        self.logger.info("clear text")
         text.send_text(1122233455)
-        text.set_element_information()
         assert text.text == "1122233455"
-        text.send_text("ashfueiw^&*$^%$测试文本")
-        text.set_element_information()
-        assert text.text == "ashfueiw^&*$^%$测试文本"
+        txt_chars = "ashfueiw^&*$^%$测试文本"
+        text.send_text(txt_chars)
+        assert text.text == txt_chars
         text.send_text(1122233455, simulate=True)
-        text.set_element_information()
         assert text.text == "1122233455"
-        text.send_text("ashfueiw^&*$^%$测试文本", simulate=True)
-        text.set_element_information()
-        assert text.text == "ashfueiw^&*$^%$测试文本"
+        text.send_text(txt_chars, simulate=True)
+        assert text.text == txt_chars
 
     def test_tool_bar(self) -> None:
         # sample from https://docs.oracle.com/javase/tutorialJWS/samples/uiswing/ToolBarDemoProject/ToolBarDemo.jnlp
@@ -349,6 +339,45 @@ class TestComponents(object):
         table = jabdriver.find_element_by_role("table")
         cell = table.get_cell(2, 2, True)
         assert cell
-        print(cell.get_element_information())
+        self.logger.info(cell.name)
         cell._request_focus()
         cell.send_text("i", simulate=True)
+        self.logger.info(cell.name)
+
+    def test_component_info(self)->None:
+        # sample from java control panel
+        driver = JABDriver("Java Control Panel")
+        btn_about = driver.find_element_by_name("About...")
+        btn_view = driver.find_element_by_name("View...")
+        self.logger.info(btn_about.name)
+        self.logger.info(btn_view.name)
+        self.logger.info(btn_about.description)
+        self.logger.info(btn_view.description)
+        self.logger.info(btn_about.role)
+        self.logger.info(btn_view.role)
+        self.logger.info(btn_about.role_en_us)
+        self.logger.info(btn_view.role_en_us)
+        self.logger.info(btn_about.states)
+        self.logger.info(btn_view.states)
+        self.logger.info(btn_about.states_en_us)
+        self.logger.info(btn_view.states_en_us)
+        self.logger.info(btn_about.bounds)
+        self.logger.info(btn_view.bounds)
+        self.logger.info(btn_about.object_depth)
+        self.logger.info(btn_view.object_depth)
+        self.logger.info(btn_about.index_in_parent)
+        self.logger.info(btn_view.index_in_parent)
+        self.logger.info(btn_about.children_count)
+        self.logger.info(btn_view.children_count)
+        self.logger.info(btn_about.accessible_component)
+        self.logger.info(btn_view.accessible_component)
+        self.logger.info(btn_about.accessible_action)
+        self.logger.info(btn_view.accessible_action)
+        self.logger.info(btn_about.accessible_selection)
+        self.logger.info(btn_view.accessible_selection)
+        self.logger.info(btn_about.accessible_text)
+        self.logger.info(btn_view.accessible_text)
+        self.logger.info(btn_about.text)
+        self.logger.info(btn_view.text)
+        self.logger.info(btn_about.table)
+        self.logger.info(btn_view.table)
