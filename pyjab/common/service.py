@@ -2,6 +2,7 @@ import os
 import struct
 from ctypes import cdll
 from ctypes import CDLL
+from pathlib import Path
 
 from pyjab.common.logger import Logger
 from pyjab.common.singleton import singleton
@@ -26,20 +27,22 @@ class Service(object):
             except (OSError, IOError):
                 self.logger.error("enable bridge is failed")
 
-    def is_bridge_enable(self) -> bool:
+    def is_bridge_enabled(self) -> bool:
+        if not Path(A11Y_PROPS_PATH).is_file():
+            return False
         with open(A11Y_PROPS_PATH, "rt") as fp:
             try:
                 data = fp.read()
             except (OSError, IOError):
                 self.logger.error("bridge is not enable")
                 return False
-        is_enable = data == A11Y_PROPS_CONTENT
-        self.logger.debug("is bridge enable => '{}'".format(is_enable))
-        return is_enable
+        is_enabled = data == A11Y_PROPS_CONTENT
+        self.logger.debug("is bridge enabled => '{}'".format(is_enabled))
+        return is_enabled
 
     def init_bridge(self) -> None:
         self.logger.debug("init bridge")
-        if not self.is_bridge_enable():
+        if not self.is_bridge_enabled():
             self.enable_bridge()
 
     def load_library(self, bridge_dll: str = "") -> CDLL:
@@ -53,9 +56,8 @@ class Service(object):
         ]:
             if os.path.isfile(dll):
                 return cdll.LoadLibrary(dll)
-        else:
-            raise FileNotFoundError(
-                "WindowsAccessBridge dll not found, "
-                "please set correct path for environment variable, "
-                "or check the passed customized WindowsAccessBridge dll."
-            )
+        raise FileNotFoundError(
+            "WindowsAccessBridge dll not found, "
+            "please set correct path for environment variable, "
+            "or check the passed customized WindowsAccessBridge dll."
+        )
