@@ -10,6 +10,7 @@ class By(object):
 
     XPATH = "xpath"
     NAME = "name"
+    DESCRIPTION = "description"
     ROLE = "role"
     STATES = "states"
     OBJECT_DEPTH = "object_depth"
