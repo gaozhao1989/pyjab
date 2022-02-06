@@ -1004,7 +1004,7 @@ class JABElement(object):
         Returns:
             JABElement: The JABElement find by locator
         """
-        return self.find_element(by=By.DESCRITPION, value=value, visible=visible)
+        return self.find_element(by=By.DESCRIPTION, value=value, visible=visible)
 
     def find_element_by_role(self, value: str, visible: bool = False) -> JABElement:
         """find child JABElement by role
