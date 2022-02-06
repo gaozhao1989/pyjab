@@ -259,6 +259,15 @@ class JABDriver(object):
         else:
             return self.root_element.find_element_by_name(value=value, visible=visible)
 
+    def find_element_by_description(self, value: str, visible: bool = False) -> JABElement:
+        """
+        Find an JABElement given a description locator.
+        """
+        if value == self.root_element.description:
+            return self.root_element
+        else:
+            return self.root_element.find_element_by_description(value=value, visible=visible)
+
     def find_element_by_role(self, value: str, visible: bool = False) -> JABElement:
         """
         Find an JABElement given a role locator.
@@ -332,6 +341,7 @@ class JABDriver(object):
         """
         dict_find = {
             By.NAME: self.find_element_by_name,
+            By.DESCRIPTION: self.find_element_by_description,
             By.ROLE: self.find_element_by_role,
             By.STATES: self.find_element_by_states,
             By.OBJECT_DEPTH: self.find_element_by_object_depth,
@@ -354,6 +364,20 @@ class JABDriver(object):
             jabelements.append(self.root_element)
         jabelements.extend(
             self.root_element.find_elements_by_name(value=value, visible=visible)
+        )
+        return jabelements
+
+    def find_elements_by_description(
+        self, value: str, visible: bool = False
+    ) -> list[JABElement]:
+        """
+        Find list of JABElement given a description locator.
+        """
+        jabelements = list()
+        if value == self.root_element.description:
+            jabelements.append(self.root_element)
+        jabelements.extend(
+            self.root_element.find_elements_by_description(value=value, visible=visible)
         )
         return jabelements
 
@@ -449,6 +473,7 @@ class JABDriver(object):
         """
         dict_finds = {
             By.NAME: self.find_elements_by_name,
+            By.DESCRIPTION: self.find_elements_by_description,
             By.ROLE: self.find_elements_by_role,
             By.STATES: self.find_elements_by_states,
             By.OBJECT_DEPTH: self.find_elements_by_object_depth,

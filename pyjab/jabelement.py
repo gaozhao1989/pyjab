@@ -991,6 +991,21 @@ class JABElement(object):
         """
         return self.find_element(by=By.NAME, value=value, visible=visible)
 
+    def find_element_by_description(
+        self, value: str, visible: bool = False
+    ) -> JABElement:
+        """find child JABElement by description
+
+        Args:
+            value (str): Locator of JABElement need to find.
+            visible (bool, optional): The switch for find only visible child jab element or not.
+            Defaults to False to find available child element.
+
+        Returns:
+            JABElement: The JABElement find by locator
+        """
+        return self.find_element(by=By.DESCRIPTION, value=value, visible=visible)
+
     def find_element_by_role(self, value: str, visible: bool = False) -> JABElement:
         """find child JABElement by role
 
@@ -1081,6 +1096,25 @@ class JABElement(object):
         else:
             return attr_val == jabelement.name
 
+    def _is_match_attr_description(self, attr_val: str, jabelement: JABElement) -> bool:
+        """Return the attribute value is matched or not by description.
+
+        Args:
+            attr_val (str): Attribute description value
+            jabelement (JABElement): The JABElement
+
+        Returns:
+            bool: True for attribute matched False for not
+        """
+        if attr_val[0] in ["'", '"'] and attr_val[-1] in ["'", '"']:
+            attr_val = attr_val[1:-1]
+        pattern = re.compile("^contains\([\"'](.*?)[\"']\)")
+        content = pattern.findall(attr_val)
+        if content:
+            return content[0] in jabelement.description
+        else:
+            return attr_val == jabelement.description
+
     def _is_match_attr_states(self, attr_val: str, jabelement: JABElement) -> bool:
         """Return the attribute value is matched or not by states.
 
@@ -1161,6 +1195,7 @@ class JABElement(object):
         """
         dict_attribute = {
             "name": self._is_match_attr_name,
+            "description": self._is_match_attr_description,
             "states": self._is_match_attr_states,
             "objectdepth": self._is_match_attr_objectdepth,
             "childrencount": self._is_match_attr_childrencount,
@@ -1302,6 +1337,7 @@ class JABElement(object):
         """
         if by not in [
             By.NAME,
+            By.DESCRIPTION,
             By.ROLE,
             By.STATES,
             By.OBJECT_DEPTH,
@@ -1314,17 +1350,17 @@ class JABElement(object):
             self.find_element_by_xpath(value=value, visible=visible)
         located_element = None
         for jabelement in self._generate_all_childs(visible=visible):
-            is_matched = (
-                (value is None)
-                or (by == By.NAME and jabelement.name == value)
-                or (by == By.ROLE and jabelement.role_en_us == value)
-                or (by == By.STATES and set(jabelement.states_en_us) == set(value))
-                or (by == By.OBJECT_DEPTH and jabelement.object_depth == int(value))
-                or (by == By.CHILDREN_COUNT and jabelement.children_count == int(value))
-                or (
+            is_matched = any(
+                [
+                    value is None,
+                    by == By.NAME and jabelement.name == value,
+                    by == By.DESCRIPTION and jabelement.description == value,
+                    by == By.STATES and set(jabelement.states_en_us) == set(value),
+                    by == By.OBJECT_DEPTH and jabelement.object_depth == int(value),
+                    by == By.CHILDREN_COUNT and jabelement.children_count == int(value),
                     by == By.INDEX_IN_PARENT
-                    and jabelement.index_in_parent == int(value)
-                )
+                    and jabelement.index_in_parent == int(value),
+                ]
             )
             if is_matched:
                 located_element = jabelement
@@ -1350,6 +1386,21 @@ class JABElement(object):
             list[JABElement]: List of JABElement find by locator
         """
         return self.find_elements(by=By.NAME, value=value, visible=visible)
+
+    def find_elements_by_description(
+        self, value: str, visible: bool = False
+    ) -> list[JABElement]:
+        """Find list of child JABElement by description
+
+        Args:
+            value (str): Locator of list JABElement need to find.
+            visible (bool, optional): The switch for find only visible child jab elements or not.
+            Defaults to False to find all child elements.
+
+        Returns:
+            list[JABElement]: List of JABElement find by locator
+        """
+        return self.find_elements(by=By.DESCRIPTION, value=value, visible=visible)
 
     def find_elements_by_role(
         self, value: str, visible: bool = False
@@ -1537,6 +1588,7 @@ class JABElement(object):
         """
         if by not in [
             By.NAME,
+            By.DESCRIPTION,
             By.ROLE,
             By.STATES,
             By.OBJECT_DEPTH,
@@ -1549,17 +1601,17 @@ class JABElement(object):
             self.find_elements_by_xpath(value=value, visible=visible)
         jabelements = list()
         for jabelement in self._generate_all_childs(visible=visible):
-            is_matched = (
-                (value is None)
-                or (by == By.NAME and jabelement.name == value)
-                or (by == By.ROLE and jabelement.role_en_us == value)
-                or (by == By.STATES and set(jabelement.states_en_us) == set(value))
-                or (by == By.OBJECT_DEPTH and jabelement.object_depth == int(value))
-                or (by == By.CHILDREN_COUNT and jabelement.children_count == int(value))
-                or (
+            is_matched = any(
+                [
+                    value is None,
+                    by == By.NAME and jabelement.name == value,
+                    by == By.DESCRIPTION and jabelement.description == value,
+                    by == By.STATES and set(jabelement.states_en_us) == set(value),
+                    by == By.OBJECT_DEPTH and jabelement.object_depth == int(value),
+                    by == By.CHILDREN_COUNT and jabelement.children_count == int(value),
                     by == By.INDEX_IN_PARENT
-                    and jabelement.index_in_parent == int(value)
-                )
+                    and jabelement.index_in_parent == int(value),
+                ]
             )
             if is_matched:
                 jabelements.append(jabelement)
@@ -1659,7 +1711,7 @@ class JABElement(object):
 
     def get_element_information(self) -> dict:
         """Get dict information of current JABElement.
-        
+
         Notice:
             This dict of component value will NOT update after property changes.
 
