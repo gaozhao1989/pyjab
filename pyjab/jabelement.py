@@ -4,7 +4,7 @@ from pyjab.common.textreader import TextReader
 import re
 from ctypes import Array, byref, CDLL, c_char, c_long, create_string_buffer
 from ctypes.wintypes import HWND
-from typing import Any, Generator, Optional
+from typing import Any, Generator, Optional, Union
 from PIL import Image, ImageGrab
 from pyjab.common.by import By
 from pyjab.common.exceptions import JABException
@@ -18,7 +18,7 @@ from pyjab.accessibleinfo import (
     AccessibleTableCellInfo,
     AccessibleTableInfo,
     AccessibleTextInfo,
-    VisibleChildenInfo,
+    VisibleChildrenInfo,
 )
 
 
@@ -137,7 +137,7 @@ class JABElement(object):
 
     @property
     def accessible_interfaces(self) -> bool:
-        # TODO: need handle acc iterface
+        # TODO: need handle acc interface
         return False
 
     @property
@@ -158,7 +158,6 @@ class JABElement(object):
     @property
     def table(self) -> dict:
         if self.role_en_us == "table":
-            tb = {}
             info = self._get_accessible_table_info()
             tb = {
                 "row_count": info.rowCount,
@@ -564,8 +563,8 @@ class JABElement(object):
 
     def _get_visible_children(
         self, accessible_context: JOBJECT64 = None
-    ) -> VisibleChildenInfo:
-        info = VisibleChildenInfo()
+    ) -> VisibleChildrenInfo:
+        info = VisibleChildrenInfo()
         accessible_context = accessible_context or self.accessible_context
         result = self.bridge.getVisibleChildren(
             self.vmid, accessible_context, 0, byref(info)
@@ -975,7 +974,7 @@ class JABElement(object):
         """
         return self.find_element(by=By.ROLE, value=value, visible=visible)
 
-    def find_element_by_states(self, value: list, visible: bool = False) -> JABElement:
+    def find_element_by_states(self, value: Union[list, str], visible: bool = False) -> JABElement:
         """find child JABElement by states
 
         Args:
@@ -1216,20 +1215,16 @@ class JABElement(object):
         node_role = node_info.get("role")
         node_attributes = node_info.get("attributes")
         jabelement = self._get_node_element(jabelement)
-        child_jabelement = None
         for _jabelement in dict_gen[level](jabelement=jabelement, visible=visible):
             if node_role not in ["*", _jabelement.role_en_us]:
                 self.release_jabelement(_jabelement)
                 continue
             if self._is_match_attributes(node_attributes, _jabelement):
-                child_jabelement = _jabelement
-                break
+                return _jabelement
             self.release_jabelement(_jabelement)
-        else:
-            raise JABException(
-                "no JABElement found in level {} with node '{}'".format(level, node)
-            )
-        return child_jabelement
+        raise JABException(
+            "no JABElement found in level {} with node '{}'".format(level, node)
+        )
 
     def find_element_by_xpath(self, value: str, visible: bool = False) -> JABElement:
         """find child JABElement by xpath
@@ -1293,14 +1288,11 @@ class JABElement(object):
             self.find_element_by_xpath(value=value, visible=visible)
         for jabelement in self._generate_all_childs(visible=visible):
             if self._is_element_matched(by=by, value=value, jabelement=jabelement):
-                located_element = jabelement
-                break
+                return jabelement
             self.release_jabelement(jabelement)
-        else:
-            raise JABException(
-                "jab element not found by '{}' with locator '{}'".format(by, value)
-            )
-        return located_element
+        raise JABException(
+            "jab element not found by '{}' with locator '{}'".format(by, value)
+        )
 
     def find_elements_by_name(
         self, value: str, visible: bool = False
@@ -1348,7 +1340,7 @@ class JABElement(object):
         return self.find_elements(by=By.ROLE, value=value, visible=visible)
 
     def find_elements_by_states(
-        self, value: list, visible: bool = False
+        self, value: Union[list, str], visible: bool = False
     ) -> list[JABElement]:
         """Find list of child JABElement by states
 
@@ -1502,7 +1494,7 @@ class JABElement(object):
         return jabelements
 
     def find_elements(
-        self, by: str = By.NAME, value: str = None, visible: bool = False
+        self, by: str = By.NAME, value: Union[list, str, int] = None, visible: bool = False
     ) -> list[JABElement]:
         """Find list of JABElement given a By strategy and locator.
 

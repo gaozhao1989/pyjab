@@ -176,7 +176,7 @@ class AccessibleKeyBindings(Structure):
     ]
 
 
-class VisibleChildenInfo(Structure):
+class VisibleChildrenInfo(Structure):
     _fields_ = [
         ("returnedChildrenCount", c_int),
         ("children", JOBJECT64 * MAX_VISIBLE_CHILDREN),
