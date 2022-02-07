@@ -34,7 +34,7 @@ class Service(object):
             try:
                 data = fp.read()
             except (OSError, IOError):
-                self.logger.error("bridge is not enable")
+                self.logger.error("bridge is not enabled")
                 return False
         is_enabled = data == A11Y_PROPS_CONTENT
         self.logger.debug("is bridge enabled => '{}'".format(is_enabled))

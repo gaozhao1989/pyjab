@@ -1,6 +1,6 @@
 import time
 from ctypes.wintypes import HWND
-from typing import Dict, Generator, List
+from typing import Dict, Generator, List, Optional
 import pythoncom
 import win32api
 import win32clipboard
@@ -227,7 +227,7 @@ class Win32Utils(object):
         win32gui.EnumWindows(get_all_hwnds, 0)
         return dict_hwnd
 
-    def get_hwnd_by_title(self, title: str) -> HWND:
+    def get_hwnd_by_title(self, title: str) -> Optional[HWND]:
         dict_hwnd = self.enum_windows()
         try:
             return list(dict_hwnd.keys())[list(dict_hwnd.values()).index(title)]
@@ -236,11 +236,7 @@ class Win32Utils(object):
 
     def get_hwnds_by_title(self, title: str) -> List[HWND]:
         dict_hwnd = self.enum_windows()
-        hwnds = list()
-        for hwnd, win_title in dict_hwnd.items():
-            if title == win_title:
-                hwnds.append(hwnd)
-        return hwnds
+        return [hwnd for hwnd, win_title in dict_hwnd.items() if title == win_title]
 
     def get_title_by_hwnd(self, hwnd: HWND) -> str:
         return win32api.GetWindowText(hwnd)
@@ -249,8 +245,7 @@ class Win32Utils(object):
         latest_log = ""
         start = time.time()
         while True:
-            hwnd = self.get_hwnd_by_title(title)
-            if hwnd:
+            if hwnd := self.get_hwnd_by_title(title):
                 return hwnd
             error_log = f"no hwnd found by win title =>'{title}'"
             if latest_log != error_log:

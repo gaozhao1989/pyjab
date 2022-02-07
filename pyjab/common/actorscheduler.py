@@ -31,8 +31,7 @@ class ActorScheduler:
         """
         Send a message to a named actor
         """
-        actor = self.actors.get(name)
-        if actor:
+        if actor := self.actors.get(name):
             self.logger.debug("send msg '{}' to actor '{}'".format(msg, actor))
             self.msg_queue.append((actor, msg))
 
