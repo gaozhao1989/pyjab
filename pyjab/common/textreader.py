@@ -6,12 +6,12 @@ from typing import Optional
 class TextReader(object):
     """Text reader for retrieve text or transfer text in different types."""
 
+    @staticmethod
     def get_text_from_raw_bytes(
-        self,
-        buffer: bytes,
-        chars_len: int,
-        encoding: Optional[str] = None,
-        errors_fallback: str = "replace",
+            buffer: bytes,
+            chars_len: int,
+            encoding: Optional[str] = None,
+            errors_fallback: str = "replace",
     ) -> str:
         """[summary]
 

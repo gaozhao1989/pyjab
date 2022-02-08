@@ -4,7 +4,7 @@ from pyjab.common.textreader import TextReader
 import re
 from ctypes import Array, byref, CDLL, c_char, c_long, create_string_buffer
 from ctypes.wintypes import HWND
-from typing import Any, Generator
+from typing import Any, Generator, Optional, Union
 from PIL import Image, ImageGrab
 from pyjab.common.by import By
 from pyjab.common.exceptions import JABException
@@ -18,7 +18,7 @@ from pyjab.accessibleinfo import (
     AccessibleTableCellInfo,
     AccessibleTableInfo,
     AccessibleTextInfo,
-    VisibleChildenInfo,
+    VisibleChildrenInfo,
 )
 
 
@@ -137,7 +137,7 @@ class JABElement(object):
 
     @property
     def accessible_interfaces(self) -> bool:
-        # TODO: need handle acc iterface
+        # TODO: need handle acc interface
         return False
 
     @property
@@ -158,7 +158,6 @@ class JABElement(object):
     @property
     def table(self) -> dict:
         if self.role_en_us == "table":
-            tb = {}
             info = self._get_accessible_table_info()
             tb = {
                 "row_count": info.rowCount,
@@ -199,11 +198,10 @@ class JABElement(object):
         Yields:
             Generator: Generator of all child jab elements from this parent jab element.
         """
-        jabelement = (
-            jabelement
-            if jabelement
-            else JABElement(self.bridge, self.hwnd, self.vmid, self.accessible_context)
+        jabelement = jabelement or JABElement(
+            self.bridge, self.hwnd, self.vmid, self.accessible_context
         )
+
         for jabelement in self._generate_childs_from_element(
             jabelement=jabelement, visible=visible
         ):
@@ -227,11 +225,10 @@ class JABElement(object):
         Yields:
             Generator: Generator of child jab elements from this parent jab element.
         """
-        jabelement = (
-            jabelement
-            if jabelement
-            else JABElement(self.bridge, self.hwnd, self.vmid, self.accessible_context)
+        jabelement = jabelement or JABElement(
+            self.bridge, self.hwnd, self.vmid, self.accessible_context
         )
+
         if visible:
             children_count = self._get_visible_children_count(
                 jabelement.accessible_context
@@ -275,17 +272,13 @@ class JABElement(object):
 
     def _request_focus(self, accessible_context: JOBJECT64 = None) -> None:
         """Request focus for a component. Returns whether successful."""
-        accessible_context = (
-            accessible_context if accessible_context else self.accessible_context
-        )
+        accessible_context = accessible_context or self.accessible_context
         self.bridge.requestFocus(self.vmid, accessible_context)
 
     def _get_accessible_selection_from_context(
         self, accessible_context: JOBJECT64 = None
     ) -> JOBJECT64:
-        accessible_context = (
-            accessible_context if accessible_context else self.accessible_context
-        )
+        accessible_context = accessible_context or self.accessible_context
         return self.bridge.getAccessibleSelectionFromContext(
             self.vmid, accessible_context, 0
         )
@@ -293,9 +286,7 @@ class JABElement(object):
     def _add_accessible_selection_from_context(
         self, index: int, accessible_context: JOBJECT64 = None
     ) -> None:
-        accessible_context = (
-            accessible_context if accessible_context else self.accessible_context
-        )
+        accessible_context = accessible_context or self.accessible_context
         self.bridge.addAccessibleSelectionFromContext(
             self.vmid, accessible_context, index
         )
@@ -303,9 +294,7 @@ class JABElement(object):
     def _clear_accessible_selection_from_context(
         self, accessible_context: JOBJECT64
     ) -> None:
-        accessible_context = (
-            accessible_context if accessible_context else self.accessible_context
-        )
+        accessible_context = accessible_context or self.accessible_context
         self.bridge.clearAccessibleSelectionFromContext(self.vmid, accessible_context)
 
     def _is_same_object(self, obj1: JOBJECT64, obj2: JOBJECT64) -> bool:
@@ -334,9 +323,7 @@ class JABElement(object):
         Returns:
             JOBJECT64: Top level object.
         """
-        accessible_context = (
-            accessible_context if accessible_context else self.accessible_context
-        )
+        accessible_context = accessible_context or self.accessible_context
         top_object = self.bridge.getTopLevelObject(self.vmid, accessible_context)
         if top_object == 0:
             raise JABException(self.int_func_err_msg.format("getTopLevelObject"))
@@ -353,9 +340,7 @@ class JABElement(object):
         Returns:
             JOBJECT64: Parent Accessible Context.
         """
-        accessible_context = (
-            accessible_context if accessible_context else self.accessible_context
-        )
+        accessible_context = accessible_context or self.accessible_context
         return self.bridge.getAccessibleParentFromContext(self.vmid, accessible_context)
 
     def _get_accessible_context_info(
@@ -373,9 +358,7 @@ class JABElement(object):
             AccessibleContextInfo: Accessible Context Info.
         """
         info = AccessibleContextInfo()
-        accessible_context = (
-            accessible_context if accessible_context else self.accessible_context
-        )
+        accessible_context = accessible_context or self.accessible_context
         result = self.bridge.getAccessibleContextInfo(
             self.vmid, accessible_context, byref(info)
         )
@@ -397,9 +380,7 @@ class JABElement(object):
         Returns:
             int: Object depth.
         """
-        accessible_context = (
-            accessible_context if accessible_context else self.accessible_context
-        )
+        accessible_context = accessible_context or self.accessible_context
         object_depth = self.bridge.getObjectDepth(self.vmid, accessible_context)
         if object_depth == -1:
             raise JABException(self.int_func_err_msg.format("getObjectDepth"))
@@ -409,9 +390,7 @@ class JABElement(object):
         self, accessible_context: JOBJECT64 = None
     ) -> AccessibleTextInfo:
         info = AccessibleTextInfo()
-        accessible_context = (
-            accessible_context if accessible_context else self.accessible_context
-        )
+        accessible_context = accessible_context or self.accessible_context
         result = self.bridge.getAccessibleTextInfo(
             self.vmid, accessible_context, byref(info), 0, 0
         )
@@ -427,9 +406,7 @@ class JABElement(object):
         length: int,
         accessible_context: JOBJECT64 = None,
     ) -> None:
-        accessible_context = (
-            accessible_context if accessible_context else self.accessible_context
-        )
+        accessible_context = accessible_context or self.accessible_context
         result = self.bridge.getAccessibleTextRange(
             self.vmid, accessible_context, start, end, text, length
         )
@@ -452,9 +429,7 @@ class JABElement(object):
             AccessibleTableInfo: Accessible Table Info.
         """
         info = AccessibleTableInfo()
-        accessible_context = (
-            accessible_context if accessible_context else self.accessible_context
-        )
+        accessible_context = accessible_context or self.accessible_context
         result = self.bridge.getAccessibleTableInfo(
             self.vmid, accessible_context, byref(info)
         )
@@ -477,9 +452,7 @@ class JABElement(object):
             AccessibleTableInfo: Accessible Table Info.
         """
         info = AccessibleTableInfo()
-        accessible_context = (
-            accessible_context if accessible_context else self.accessible_context
-        )
+        accessible_context = accessible_context or self.accessible_context
         result = self.bridge.getAccessibleTableRowHeader(
             self.vmid, accessible_context, byref(info)
         )
@@ -504,9 +477,7 @@ class JABElement(object):
             AccessibleTableInfo: Accessible Table Info.
         """
         info = AccessibleTableInfo()
-        accessible_context = (
-            accessible_context if accessible_context else self.accessible_context
-        )
+        accessible_context = accessible_context or self.accessible_context
         result = self.bridge.getAccessibleTableColumnHeader(
             self.vmid, accessible_context, byref(info)
         )
@@ -527,9 +498,7 @@ class JABElement(object):
         Returns:
             int: Accessible table row selection count.
         """
-        accessible_context = (
-            accessible_context if accessible_context else self.accessible_context
-        )
+        accessible_context = accessible_context or self.accessible_context
         return self.bridge.getAccessibleTableRowSelectionCount(
             self.vmid, accessible_context
         )
@@ -545,9 +514,7 @@ class JABElement(object):
         Returns:
             int: Accessible table column selection count.
         """
-        accessible_context = (
-            accessible_context if accessible_context else self.accessible_context
-        )
+        accessible_context = accessible_context or self.accessible_context
         return self.bridge.getAccessibleTableColumnSelectionCount(
             self.vmid, accessible_context
         )
@@ -569,9 +536,7 @@ class JABElement(object):
             AccessibleTableCellInfo: Accessible Table Cell Info.
         """
         info = AccessibleTableCellInfo()
-        accessible_context = (
-            accessible_context if accessible_context else self.accessible_context
-        )
+        accessible_context = accessible_context or self.accessible_context
         result = self.bridge.getAccessibleTableCellInfo(
             self.vmid, accessible_context, row, column, byref(info)
         )
@@ -590,9 +555,7 @@ class JABElement(object):
         Returns:
             int: [description]
         """
-        accessible_context = (
-            accessible_context if accessible_context else self.accessible_context
-        )
+        accessible_context = accessible_context or self.accessible_context
         result = self.bridge.getVisibleChildrenCount(self.vmid, accessible_context)
         if result == -1:
             raise JABException(self.int_func_err_msg.format("getVisibleChildrenCount"))
@@ -600,11 +563,9 @@ class JABElement(object):
 
     def _get_visible_children(
         self, accessible_context: JOBJECT64 = None
-    ) -> VisibleChildenInfo:
-        info = VisibleChildenInfo()
-        accessible_context = (
-            accessible_context if accessible_context else self.accessible_context
-        )
+    ) -> VisibleChildrenInfo:
+        info = VisibleChildrenInfo()
+        accessible_context = accessible_context or self.accessible_context
         result = self.bridge.getVisibleChildren(
             self.vmid, accessible_context, 0, byref(info)
         )
@@ -720,7 +681,7 @@ class JABElement(object):
         """
         if self.role_en_us != "scroll bar":
             raise JABException("JABElement is not 'scroll bar'")
-        is_horizontal = True if "horizontal" in self.states_en_us else False
+        is_horizontal = "horizontal" in self.states_en_us
         x = self.bounds["x"]
         y = self.bounds["y"]
         height = self.bounds["height"]
@@ -730,16 +691,13 @@ class JABElement(object):
         if to_bottom and is_horizontal:
             x = x + width - height - 5
             y = y + height / 2
-        # vertical scroll to bottom
-        elif to_bottom is True and is_horizontal is False:
+        elif to_bottom:
             x = x + width / 2
             y = y + height - width - 5
-        # horizontal scroll to top(left)
-        elif to_bottom is False and is_horizontal is True:
+        elif is_horizontal:
             x = x + height + 5
             y = y + height / 2
-        # vertical scroll to top
-        elif to_bottom is False and is_horizontal is False:
+        else:
             x = x + width / 2
             y = y + width + 5
         self.win32_utils._click_mouse(x=int(x), y=int(y), hold=hold)
@@ -758,7 +716,7 @@ class JABElement(object):
         """
         if self.role_en_us != "slider":
             raise JABException("JABElement is not 'slider'")
-        is_horizontal = True if "horizontal" in self.states_en_us else False
+        is_horizontal = "horizontal" in self.states_en_us
         x = self.bounds["x"]
         y = self.bounds["y"]
         height = self.bounds["height"]
@@ -768,15 +726,12 @@ class JABElement(object):
         if to_bottom and is_horizontal:
             x = x + width - 5
             y = y + height / 2
-        # vertical slide to bottom
-        elif to_bottom is True and is_horizontal is False:
+        elif to_bottom:
             x = x + width / 2
             y = y + height - 5
-        # horizontal slide to top(left)
-        elif to_bottom is False and is_horizontal is True:
+        elif is_horizontal:
             y = y + height / 2
-        # vertical slide to top
-        elif to_bottom is False and is_horizontal is False:
+        else:
             x = x + width / 2
         self.win32_utils._click_mouse(x=int(x), y=int(y), hold=hold)
 
@@ -913,7 +868,7 @@ class JABElement(object):
         self._do_accessible_action(action=action)
 
     def expand(self, simulate: bool = False) -> None:
-        if "expandable" not in self._states_en_us:
+        if "expandable" not in self.states_en_us:
             raise JABException("JABElement does not support 'expand'")
         if simulate:
             self.click(simulate=True)
@@ -1019,7 +974,7 @@ class JABElement(object):
         """
         return self.find_element(by=By.ROLE, value=value, visible=visible)
 
-    def find_element_by_states(self, value: list, visible: bool = False) -> JABElement:
+    def find_element_by_states(self, value: Union[list, str], visible: bool = False) -> JABElement:
         """find child JABElement by states
 
         Args:
@@ -1090,8 +1045,7 @@ class JABElement(object):
         if attr_val[0] in ["'", '"'] and attr_val[-1] in ["'", '"']:
             attr_val = attr_val[1:-1]
         pattern = re.compile("^contains\([\"'](.*?)[\"']\)")
-        content = pattern.findall(attr_val)
-        if content:
+        if content := pattern.findall(attr_val):
             return content[0] in jabelement.name
         else:
             return attr_val == jabelement.name
@@ -1109,8 +1063,7 @@ class JABElement(object):
         if attr_val[0] in ["'", '"'] and attr_val[-1] in ["'", '"']:
             attr_val = attr_val[1:-1]
         pattern = re.compile("^contains\([\"'](.*?)[\"']\)")
-        content = pattern.findall(attr_val)
-        if content:
+        if content := pattern.findall(attr_val):
             return content[0] in jabelement.description
         else:
             return attr_val == jabelement.description
@@ -1128,11 +1081,8 @@ class JABElement(object):
         if attr_val[0] in ["'", '"'] and attr_val[-1] in ["'", '"']:
             attr_val = attr_val[1:-1]
         pattern = re.compile("^contains\([\"'](.*?)[\"']\)")
-        content = pattern.findall(attr_val)
-        if content:
-            return all(
-                [stat in jabelement.states_en_us for stat in content[0].split(",")]
-            )
+        if content := pattern.findall(attr_val):
+            return all(stat in jabelement.states_en_us for stat in content[0].split(","))
         else:
             return set(attr_val.split(",")) == set(jabelement.states_en_us)
 
@@ -1219,23 +1169,15 @@ class JABElement(object):
         Returns:
             JABElement: Node JABElement
         """
-        jabelement = (
-            jabelement
-            if jabelement
-            else JABElement(self.bridge, self.hwnd, self.vmid, self.accessible_context)
-        )
+        jabelement = jabelement or JABElement(self.bridge, self.hwnd, self.vmid, self.accessible_context)
         is_same = self._is_same_object(
             self.accessible_context, jabelement.accessible_context
         )
-        if is_same:
-            top_object = self._get_top_level_object(self.accessible_context)
-            is_top_level = self._is_same_object(self.accessible_context, top_object)
-            if is_top_level:
-                return jabelement
-            else:
-                return self.parent
-        else:
+        if not is_same:
             return jabelement
+        top_object = self._get_top_level_object(self.accessible_context)
+        is_top_level = self._is_same_object(self.accessible_context, top_object)
+        return jabelement if is_top_level else self.parent
 
     def _get_element_by_node(
         self,
@@ -1273,20 +1215,16 @@ class JABElement(object):
         node_role = node_info.get("role")
         node_attributes = node_info.get("attributes")
         jabelement = self._get_node_element(jabelement)
-        child_jabelement = None
         for _jabelement in dict_gen[level](jabelement=jabelement, visible=visible):
             if node_role not in ["*", _jabelement.role_en_us]:
                 self.release_jabelement(_jabelement)
                 continue
             if self._is_match_attributes(node_attributes, _jabelement):
-                child_jabelement = _jabelement
-                break
+                return _jabelement
             self.release_jabelement(_jabelement)
-        else:
-            raise JABException(
-                "no JABElement found in level {} with node '{}'".format(level, node)
-            )
-        return child_jabelement
+        raise JABException(
+            "no JABElement found in level {} with node '{}'".format(level, node)
+        )
 
     def find_element_by_xpath(self, value: str, visible: bool = False) -> JABElement:
         """find child JABElement by xpath
@@ -1348,29 +1286,13 @@ class JABElement(object):
             raise JABException("incorrect by strategy '{}'".format(by))
         if by == By.XPATH:
             self.find_element_by_xpath(value=value, visible=visible)
-        located_element = None
         for jabelement in self._generate_all_childs(visible=visible):
-            is_matched = any(
-                [
-                    value is None,
-                    by == By.NAME and jabelement.name == value,
-                    by == By.DESCRIPTION and jabelement.description == value,
-                    by == By.STATES and set(jabelement.states_en_us) == set(value),
-                    by == By.OBJECT_DEPTH and jabelement.object_depth == int(value),
-                    by == By.CHILDREN_COUNT and jabelement.children_count == int(value),
-                    by == By.INDEX_IN_PARENT
-                    and jabelement.index_in_parent == int(value),
-                ]
-            )
-            if is_matched:
-                located_element = jabelement
-                break
+            if self._is_element_matched(by=by, value=value, jabelement=jabelement):
+                return jabelement
             self.release_jabelement(jabelement)
-        else:
-            raise JABException(
-                "jab element not found by '{}' with locator '{}'".format(by, value)
-            )
-        return located_element
+        raise JABException(
+            "jab element not found by '{}' with locator '{}'".format(by, value)
+        )
 
     def find_elements_by_name(
         self, value: str, visible: bool = False
@@ -1418,7 +1340,7 @@ class JABElement(object):
         return self.find_elements(by=By.ROLE, value=value, visible=visible)
 
     def find_elements_by_states(
-        self, value: list, visible: bool = False
+        self, value: Union[list, str], visible: bool = False
     ) -> list[JABElement]:
         """Find list of child JABElement by states
 
@@ -1512,7 +1434,7 @@ class JABElement(object):
         node_role = node_info.get("role")
         node_attributes = node_info.get("attributes")
         jabelement = self._get_node_element(jabelement)
-        jabelements = list()
+        jabelements = []
         for _jabelement in dict_gen[level](jabelement=jabelement, visible=visible):
             if node_role not in ["*", _jabelement.role_en_us]:
                 self.release_jabelement(_jabelement)
@@ -1547,8 +1469,8 @@ class JABElement(object):
             level: str,
             parent_jabelements: list[JABElement],
             visible: bool = False,
-        ) -> list(JABElement):
-            child_jabelements = list()
+        ) -> list[JABElement]:
+            child_jabelements = []
             for parent_jabelement in parent_jabelements:
                 jabelements = self._get_elements_by_node(
                     node=node,
@@ -1572,7 +1494,7 @@ class JABElement(object):
         return jabelements
 
     def find_elements(
-        self, by: str = By.NAME, value: str = None, visible: bool = False
+        self, by: str = By.NAME, value: Union[list, str, int] = None, visible: bool = False
     ) -> list[JABElement]:
         """Find list of JABElement given a By strategy and locator.
 
@@ -1599,21 +1521,9 @@ class JABElement(object):
             raise JABException("incorrect by strategy '{}'".format(by))
         if by == By.XPATH:
             self.find_elements_by_xpath(value=value, visible=visible)
-        jabelements = list()
+        jabelements = []
         for jabelement in self._generate_all_childs(visible=visible):
-            is_matched = any(
-                [
-                    value is None,
-                    by == By.NAME and jabelement.name == value,
-                    by == By.DESCRIPTION and jabelement.description == value,
-                    by == By.STATES and set(jabelement.states_en_us) == set(value),
-                    by == By.OBJECT_DEPTH and jabelement.object_depth == int(value),
-                    by == By.CHILDREN_COUNT and jabelement.children_count == int(value),
-                    by == By.INDEX_IN_PARENT
-                    and jabelement.index_in_parent == int(value),
-                ]
-            )
-            if is_matched:
+            if self._is_element_matched(by=by, value=value, jabelement=jabelement):
                 jabelements.append(jabelement)
                 continue
             self.release_jabelement(jabelement)
@@ -1622,6 +1532,23 @@ class JABElement(object):
                 "no JABElement found by '{}' with locator '{}'".format(by, value)
             )
         return jabelements
+
+    @staticmethod
+    def _is_element_matched(jabelement: JABElement, by: str, value: Optional[str]):
+        return any(
+                [
+                    value is None,
+                    by == By.NAME and jabelement.name == value,
+                    by == By.DESCRIPTION and jabelement.description == value,
+                    by == By.STATES and set(jabelement.states_en_us) == set(value),
+                    by == By.OBJECT_DEPTH
+                    and jabelement.object_depth == int(value),
+                    by == By.CHILDREN_COUNT
+                    and jabelement.children_count == int(value),
+                    by == By.INDEX_IN_PARENT
+                    and jabelement.index_in_parent == int(value),
+                ]
+            )
 
     @property
     def size(self) -> dict:
@@ -1661,7 +1588,7 @@ class JABElement(object):
         y = self.bounds.get("y")
         width = self.bounds.get("width")
         height = self.bounds.get("height")
-        im = ImageGrab.grab(
+        return ImageGrab.grab(
             bbox=(
                 x,
                 y,
@@ -1671,7 +1598,6 @@ class JABElement(object):
             include_layered_windows=False,
             all_screens=True,
         )
-        return im
 
     @property
     def parent(self):

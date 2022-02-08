@@ -49,7 +49,7 @@ class XpathParser(object):
             raise XpathParserException(
                 "no contents found conditions '{}'".format(contents)
             )
-        attributes = list()
+        attributes = []
         for content in contents:
             name, value = content[0][1:].split(sep="=", maxsplit=1)
             attributes.append(dict(name=name, value=value))

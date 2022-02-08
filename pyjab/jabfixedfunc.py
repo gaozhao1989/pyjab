@@ -21,7 +21,7 @@ from pyjab.accessibleinfo import AccessibleTextInfo
 from pyjab.accessibleinfo import AccessibleTextItemsInfo
 from pyjab.accessibleinfo import AccessibleTextRectInfo
 from pyjab.accessibleinfo import AccessibleTextSelectionInfo
-from pyjab.accessibleinfo import VisibleChildenInfo
+from pyjab.accessibleinfo import VisibleChildrenInfo
 from pyjab.common.logger import Logger
 from pyjab.common.types import JOBJECT64
 
@@ -337,6 +337,6 @@ class JABFixedFunc(object):
             c_long,
             JOBJECT64,
             c_int,
-            POINTER(VisibleChildenInfo),
+            POINTER(VisibleChildrenInfo),
             errorcheck=True,
         )

@@ -25,7 +25,7 @@ class Service(object):
                 self.logger.debug("enable bridge")
                 fp.write(A11Y_PROPS_CONTENT)
             except (OSError, IOError):
-                self.logger.error("enable bridge is failed")
+                self.logger.error("enable bridge failed")
 
     def is_bridge_enabled(self) -> bool:
         if not Path(A11Y_PROPS_PATH).is_file():
@@ -34,7 +34,7 @@ class Service(object):
             try:
                 data = fp.read()
             except (OSError, IOError):
-                self.logger.error("bridge is not enable")
+                self.logger.error("bridge is not enabled")
                 return False
         is_enabled = data == A11Y_PROPS_CONTENT
         self.logger.debug("is bridge enabled => '{}'".format(is_enabled))

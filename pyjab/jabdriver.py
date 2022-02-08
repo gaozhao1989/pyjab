@@ -234,8 +234,7 @@ class JABDriver(object):
         """
         start = time()
         while True:
-            hwnd = self.get_java_window_hwnd(title=title)
-            if hwnd:
+            if hwnd := self.get_java_window_hwnd(title=title):
                 return hwnd
             log_out = f"no java window found by title '{title}'"
             if self.latest_log != log_out:
@@ -359,7 +358,7 @@ class JABDriver(object):
         """
         Find list of JABElement given a name locator.
         """
-        jabelements = list()
+        jabelements = []
         if value == self.root_element.name:
             jabelements.append(self.root_element)
         jabelements.extend(
@@ -373,7 +372,7 @@ class JABDriver(object):
         """
         Find list of JABElement given a description locator.
         """
-        jabelements = list()
+        jabelements = []
         if value == self.root_element.description:
             jabelements.append(self.root_element)
         jabelements.extend(
@@ -387,7 +386,7 @@ class JABDriver(object):
         """
         Find list of JABElement given a role locator.
         """
-        jabelements = list()
+        jabelements = []
         if value == self.root_element.role:
             jabelements.append(self.root_element)
         jabelements.extend(
@@ -401,7 +400,7 @@ class JABDriver(object):
         """
         Find list of JABElement given a states locator.
         """
-        jabelements = list()
+        jabelements = []
         if value == self.root_element.states:
             jabelements.append(self.root_element)
         jabelements.extend(
@@ -415,7 +414,7 @@ class JABDriver(object):
         """
         Find list of JABElement given a object depth locator.
         """
-        jabelements = list()
+        jabelements = []
         if value == self.root_element.object_depth:
             jabelements.append(self.root_element)
         jabelements.extend(
@@ -431,7 +430,7 @@ class JABDriver(object):
         """
         Find list of JABElement given a children count locator.
         """
-        jabelements = list()
+        jabelements = []
         if value == self.root_element.children_count:
             jabelements.append(self.root_element)
         jabelements.extend(
@@ -447,7 +446,7 @@ class JABDriver(object):
         """
         Find list of JABElement given a index in parent locator.
         """
-        jabelements = list()
+        jabelements = []
         if value == self.root_element.index_in_parent:
             jabelements.append(self.root_element)
         jabelements.extend(
@@ -511,8 +510,7 @@ class JABDriver(object):
                     f"JABElement with locator '{by}' '{value}' does not found in {timeout} seconds"
                 )
             try:
-                jabelement = self.find_element(by=by, value=value)
-                return jabelement
+                return self.find_element(by=by, value=value)
             except JABException:
                 log_out = f"JABElement with locator '{by}' '{value}' does not found"
                 if self.latest_log != log_out:
@@ -549,7 +547,7 @@ class JABDriver(object):
         y = bounds.get("y")
         width = bounds.get("width")
         height = bounds.get("height")
-        im = ImageGrab.grab(
+        return ImageGrab.grab(
             bbox=(
                 x,
                 y,
@@ -559,7 +557,6 @@ class JABDriver(object):
             include_layered_windows=False,
             all_screens=True,
         )
-        return im
 
     def set_window_size(self, width, height):
         """
