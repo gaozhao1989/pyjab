@@ -255,7 +255,7 @@ class Win32Utils(object):
             elapsed = round(current - start)
             if elapsed >= timeout:
                 raise TimeoutError(
-                    "no hwnd found by title '{}' in '{}'seconds".format(title, timeout)
+                    f"no hwnd found by title '{title}' in '{timeout}'seconds"
                 )
 
     def _get_foreground_window(self) -> HWND:

@@ -23,7 +23,7 @@ class ActorScheduler:
         """
         Admit a newly started actor to the scheduler and give it a name
         """
-        self.logger.debug("msg queue append new actor '{}'".format(name))
+        self.logger.debug(f"msg queue append new actor '{name}'")
         self.msg_queue.append((actor, None))
         self.actors[name] = actor
 
@@ -32,7 +32,7 @@ class ActorScheduler:
         Send a message to a named actor
         """
         if actor := self.actors.get(name):
-            self.logger.debug("send msg '{}' to actor '{}'".format(msg, actor))
+            self.logger.debug(f"send msg '{msg}' to actor '{actor}'")
             self.msg_queue.append((actor, msg))
 
     def run(self):
@@ -42,7 +42,7 @@ class ActorScheduler:
         while self.msg_queue:
             actor, msg = self.msg_queue.popleft()
             try:
-                self.logger.debug("run actor '{}' with msg '{}'".format(actor, msg))
+                self.logger.debug(f"run actor '{actor}' with msg '{msg}'")
                 actor.send(msg)
             except StopIteration:
                 self.logger.debug("stop run action in scheduler")

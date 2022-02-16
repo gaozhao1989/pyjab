@@ -246,10 +246,9 @@ class JABElement(object):
                 child_acc = jabelement.bridge.getAccessibleChildFromContext(
                     jabelement.vmid, jabelement.accessible_context, index
                 )
-                child_element = JABElement(
+                yield JABElement(
                     jabelement.bridge, jabelement.hwnd, jabelement.vmid, child_acc
                 )
-                yield child_element
 
     # JAB apis
     def release_jabelement(self, jabelement: JABElement = None) -> None:
@@ -772,8 +771,11 @@ class JABElement(object):
     ) -> None:
         try:
             item = parent.find_element_by_name(value=option)
-        except JABException:
-            raise JABException(f"{parent.role_en_us} option '{option}' does not found")
+        except JABException as e:
+            raise JABException(
+                f"{parent.role_en_us} option '{option}' does not found"
+            ) from e
+
         self._add_accessible_selection_from_context(
             item.index_in_parent, parent.accessible_context
         )
@@ -1068,7 +1070,27 @@ class JABElement(object):
         else:
             return attr_val == jabelement.description
 
-    def _is_match_attr_states(self, attr_val: str, jabelement: JABElement) -> bool:
+    @staticmethod
+    def _is_match_attr_role(attr_val: str, jabelement: JABElement) -> bool:
+        """Return the attribute value is matched or not by role.
+
+        Args:
+            attr_val (str): Attribute description value
+            jabelement (JABElement): The JABElement
+
+        Returns:
+            bool: True for attribute matched False for not
+        """
+        if attr_val[0] in ["'", '"'] and attr_val[-1] in ["'", '"']:
+            attr_val = attr_val[1:-1]
+        pattern = re.compile("^contains\([\"'](.*?)[\"']\)")
+        if content := pattern.findall(attr_val):
+            return content[0] in jabelement.role
+        else:
+            return attr_val == jabelement.role
+
+    @staticmethod
+    def _is_match_attr_states(attr_val: str, jabelement: JABElement) -> bool:
         """Return the attribute value is matched or not by states.
 
         Args:
@@ -1145,6 +1167,7 @@ class JABElement(object):
         """
         dict_attribute = {
             "name": self._is_match_attr_name,
+            "role": self._is_match_attr_role,
             "description": self._is_match_attr_description,
             "states": self._is_match_attr_states,
             "objectdepth": self._is_match_attr_objectdepth,
@@ -1155,7 +1178,7 @@ class JABElement(object):
             name = attribute.get("name")
             value = attribute.get("value")
             if name not in dict_attribute.keys():
-                raise JABException("incorrect attribute name '{}'".format(name))
+                raise JABException(f"incorrect attribute name '{name}'")
             if not dict_attribute[name](value, jabelement):
                 return False
         return True
@@ -1223,7 +1246,7 @@ class JABElement(object):
                 return _jabelement
             self.release_jabelement(_jabelement)
         raise JABException(
-            "no JABElement found in level {} with node '{}'".format(level, node)
+            f"no JABElement found in level {level} with node '{node}'"
         )
 
     def find_element_by_xpath(self, value: str, visible: bool = False) -> JABElement:
@@ -1283,7 +1306,7 @@ class JABElement(object):
             By.INDEX_IN_PARENT,
             By.XPATH,
         ]:
-            raise JABException("incorrect by strategy '{}'".format(by))
+            raise JABException(f"incorrect by strategy '{by}'")
         if by == By.XPATH:
             self.find_element_by_xpath(value=value, visible=visible)
         for jabelement in self._generate_all_childs(visible=visible):
@@ -1291,7 +1314,7 @@ class JABElement(object):
                 return jabelement
             self.release_jabelement(jabelement)
         raise JABException(
-            "jab element not found by '{}' with locator '{}'".format(by, value)
+            f"jab element not found by '{by}' with locator '{value}'"
         )
 
     def find_elements_by_name(
@@ -1518,7 +1541,7 @@ class JABElement(object):
             By.INDEX_IN_PARENT,
             By.XPATH,
         ]:
-            raise JABException("incorrect by strategy '{}'".format(by))
+            raise JABException(f"incorrect by strategy '{by}'")
         if by == By.XPATH:
             self.find_elements_by_xpath(value=value, visible=visible)
         jabelements = []
@@ -1529,7 +1552,7 @@ class JABElement(object):
             self.release_jabelement(jabelement)
         if not jabelements:
             raise JABException(
-                "no JABElement found by '{}' with locator '{}'".format(by, value)
+                f"no JABElement found by '{by}' with locator '{value}'"
             )
         return jabelements
 
@@ -1539,6 +1562,7 @@ class JABElement(object):
                 [
                     value is None,
                     by == By.NAME and jabelement.name == value,
+                    by == By.ROLE and jabelement.role == value,
                     by == By.DESCRIPTION and jabelement.description == value,
                     by == By.STATES and set(jabelement.states_en_us) == set(value),
                     by == By.OBJECT_DEPTH

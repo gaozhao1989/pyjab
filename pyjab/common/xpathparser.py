@@ -25,13 +25,13 @@ class XpathParser(object):
         try:
             role = content.group()
         except AttributeError:
-            raise XpathParserException("incorrect role set for node '{}'".format(node))
+            raise XpathParserException(f"incorrect role set for node '{node}'")
         if role in Role.__members__.values():
             return role
         elif role == "*":
             return "*"
         else:
-            raise XpathParserException("incorrect role set '{}'".format(role))
+            raise XpathParserException(f"incorrect role set '{role}'")
 
     def get_node_attributes(self, node_conditions: str) -> list:
         pattern = re.compile("([^\[\]]+)")
@@ -40,14 +40,14 @@ class XpathParser(object):
             return list()
         if len(conditions) > 1:
             raise XpathParserException(
-                "extra node conditions found '{}'".format(conditions)
+                f"extra node conditions found '{conditions}'"
             )
         condition = conditions[0]
         pattern = re.compile("(@\w+?=\s*\w*\(?(\"[\s\S]*?\"|'[\s\S]*?')?\)?)")
         contents = pattern.findall(condition)
         if len(contents) < 1:
             raise XpathParserException(
-                "no contents found conditions '{}'".format(contents)
+                f"no contents found conditions '{contents}'"
             )
         attributes = []
         for content in contents:
