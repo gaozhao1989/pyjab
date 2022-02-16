@@ -27,13 +27,13 @@ class JABDriver(object):
     """
 
     def __init__(
-        self,
-        title: str = "",
-        bridge_dll: str = "",
-        hwnd: HWND = None,
-        vmid: c_long = None,
-        accessible_context: JOBJECT64 = None,
-        timeout: int = TIMEOUT,
+            self,
+            title: str = "",
+            bridge_dll: str = "",
+            hwnd: HWND = None,
+            vmid: c_long = None,
+            accessible_context: JOBJECT64 = None,
+            timeout: int = TIMEOUT,
     ) -> None:
         """Create a new jab driver.
 
@@ -60,7 +60,7 @@ class JABDriver(object):
         self._bridge = None
         self._root_element = None
         self.init_jab()
-        JABFixedFunc(self._bridge)._fix_bridge_functions()
+        JABFixedFunc(self.bridge)._fix_bridge_functions()
 
     @property
     def title(self) -> str:
@@ -152,8 +152,8 @@ class JABDriver(object):
             raise RuntimeError(f"HWND:{self.hwnd} is not Java Window, please check!")
         self.root_element = JABElement(
             bridge=self.bridge,
-            hwnd=HWND(self.hwnd),
-            vmid=c_long(self.vmid),
+            hwnd=self.hwnd,
+            vmid=self.vmid,
             accessible_context=self.accessible_context,
         )
         self.logger.info("init jab success")
@@ -170,7 +170,7 @@ class JABDriver(object):
         """
         return bool(self.bridge.isJavaWindow(hwnd))
 
-    def _get_accessible_context_from_hwnd(self, hwnd: HWND) -> Tuple[JOBJECT64, c_long]:
+    def _get_accessible_context_from_hwnd(self, hwnd: HWND) -> Tuple[JOBJECT64, int]:
         """Gets the AccessibleContext and vmID values for the given window.
 
         Args:
@@ -184,8 +184,7 @@ class JABDriver(object):
         self.bridge.getAccessibleContextFromHWND(
             hwnd, byref(vmid), byref(accessible_context)
         )
-        vmid = vmid.value
-        return accessible_context, vmid
+        return accessible_context, vmid.value
 
     def get_version_info(self) -> Dict[str, str]:
         """Gets the version information of the instance of Java Access Bridge instance your application is using.
@@ -220,7 +219,7 @@ class JABDriver(object):
                 return hwnd
 
     def wait_java_window_by_title(self, title: str, timeout: int = TIMEOUT) -> HWND:
-        """Wait until a Java Window exist in specific seconds.
+        """Wait until a Java Window exists in specific seconds.
 
         Args:
             title (str): The title of specific Java Window need to wait.
@@ -278,7 +277,7 @@ class JABDriver(object):
 
     def find_element_by_states(self, value: str, visible: bool = False) -> JABElement:
         """
-        Find an JABElement given a states locator.
+        Find an JABElement given a state locator.
         """
         if value == self.root_element.states:
             return self.root_element
@@ -288,10 +287,10 @@ class JABDriver(object):
             )
 
     def find_element_by_object_depth(
-        self, value: int, visible: bool = False
+            self, value: int, visible: bool = False
     ) -> JABElement:
         """
-        Find an JABElement given a object depth locator.
+        Find an JABElement given an object depth locator.
         """
         if value == self.root_element.object_depth:
             return self.root_element
@@ -301,7 +300,7 @@ class JABDriver(object):
             )
 
     def find_element_by_children_count(
-        self, value: int, visible: bool = False
+            self, value: int, visible: bool = False
     ) -> JABElement:
         """
         Find an JABElement given a children count locator.
@@ -314,10 +313,10 @@ class JABDriver(object):
             )
 
     def find_element_by_index_in_parent(
-        self, value: int, visible: bool = False
+            self, value: int, visible: bool = False
     ) -> JABElement:
         """
-        Find an JABElement given a index in parent locator.
+        Find an JABElement given an index in parent locator.
         """
         if value == self.root_element.index_in_parent:
             return self.root_element
@@ -328,12 +327,12 @@ class JABDriver(object):
 
     def find_element_by_xpath(self, value: str, visible: bool = False) -> JABElement:
         """
-        Find an JABElement given a index in parent locator.
+        Find an JABElement given an index in parent locator.
         """
         return self.root_element.find_element_by_xpath(value=value, visible=visible)
 
     def find_element(
-        self, by: str = By.NAME, value: Any = None, visible: bool = False
+            self, by: str = By.NAME, value: Any = None, visible: bool = False
     ) -> JABElement:
         """
         Find an JABElement given a By strategy and locator.
@@ -353,7 +352,7 @@ class JABDriver(object):
         return dict_find[by](value=value, visible=visible)
 
     def find_elements_by_name(
-        self, value: str, visible: bool = False
+            self, value: str, visible: bool = False
     ) -> list[JABElement]:
         """
         Find list of JABElement given a name locator.
@@ -367,7 +366,7 @@ class JABDriver(object):
         return jabelements
 
     def find_elements_by_description(
-        self, value: str, visible: bool = False
+            self, value: str, visible: bool = False
     ) -> list[JABElement]:
         """
         Find list of JABElement given a description locator.
@@ -381,7 +380,7 @@ class JABDriver(object):
         return jabelements
 
     def find_elements_by_role(
-        self, value: str, visible: bool = False
+            self, value: str, visible: bool = False
     ) -> list[JABElement]:
         """
         Find list of JABElement given a role locator.
@@ -395,10 +394,10 @@ class JABDriver(object):
         return jabelements
 
     def find_elements_by_states(
-        self, value: str, visible: bool = False
+            self, value: str, visible: bool = False
     ) -> list[JABElement]:
         """
-        Find list of JABElement given a states locator.
+        Find list of JABElement given a state locator.
         """
         jabelements = []
         if value == self.root_element.states:
@@ -409,10 +408,10 @@ class JABDriver(object):
         return jabelements
 
     def find_elements_by_object_depth(
-        self, value: int, visible: bool = False
+            self, value: int, visible: bool = False
     ) -> list[JABElement]:
         """
-        Find list of JABElement given a object depth locator.
+        Find list of JABElement given an object depth locator.
         """
         jabelements = []
         if value == self.root_element.object_depth:
@@ -425,7 +424,7 @@ class JABDriver(object):
         return jabelements
 
     def find_elements_by_children_count(
-        self, value: int, visible: bool = False
+            self, value: int, visible: bool = False
     ) -> list[JABElement]:
         """
         Find list of JABElement given a children count locator.
@@ -441,10 +440,10 @@ class JABDriver(object):
         return jabelements
 
     def find_elements_by_index_in_parent(
-        self, value: int, visible: bool = False
+            self, value: int, visible: bool = False
     ) -> list[JABElement]:
         """
-        Find list of JABElement given a index in parent locator.
+        Find list of JABElement given an index in parent locator.
         """
         jabelements = []
         if value == self.root_element.index_in_parent:
@@ -457,15 +456,15 @@ class JABDriver(object):
         return jabelements
 
     def find_elements_by_xpath(
-        self, value: str, visible: bool = False
+            self, value: str, visible: bool = False
     ) -> list[JABElement]:
         """
-        Find list of JABElement given a index in parent locator.
+        Find list of JABElement given an index in parent locator.
         """
         return self.root_element.find_elements_by_xpath(value=value, visible=visible)
 
     def find_elements(
-        self, by: str = By.NAME, value: str = None, visible: bool = False
+            self, by: str = By.NAME, value: str = None, visible: bool = False
     ) -> list[JABElement]:
         """
         Find list of JABElement given a By strategy and locator.
@@ -488,16 +487,16 @@ class JABDriver(object):
         """
         Maximizes the current java window that jabdriver is using
         """
-        self.win32utils._set_window_maximize(hwnd=self.root_element.hwnd.value)
+        self.win32utils._set_window_maximize(hwnd=self.root_element.hwnd)
 
     def minimize_window(self):
         """
         Invokes the window manager-specific 'minimize' operation
         """
-        self.win32utils._set_window_minimize(hwnd=self.root_element.hwnd.value)
+        self.win32utils._set_window_minimize(hwnd=self.root_element.hwnd)
 
     def wait_until_element_exist(
-        self, by: str = By.NAME, value: Any = None, timeout: int = TIMEOUT
+            self, by: str = By.NAME, value: Any = None, timeout: int = TIMEOUT
     ) -> JABElement:
         start = time()
         while True:
@@ -541,7 +540,7 @@ class JABDriver(object):
         :Usage:
             driver.get_screenshot_as_base64()
         """
-        self.win32utils._set_window_foreground(hwnd=self.root_element.hwnd.value)
+        self.win32utils._set_window_foreground(hwnd=self.root_element.hwnd)
         bounds = self.root_element.bounds
         x = bounds.get("x")
         y = bounds.get("y")
@@ -570,7 +569,7 @@ class JABDriver(object):
             driver.set_window_size(800,600)
         """
         self.win32utils._set_window_size(
-            hwnd=self.root_element.hwnd.value, width=width, height=height
+            hwnd=self.root_element.hwnd, width=width, height=height
         )
 
     def set_window_position(self, x, y):
@@ -585,7 +584,7 @@ class JABDriver(object):
             driver.set_window_position(0,0)
         """
         self.win32utils._set_window_position(
-            hwnd=self.root_element.hwnd.value, left=x, top=y
+            hwnd=self.root_element.hwnd, left=x, top=y
         )
 
     def get_window_position(self):
@@ -595,4 +594,4 @@ class JABDriver(object):
         :Usage:
             driver.get_window_position()
         """
-        return self.win32utils._get_window_position(hwnd=self.root_element.hwnd.value)
+        return self.win32utils._get_window_position(hwnd=self.root_element.hwnd)

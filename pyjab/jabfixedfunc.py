@@ -31,7 +31,8 @@ class JABFixedFunc(object):
         self.log = Logger("pyjab")
         self.bridge = bridge
 
-    def _check_error(self, result, func, args):
+    @staticmethod
+    def _check_error(result, func, args):
         if not result:
             raise RuntimeError(f"Result {result}")
         return result

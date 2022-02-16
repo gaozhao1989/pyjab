@@ -213,7 +213,8 @@ class Win32Utils(object):
                 self.logger.debug("teardown message pumpup")
                 win32event.SetEvent(self.stop_event)
 
-    def enum_windows(self) -> Dict[HWND, str]:
+    @staticmethod
+    def enum_windows() -> Dict[HWND, str]:
         dict_hwnd = dict()
 
         def get_all_hwnds(hwnd, _):
@@ -238,7 +239,8 @@ class Win32Utils(object):
         dict_hwnd = self.enum_windows()
         return [hwnd for hwnd, win_title in dict_hwnd.items() if title == win_title]
 
-    def get_title_by_hwnd(self, hwnd: HWND) -> str:
+    @staticmethod
+    def get_title_by_hwnd(hwnd: HWND) -> str:
         return win32api.GetWindowText(hwnd)
 
     def wait_hwnd_by_title(self, title: str, timeout: int = TIMEOUT) -> HWND:
@@ -258,7 +260,8 @@ class Win32Utils(object):
                     f"no hwnd found by title '{title}' in '{timeout}'seconds"
                 )
 
-    def _get_foreground_window(self) -> HWND:
+    @staticmethod
+    def _get_foreground_window() -> HWND:
         return win32gui.GetForegroundWindow()
 
     def _set_window_foreground(self, hwnd: HWND) -> None:
@@ -273,27 +276,33 @@ class Win32Utils(object):
         win32gui.ShowWindow(hwnd, win32con.SW_SHOW)
         win32gui.SetForegroundWindow(hwnd)
 
-    def _set_window_maximize(self, hwnd: HWND) -> None:
+    @staticmethod
+    def _set_window_maximize(hwnd: HWND) -> None:
         win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
         win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
 
-    def _set_window_minimize(self, hwnd: HWND) -> None:
+    @staticmethod
+    def _set_window_minimize(hwnd: HWND) -> None:
         win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
         win32gui.ShowWindow(hwnd, win32con.SW_MINIMIZE)
 
-    def _set_window_size(self, hwnd: HWND, width: int, height: int) -> None:
+    @staticmethod
+    def _set_window_size(hwnd: HWND, width: int, height: int) -> None:
         left, top, _, _ = win32gui.GetWindowRect(hwnd)
         win32gui.MoveWindow(hwnd, left, top, width, height, True)
 
-    def _set_window_position(self, hwnd: HWND, left: int, top: int) -> None:
+    @staticmethod
+    def _set_window_position(hwnd: HWND, left: int, top: int) -> None:
         _, _, right, bottom = win32gui.GetWindowRect(hwnd)
         win32gui.MoveWindow(hwnd, left, top, left - right, top - bottom, True)
 
-    def _get_window_position(self, hwnd: HWND) -> tuple:
+    @staticmethod
+    def _get_window_position(hwnd: HWND) -> tuple:
         left, top, _, _ = win32gui.GetWindowRect(hwnd)
         return left, top
 
-    def _click_mouse(self, x: int, y: int, hold: int = 0, button: str = "left") -> None:
+    @staticmethod
+    def _click_mouse(x: int, y: int, hold: int = 0, button: str = "left") -> None:
         mouse_down_act = win32con.MOUSEEVENTF_LEFTDOWN if button == "left" else win32con.MOUSEEVENTF_RIGHTDOWN
         mouse_up_act = win32con.MOUSEEVENTF_LEFTUP if button == "left" else win32con.MOUSEEVENTF_RIGHTUP
         win32api.SetCursorPos((x, y))
@@ -302,20 +311,23 @@ class Win32Utils(object):
             time.sleep(hold)
         win32api.mouse_event(mouse_up_act, x, y, 0, 0)
 
-    def _get_clipboard(self) -> str:
+    @staticmethod
+    def _get_clipboard() -> str:
         win32clipboard.OpenClipboard()
         data = win32clipboard.GetClipboardData(win32con.CF_UNICODETEXT)
         win32clipboard.CloseClipboard()
         return data
 
-    def _set_clipboard(self, text: str) -> None:
+    @staticmethod
+    def _set_clipboard(text: str) -> None:
         win32clipboard.OpenClipboard()
         win32clipboard.EmptyClipboard()
         # TODO: error occurs when set clipboard
         win32clipboard.SetClipboardData(win32con.CF_UNICODETEXT, text)
         win32clipboard.CloseClipboard()
 
-    def _empty_clipboard(self) -> None:
+    @staticmethod
+    def _empty_clipboard() -> None:
         win32clipboard.OpenClipboard()
         win32clipboard.EmptyClipboard()
         win32clipboard.CloseClipboard()
@@ -372,7 +384,7 @@ class Win32Utils(object):
     def _send_keys(self, text: str) -> None:
         """Simulate keyboard type for specific text.
 
-        Characters will typed one by one.
+        Characters will be typed one by one.
 
         None-ASCII characters will directly paste to the field(check the security option before).
 
