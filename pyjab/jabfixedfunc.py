@@ -33,7 +33,7 @@ class JABFixedFunc(object):
 
     def _check_error(self, result, func, args):
         if not result:
-            raise RuntimeError("Result {result}".format(result=result))
+            raise RuntimeError(f"Result {result}")
         return result
 
     def _fix_bridge_function(self, restype, name, *argtypes, **kwargs):
@@ -41,7 +41,7 @@ class JABFixedFunc(object):
             func = getattr(self.bridge, name)
         except AttributeError:
             self.log.error(
-                "{name} not found in Java Access Bridge DLL".format(name=name)
+                f"{name} not found in Java Access Bridge DLL"
             )
             return
         func.restype = restype

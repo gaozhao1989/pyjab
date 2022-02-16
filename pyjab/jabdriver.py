@@ -185,7 +185,7 @@ class JABDriver(object):
             hwnd, byref(vmid), byref(accessible_context)
         )
         vmid = vmid.value
-        return (accessible_context, vmid)
+        return accessible_context, vmid
 
     def get_version_info(self) -> Dict[str, str]:
         """Gets the version information of the instance of Java Access Bridge instance your application is using.
@@ -349,7 +349,7 @@ class JABDriver(object):
             By.XPATH: self.find_element_by_xpath,
         }
         if by not in dict_find.keys():
-            raise JABException("incorrect by strategy '{}'".format(by))
+            raise JABException(f"incorrect by strategy '{by}'")
         return dict_find[by](value=value, visible=visible)
 
     def find_elements_by_name(
@@ -481,7 +481,7 @@ class JABDriver(object):
             By.XPATH: self.find_elements_by_xpath,
         }
         if by not in dict_finds.keys():
-            raise JABException("incorrect by strategy '{}'".format(by))
+            raise JABException(f"incorrect by strategy '{by}'")
         return dict_finds[by](value=value, visible=visible)
 
     def maximize_window(self):
