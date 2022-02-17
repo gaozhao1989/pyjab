@@ -4,13 +4,15 @@ from pyjab.common.exceptions import XpathParserException
 from pyjab.common.logger import Logger
 from pyjab.common.singleton import singleton
 
+
 # TODO: this is very simple parser, need refactor in future
 @singleton
 class XpathParser(object):
     def __init__(self) -> None:
         self.logger = Logger("pyjab")
 
-    def split_nodes(self, xpath: str) -> list:
+    @staticmethod
+    def split_nodes(xpath: str) -> list:
         if not xpath.startswith("/"):
             raise XpathParserException("xpath should start with '/'")
         nodes = xpath.split("/")
@@ -19,13 +21,14 @@ class XpathParser(object):
             raise XpathParserException("incorrect '/' numbers")
         return [node for node in nodes if node]
 
-    def get_node_role(self, node: str) -> str:
+    @staticmethod
+    def get_node_role(node: str) -> str:
         pattern = re.compile("^[a-z ]+|^\*")
         content = pattern.search(node)
         try:
             role = content.group()
-        except AttributeError:
-            raise XpathParserException(f"incorrect role set for node '{node}'")
+        except AttributeError as e:
+            raise XpathParserException(f"incorrect role set for node '{node}'") from e
         if role in Role.__members__.values():
             return role
         elif role == "*":
@@ -33,7 +36,8 @@ class XpathParser(object):
         else:
             raise XpathParserException(f"incorrect role set '{role}'")
 
-    def get_node_attributes(self, node_conditions: str) -> list:
+    @staticmethod
+    def get_node_attributes(node_conditions: str) -> list:
         pattern = re.compile("([^\[\]]+)")
         conditions = pattern.findall(node_conditions)
         if len(conditions) == 0:
@@ -57,5 +61,5 @@ class XpathParser(object):
 
     def get_node_information(self, node: str) -> dict:
         node_role = self.get_node_role(node)
-        node_attributes = self.get_node_attributes(node[len(node_role) :])
+        node_attributes = self.get_node_attributes(node[len(node_role):])
         return dict(role=node_role, attributes=node_attributes)

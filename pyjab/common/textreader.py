@@ -19,7 +19,7 @@ class TextReader(object):
             buffer (bytes): bytes object to convert to str.
             chars_len (int): character length for handle bytes.
             encoding (Optional[str], optional): encoding format for buffer. Defaults to None.
-            errors_fallback (str, optional): the error handling scheme to use for the handling of decoding errors. Defaults to "replace".
+            errors_fallback (str, optional): error handling scheme for handling of decoding errors. Default: "replace".
 
         Returns:
             str: decoded text from buffer.
