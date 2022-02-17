@@ -2,10 +2,8 @@ from pyjab.jabdriver import JABDriver
 
 
 class TestBugFix(object):
-    def test_fix_same_title(self) -> None:
-        # Create same name folder and open it
-        jabdriver = JABDriver(title="Java Control Panel")
-        assert jabdriver
+    def test_fix_same_title(self, java_control_app) -> None:
+        assert java_control_app
 
     def test_fix_jab_init(self) -> None:
         jabdriver = JABDriver(title="Java Control Panel")

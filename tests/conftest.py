@@ -252,6 +252,12 @@ def table_ftf_edit_app() -> JABDriver:
         yield jabdriver
 
 
+@pytest.fixture
+def java_control_app() -> JABDriver:
+    with AppInit(Path(os.environ.get("JRE_HOME", "C:\\Program Files\\Java\\jdk1.8.0_311\\jre") + "\\bin\\javacpl.exe"), "Java Control Panel") as jabdriver:
+        yield jabdriver
+
+
 class AppInit:
     def __init__(self, file: Path, window_name: str):
         self.file = file
@@ -259,7 +265,7 @@ class AppInit:
         self.jabdriver = None
 
     def __enter__(self):
-        Popen(" ".join(["javaws", str(self.file)]), shell=True).wait()
+        Popen(" ".join(["javaws", str(self.file)]) if self.file.suffix == "jnlp" else str(self.file), shell=True).wait()
         self.jabdriver = JABDriver(self.name)
         return self.jabdriver
 
