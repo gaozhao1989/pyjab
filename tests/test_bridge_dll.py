@@ -2,9 +2,8 @@ from pyjab.jabdriver import JABDriver
 
 
 class TestBridgeDll(object):
-    def test_bridge_default(self) -> None:
-        jabdriver = JABDriver(title="Java Control Panel")
-        assert jabdriver
+    def test_bridge_default(self, java_control_app) -> None:
+        assert java_control_app
 
     def test_bridge_x86(self) -> None:
         # JDK 1.8

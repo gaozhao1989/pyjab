@@ -878,14 +878,14 @@ class JABElement(object):
             return
         self._do_accessible_action("toggleexpand")
 
-    def send_text(self, value: str, simulate: bool = False) -> None:
+    def send_text(self, value: Union[str,int], simulate: bool = False) -> None:
         """Type into the JABElement.
 
         Default will use JAB Accessible Action.
         Set parameter 'simulate' to True if internal action does not work.
 
         :Args:
-            value (str): A string for typing.
+            value (str, int): A string for typing.
             simulate (bool, optional): Simulate user input action by keyboard event. Defaults to False.
 
         Use this to send simple key events or to fill out form fields::

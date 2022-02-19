@@ -22,9 +22,10 @@ UI_SWING_BASE_URL = "/".join([BASE_ORACLE_URL, "tutorialJWS/samples/uiswing"])
 class TestFile(NamedTuple):
     url: str
     file: Path
+    window_title: str
 
 
-class DemoUrl(Enum):
+class OracleApp(Enum):
     def __new__(cls, *args, **kwargs):
         value = len(cls.__members__) + 1
         obj = object.__new__(cls)
@@ -35,8 +36,18 @@ class DemoUrl(Enum):
         super().__init__()
         _jnlp_file_path = Path(TEST_FILES_DIR / f"{self._name_}.jnlp")
         _zip_file_path = Path(TEST_FILES_DIR / f"{self._name_}.zip")
-        self._value_ = TestFile(url=value,
-                                file=_jnlp_file_path if value.endswith(".jnlp") else _zip_file_path)
+
+        def extract_file_name(path: str):
+            # Get last string after / and then the first string before .
+            return path.split("/")[-1].split(".")[0]
+
+        def remove_digits(input:str):
+            return ''.join([i for i in input if not i.isdigit()])
+
+        file_path = value[0] if isinstance(value, tuple) else value
+        self._value_ = TestFile(url=file_path,
+                                file=_jnlp_file_path if value.endswith(".jnlp") else _zip_file_path,
+                                window_title=remove_digits(value[1]) if isinstance(value, tuple) else remove_digits(extract_file_name(file_path)))
 
     BUTTON = "/".join([UI_SWING_BASE_URL, "ButtonDemoProject/ButtonDemo.jnlp"])
     CHECK_BOX = "/".join([UI_SWING_BASE_URL, "CheckBoxDemoProject/CheckBoxDemo.jnlp"])
@@ -75,7 +86,7 @@ def get_test_jnlp_files():
 
     existing_files = os.listdir(TEST_FILES_DIR)
 
-    for test_file in DemoUrl:
+    for test_file in OracleApp:
         if test_file.value.file.name in existing_files:
             continue
         r = requests.get(test_file.value.url, allow_redirects=True)
@@ -84,177 +95,15 @@ def get_test_jnlp_files():
 
 
 @pytest.fixture
-def button_app() -> JABDriver:
-    with AppInit(DemoUrl.BUTTON.value.file, "ButtonDemo") as jabdriver:
-        yield jabdriver
-
-
-@pytest.fixture
-def checkbox_app() -> JABDriver:
-    with AppInit(DemoUrl.CHECK_BOX.value.file, "CheckBoxDemo") as jabdriver:
-        yield jabdriver
-
-
-@pytest.fixture
-def color_chooser_app() -> JABDriver:
-    with AppInit(DemoUrl.COLOR_CHOOSER.value.file, "ColorChooserDemo") as jabdriver:
-        yield jabdriver
-
-
-@pytest.fixture
-def combo_box_app() -> JABDriver:
-    with AppInit(DemoUrl.COMBO_BOX.value.file, "ComboBoxDemo") as jabdriver:
-        yield jabdriver
-
-
-@pytest.fixture
-def dialog_app() -> JABDriver:
-    with AppInit(DemoUrl.DIALOG.value.file, "DialogDemo") as jabdriver:
-        yield jabdriver
-
-
-@pytest.fixture
-def file_chooser_app() -> JABDriver:
-    # TODO: Not sure how this is launching the app
-    with AppInit(DemoUrl.FILE_CHOOSER.value.file, "FileChooserDemo") as jabdriver:
-        yield jabdriver
-
-
-@pytest.fixture
-def frame_app() -> JABDriver:
-    with AppInit(DemoUrl.FRAME.value.file, "FrameDemo") as jabdriver:
-        yield jabdriver
-
-
-@pytest.fixture
-def internal_frame_app() -> JABDriver:
-    with AppInit(DemoUrl.INTERNAL_FRAME.value.file, "InternalFrameDemo") as jabdriver:
-        yield jabdriver
-
-
-@pytest.fixture
-def label_app() -> JABDriver:
-    with AppInit(DemoUrl.LABEL.value.file, "LabelDemo") as jabdriver:
-        yield jabdriver
-
-
-@pytest.fixture
-def layered_pane_app() -> JABDriver:
-    with AppInit(DemoUrl.LAYERED_PANE.value.file, "LayeredPaneDemo") as jabdriver:
-        yield jabdriver
-
-
-@pytest.fixture
-def list_app() -> JABDriver:
-    with AppInit(DemoUrl.LIST.value.file, "ListDemo") as jabdriver:
-        yield jabdriver
-
-
-@pytest.fixture
-def menu_app() -> JABDriver:
-    with AppInit(DemoUrl.MENU.value.file, "MenuDemo") as jabdriver:
-        yield jabdriver
-
-
-@pytest.fixture
-def password_app() -> JABDriver:
-    with AppInit(DemoUrl.PASSWORD.value.file, "PasswordDemo") as jabdriver:
-        yield jabdriver
-
-
-@pytest.fixture
-def popup_app() -> JABDriver:
-    with AppInit(DemoUrl.POPUP.value.file, "PopupMenuDemo") as jabdriver:
-        yield jabdriver
-
-
-@pytest.fixture
-def progress_bar_app() -> JABDriver:
-    with AppInit(DemoUrl.PROGRESS_BAR.value.file, "ProgressBarDemo") as jabdriver:
-        yield jabdriver
-
-
-@pytest.fixture
-def radio_button_app() -> JABDriver:
-    with AppInit(DemoUrl.RADIO_BUTTON.value.file, "RadioButtonDemo") as jabdriver:
-        yield jabdriver
-
-
-@pytest.fixture
-def root_layered_pane_app() -> JABDriver:
-    with AppInit(DemoUrl.ROOT_LAYERED_PANE.value.file, "RootLayeredPaneDemo") as jabdriver:
-        yield jabdriver
-
-
-@pytest.fixture
-def scroll_app() -> JABDriver:
-    with AppInit(DemoUrl.SCROLL.value.file, "ScrollDemo") as jabdriver:
-        yield jabdriver
-
-
-@pytest.fixture
-def slider_app() -> JABDriver:
-    with AppInit(DemoUrl.SLIDER.value.file, "SliderDemo") as jabdriver:
-        yield jabdriver
-
-
-@pytest.fixture
-def slider_two_app() -> JABDriver:
-    with AppInit(DemoUrl.SLIDER_TWO.value.file, "SliderDemo") as jabdriver:
-        yield jabdriver
-
-
-@pytest.fixture
-def spinbox_app() -> JABDriver:
-    with AppInit(DemoUrl.SPINNER.value.file, "SpinnerDemo") as jabdriver:
-        yield jabdriver
-
-
-@pytest.fixture
-def split_pane_app() -> JABDriver:
-    with AppInit(DemoUrl.SPLIT_PANE.value.file, "SplitPaneDemo") as jabdriver:
-        yield jabdriver
-
-
-@pytest.fixture
-def status_bar_app() -> JABDriver:
-    with AppInit(DemoUrl.STATUS_BAR.value.file, "StatusBarDemo") as jabdriver:
-        yield jabdriver
-
-
-@pytest.fixture
-def table_app() -> JABDriver:
-    with AppInit(DemoUrl.TABLE.value.file, "TableDemo") as jabdriver:
-        yield jabdriver
-
-
-@pytest.fixture
-def text_area_app() -> JABDriver:
-    with AppInit(DemoUrl.TEXT_AREA.value.file, "TextAreaDemo") as jabdriver:
-        yield jabdriver
-
-
-@pytest.fixture
-def tool_bar_app() -> JABDriver:
-    with AppInit(DemoUrl.TOOLBAR.value.file, "ToolBarDemo") as jabdriver:
-        yield jabdriver
-
-
-@pytest.fixture
-def tree_app() -> JABDriver:
-    with AppInit(DemoUrl.TREE.value.file, "TreeDemo") as jabdriver:
-        yield jabdriver
-
-
-@pytest.fixture
-def table_ftf_edit_app() -> JABDriver:
-    with AppInit(DemoUrl.TABLE_FTF_EDIT.value.file, "TableFTFEditDemo") as jabdriver:
-        yield jabdriver
+def oracle_app(request) -> JABDriver:
+    app: TestFile = request.param.value
+    with AppInit(app.file, app.window_title) as jab_driver:
+        yield jab_driver
 
 
 @pytest.fixture
 def java_control_app() -> JABDriver:
-    with AppInit(Path(os.environ.get("JRE_HOME", "C:\\Program Files\\Java\\jdk1.8.0_311\\jre") + "\\bin\\javacpl.exe"), "Java Control Panel") as jabdriver:
+    with AppInit(Path(r"C:\Program Files\Java\jdk1.8.0_311\jre\bin\javacpl.exe"), "Java Control Panel") as jabdriver:
         yield jabdriver
 
 
@@ -271,3 +120,4 @@ class AppInit:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         subprocess.run('cmd /c "wmic process where name=\'jp2launcher.exe\'" delete')
+        subprocess.run('cmd /c "taskkill /FI "WINDOWTITLE eq Java Control Panel" /F"')
