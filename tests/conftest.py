@@ -1,8 +1,6 @@
 import os
-import subprocess
 from enum import Enum
 from pathlib import Path
-from subprocess import Popen
 from typing import NamedTuple
 
 import pytest
@@ -97,27 +95,12 @@ def get_test_jnlp_files():
 @pytest.fixture
 def oracle_app(request) -> JABDriver:
     app: TestFile = request.param.value
-    with AppInit(app.file, app.window_title) as jab_driver:
+    with JABDriver(file_path=app.file, title=app.window_title) as jab_driver:
         yield jab_driver
 
 
 @pytest.fixture
 def java_control_app() -> JABDriver:
-    with AppInit(Path(r"C:\Program Files\Java\jdk1.8.0_311\jre\bin\javacpl.exe"), "Java Control Panel") as jabdriver:
+    # Assumes installation of some jdk 1.8 - currently hardcoded
+    with JABDriver(file_path=Path(r"C:\Program Files\Java\jdk1.8.0_311\jre\bin\javacpl.exe"), title="Java Control Panel") as jabdriver:
         yield jabdriver
-
-
-class AppInit:
-    def __init__(self, file: Path, window_name: str):
-        self.file = file
-        self.name = window_name
-        self.jabdriver = None
-
-    def __enter__(self):
-        Popen(" ".join(["javaws", str(self.file)]) if self.file.suffix == "jnlp" else str(self.file), shell=True).wait()
-        self.jabdriver = JABDriver(self.name)
-        return self.jabdriver
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        subprocess.run('cmd /c "wmic process where name=\'jp2launcher.exe\'" delete')
-        subprocess.run('cmd /c "taskkill /FI "WINDOWTITLE eq Java Control Panel" /F"')

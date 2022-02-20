@@ -1,4 +1,7 @@
 from __future__ import annotations
+
+from time import time
+
 from pyjab.common.logger import Logger
 from pyjab.common.textreader import TextReader
 import re
@@ -660,11 +663,22 @@ class JABElement(object):
             self._request_focus()
             if self.text:
                 self.win32_utils._press_key("end")
-                self.win32_utils._press_hold_release_key("ctrl", "shift", "end")
                 for _ in self.text:
                     self.win32_utils._press_key("backspace")
         else:
             self.send_text(value="", simulate=False)
+        timeout = 5
+        start = time()
+        while True:
+            if not self.text:
+                return
+            current = time()
+            elapsed = round(current - start)
+            if elapsed >= timeout:
+                raise TimeoutError(
+                    f"Failed to clear text in '{timeout}' seconds"
+                )
+
 
     def scroll(self, to_bottom: bool = True, hold: int = 2) -> None:
         """Scroll a scoll bar to top or to bottom.
@@ -878,7 +892,7 @@ class JABElement(object):
             return
         self._do_accessible_action("toggleexpand")
 
-    def send_text(self, value: Union[str,int], simulate: bool = False) -> None:
+    def send_text(self, value: Union[str, int], simulate: bool = False, wait_for_text_update: bool=True) -> None:
         """Type into the JABElement.
 
         Default will use JAB Accessible Action.
@@ -906,6 +920,17 @@ class JABElement(object):
                 raise JABException(
                     self.int_func_err_msg.format("setTextContents")
                     + ", try set parameter 'simulate' with True"
+                )
+        timeout = 5
+        start = time()
+        while True:
+            if self.text == value:
+                return
+            current = time()
+            elapsed = round(current - start)
+            if elapsed >= timeout:
+                raise TimeoutError(
+                    f"Failed to update text attribute to '{value}' in '{timeout}' seconds"
                 )
 
     def is_checked(self) -> bool:
