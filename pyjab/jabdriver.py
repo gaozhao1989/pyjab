@@ -247,14 +247,14 @@ class JABDriver(object):
             "bridgeWinDLLVersion": info.bridgeWinDLLVersion,
         }
 
-    def get_java_window_hwnd(self, title: str) -> Optional[HWND, None]:
+    def get_java_window_hwnd(self, title: str) -> Optional[HWND]:
         """Get Java Window hwnd by title.
 
         Args:
             title (str): Java window title
 
         Returns:
-            Union[HWND, None]: HWND if found Java Window, otherwise return None
+            Optional[HWND]: HWND if found Java Window, otherwise return None
         """
         for hwnd in self.win32utils.get_hwnds_by_title(title=title):
             if self._is_java_window(hwnd):
