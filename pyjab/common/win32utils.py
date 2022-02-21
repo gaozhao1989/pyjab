@@ -251,13 +251,13 @@ class Win32Utils(object):
                 return hwnd
             error_log = f"no hwnd found by win title =>'{title}'"
             if latest_log != error_log:
-                self.logger.error(error_log)
+                self.logger.debug(error_log)
                 latest_log = error_log
             current = time.time()
             elapsed = round(current - start)
             if elapsed >= timeout:
                 raise TimeoutError(
-                    f"no hwnd found by title '{title}' in '{timeout}'seconds"
+                    f"no hwnd found by title '{title}' in '{timeout}' seconds"
                 )
 
     @staticmethod

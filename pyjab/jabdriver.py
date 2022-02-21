@@ -277,7 +277,7 @@ class JABDriver(object):
                 return hwnd
             log_out = f"no java window found by title '{title}'"
             if self.latest_log != log_out:
-                self.logger.warning(log_out)
+                self.logger.debug(log_out)
                 self.latest_log = log_out
             current = time()
             elapsed = round(current - start)
