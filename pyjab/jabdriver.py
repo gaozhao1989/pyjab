@@ -46,7 +46,7 @@ class JABDriver(object):
         """Create a new jab driver.
 
         Args:
-            title (str, optional): Window title of Java application need to bind. Obligatory for contextmanager. Defaults to "".
+            title (str, optional): Window title of Java application need to bind. Defaults to "".
             file_path (Path, optional): File path of the application to launch. Defaults to None.
             bridge_dll (str, optional): WindowsAccessBridge dll file path. Defaults to "".
             hwnd (HWND, optional): HWND of Java Window. Defaults to None.
@@ -77,8 +77,6 @@ class JABDriver(object):
         JABFixedFunc(self.bridge)._fix_bridge_functions()
 
     def __enter__(self):
-        if not self.title:
-            raise RuntimeError('A window title must be specified in order to use the context manager')
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):

@@ -70,7 +70,7 @@ You may also use a context manager approach to kill the Java Window after the JA
    from pyjab.jabdriver import JABDriver
 
    # Create a JABDriver object.
-   with JABDriver(title="java app window title") as jabdriver:
+   with JABDriver("java app window title") as jabdriver:
 
        # Find a JABElement by element name
        login_btn = jabdriver.find_element_by_name("Login")
@@ -85,7 +85,7 @@ You can also open the Java window process by specifying the file path which will
    from pyjab.jabdriver import JABDriver
 
    # Create a JABDriver object.
-   with JABDriver(title="java app window title", file_path=r"C:\jnlps\test.jnlp") as jabdriver:
+   with JABDriver(title="java app window title", file_path="C:\\jnlps\\test.jnlp") as jabdriver:
 
        # Find a JABElement by element name
        login_btn = jabdriver.find_element_by_name("Login")
