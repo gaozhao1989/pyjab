@@ -758,7 +758,7 @@ class JABElement(object):
             "menu": self._select_from_menu,
         }[self.role_en_us](option=option, simulate=simulate)
         if wait_for_selection:
-            self._wait_for_value_to_contain(States.SELECTED, self.find_element_by_name(option).states_en_us)
+            self._wait_for_value_to_contain([States.SELECTED, States.CHECKED], self.find_element_by_name(option).states_en_us)
 
     def get_selected_element(self) -> JABElement:
         """Get selected JABElement from selection.
@@ -1714,14 +1714,14 @@ class JABElement(object):
         return info
 
     @staticmethod
-    def _wait_for_value_to_be(expected_value: Optional[str], actual_value_func, timeout: int = 5, error_msg_function: str = None):
+    def _wait_for_value_to_be(expected_value: Optional[str], actual_value, timeout: int = 5, error_msg_function: str = None):
         start = time()
         while True:
             if (
                 expected_value
-                and actual_value_func == expected_value
+                and actual_value == expected_value
                 or not expected_value
-                and not actual_value_func
+                and not actual_value
             ):
                 return
             current = time()
@@ -1734,10 +1734,10 @@ class JABElement(object):
                 raise TimeoutError(_error_msg)
 
     @staticmethod
-    def _wait_for_value_to_contain(expected_value: Optional[str], actual_value_func, timeout: int = 5, error_msg_function: str = None):
+    def _wait_for_value_to_contain(expected_values: Union[str, list[str]], actual_values, timeout: int = 5, error_msg_function: str = None):
         start = time()
         while True:
-            if expected_value in actual_value_func:
+            if any(v in expected_values for v in actual_values):
                 return
             current = time()
             elapsed = round(current - start)
