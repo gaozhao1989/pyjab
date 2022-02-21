@@ -66,7 +66,6 @@ class JABDriver(object):
         self.latest_log = None
         self._bridge_dll = bridge_dll
         self._timeout = timeout
-        self._title = title
         self._hwnd = hwnd
         self._vmid = vmid
         self._pid = None
@@ -184,7 +183,6 @@ class JABDriver(object):
         # check if Java Window HWND valid
         if not self._is_java_window(self.hwnd):
             raise RuntimeError(f"HWND:{self.hwnd} is not Java Window, please check!")
-        # get PID from HWND
         self.pid = self.get_pid_from_hwnd()
         self.root_element = JABElement(
             bridge=self.bridge,

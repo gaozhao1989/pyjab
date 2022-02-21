@@ -162,7 +162,7 @@ class JABElement(object):
 
     @property
     def table(self) -> dict:
-        if self.role_en_us == "table":
+        if self.role_en_us == Role.TABLE:
             info = self._get_accessible_table_info()
             tb = {
                 "row_count": info.rowCount,
@@ -758,7 +758,8 @@ class JABElement(object):
             "menu": self._select_from_menu,
         }[self.role_en_us](option=option, simulate=simulate)
         if wait_for_selection:
-            self._wait_for_value_to_contain([States.SELECTED, States.CHECKED], self.find_element_by_name(option).states_en_us)
+            self._wait_for_value_to_contain([States.SELECTED, States.CHECKED],
+                                            self.find_element_by_name(option).states_en_us)
 
     def get_selected_element(self) -> JABElement:
         """Get selected JABElement from selection.
@@ -845,8 +846,6 @@ class JABElement(object):
                     break
         else:
             self.find_element_by_name(value=option).click(simulate=False)
-
-
 
     def spin(
             self, option: str = None, increase: bool = True, simulate: bool = False
@@ -1244,27 +1243,18 @@ class JABElement(object):
             Defaults to False to find available child element.
 
         Raises:
-            ValueError: Incorect level set
+            ValueError: Incorrect level set
             JABException: No JABElement found with specific node
 
         Returns:
             JABElement: The child JABElement
         """
-        dict_gen = {
-            "root": self._generate_all_childs,
-            "child": self._generate_childs_from_element,
-        }
-        if level not in dict_gen.keys():
-            raise ValueError("level should be in 'root' or 'child'")
-        node_info = self.xpath_parser.get_node_information(node)
-        node_role = node_info.get("role")
-        node_attributes = node_info.get("attributes")
-        jabelement = self._get_node_element(jabelement)
-        for _jabelement in dict_gen[level](jabelement=jabelement, visible=visible):
-            if node_role not in ["*", _jabelement.role_en_us]:
+        dict_gen, node_element, node_info = self.get_node_info(node, level, jabelement)
+        for _jabelement in dict_gen[level](jabelement=node_element, visible=visible):
+            if node_info.get("role") not in ["*", _jabelement.role_en_us]:
                 self.release_jabelement(_jabelement)
                 continue
-            if self._is_match_attributes(node_attributes, _jabelement):
+            if self._is_match_attributes(node_info.get("attributes"), _jabelement):
                 return _jabelement
             self.release_jabelement(_jabelement)
         raise JABException(
@@ -1464,11 +1454,28 @@ class JABElement(object):
             Defaults to False to find all child elements.
 
         Raises:
-            ValueError: Incorect level set
+            ValueError: Incorrect level set
 
         Returns:
             list[JABElement]: list of the JABElement
         """
+        dict_gen, node_element, node_info = self.get_node_info(node, level, jabelement)
+        jabelements = []
+        for _jabelement in dict_gen[level](jabelement=node_element, visible=visible):
+            if node_info.get("role") not in ["*", _jabelement.role_en_us]:
+                self.release_jabelement(_jabelement)
+                continue
+            if self._is_match_attributes(node_info.get("attributes"), _jabelement):
+                jabelements.append(_jabelement)
+                continue
+            self.release_jabelement(_jabelement)
+        return jabelements
+
+    def get_node_info(self,
+                      node: str,
+                      level: str = "root",
+                      jabelement: JABElement = None,
+                      ):
         dict_gen = {
             "root": self._generate_all_childs,
             "child": self._generate_childs_from_element,
@@ -1476,19 +1483,8 @@ class JABElement(object):
         if level not in dict_gen.keys():
             raise ValueError("level should be in 'root' or 'child'")
         node_info = self.xpath_parser.get_node_information(node)
-        node_role = node_info.get("role")
-        node_attributes = node_info.get("attributes")
-        jabelement = self._get_node_element(jabelement)
-        jabelements = []
-        for _jabelement in dict_gen[level](jabelement=jabelement, visible=visible):
-            if node_role not in ["*", _jabelement.role_en_us]:
-                self.release_jabelement(_jabelement)
-                continue
-            if self._is_match_attributes(node_attributes, _jabelement):
-                jabelements.append(_jabelement)
-                continue
-            self.release_jabelement(_jabelement)
-        return jabelements
+        node_element = self._get_node_element(jabelement)
+        return dict_gen, node_element, node_info
 
     def find_elements_by_xpath(
             self, value: str, visible: bool = False
@@ -1504,25 +1500,25 @@ class JABElement(object):
             list[JABElement]: List of JABElement find by locator
         """
 
-        def generate_node(nodes: list[str]) -> Generator:
-            for index, node in enumerate(nodes):
-                level = "root" if index == 0 else "child"
-                yield node, level
+        def generate_node(_nodes: list[str]) -> Generator:
+            for index, _node in enumerate(_nodes):
+                _level = "root" if index == 0 else "child"
+                yield _node, _level
 
         def get_child_jabelements(
-                node: str,
-                level: str,
-                parent_jabelements: list[JABElement],
-                visible: bool = False,
+                _node: str,
+                _level: str,
+                _parent_jabelements: list[JABElement],
+                _visible: bool = False,
         ) -> list[JABElement]:
             child_jabelements = []
-            for parent_jabelement in parent_jabelements:
+            for _parent_jabelement in _parent_jabelements:
                 child_jabelements.extend(
                     self._get_elements_by_node(
-                        node=node,
-                        level=level,
-                        jabelement=parent_jabelement,
-                        visible=visible,
+                        node=_node,
+                        level=_level,
+                        jabelement=_parent_jabelement,
+                        visible=_visible,
                     )
                 )
             return child_jabelements
@@ -1535,7 +1531,7 @@ class JABElement(object):
             if not _jabelements:
                 raise JABException("no JABElement found")
             _jabelements = get_child_jabelements(
-                node=node, level=level, parent_jabelements=_jabelements, visible=visible
+                _node=node, _level=level, _parent_jabelements=_jabelements, _visible=visible
             )
         return _jabelements
 
@@ -1709,19 +1705,20 @@ class JABElement(object):
         }
         if self.accessible_text:
             info["text"] = self.text
-        if self.role_en_us == "table":
+        if self.role_en_us == Role.TABLE:
             info["table"] = self.table
         return info
 
     @staticmethod
-    def _wait_for_value_to_be(expected_value: Optional[str], actual_value, timeout: int = 5, error_msg_function: str = None):
+    def _wait_for_value_to_be(expected_value: Optional[str], actual_value, timeout: int = 5,
+                              error_msg_function: str = None):
         start = time()
         while True:
             if (
-                expected_value
-                and actual_value == expected_value
-                or not expected_value
-                and not actual_value
+                    expected_value
+                    and actual_value == expected_value
+                    or not expected_value
+                    and not actual_value
             ):
                 return
             current = time()
@@ -1734,7 +1731,8 @@ class JABElement(object):
                 raise TimeoutError(_error_msg)
 
     @staticmethod
-    def _wait_for_value_to_contain(expected_values: Union[str, list[str]], actual_values, timeout: int = 5, error_msg_function: str = None):
+    def _wait_for_value_to_contain(expected_values: Union[str, list[str]], actual_values, timeout: int = 5,
+                                   error_msg_function: str = None):
         start = time()
         while True:
             if any(v in expected_values for v in actual_values):
@@ -1745,5 +1743,6 @@ class JABElement(object):
                 if error_msg_function:
                     _error_msg = f"Failed to {error_msg_function} in '{timeout}' seconds"
                 else:
-                    _error_msg = f"Failed to wait for expected value '{expected_value}' in '{timeout}' seconds"
+                    _expected_values = ", ".join(expected_values)
+                    _error_msg = f"Failed to wait for expected values '{_expected_values}' in '{timeout}' seconds"
                 raise TimeoutError(_error_msg)

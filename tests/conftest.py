@@ -39,21 +39,21 @@ class OracleApp(Enum):
             # Get last string after / and then the first string before .
             return path.split("/")[-1].split(".")[0]
 
-        def remove_digits(input:str):
-            return ''.join([i for i in input if not i.isdigit()])
+        def remove_digits(input_str: str):
+            return ''.join([i for i in input_str if not i.isdigit()])
 
-        file_path = value[0] if isinstance(value, tuple) else value
-        self._value_ = TestFile(url=file_path,
+        self._value_ = TestFile(url=value,
                                 file=_jnlp_file_path if value.endswith(".jnlp") else _zip_file_path,
-                                window_title=remove_digits(value[1]) if isinstance(value, tuple) else remove_digits(extract_file_name(file_path)))
+                                window_title=remove_digits(extract_file_name(value)))
 
     BUTTON = "/".join([UI_SWING_BASE_URL, "ButtonDemoProject/ButtonDemo.jnlp"])
     CHECK_BOX = "/".join([UI_SWING_BASE_URL, "CheckBoxDemoProject/CheckBoxDemo.jnlp"])
     COLOR_CHOOSER = "/".join([UI_SWING_BASE_URL, "ColorChooserDemoProject/ColorChooserDemo.jnlp"])
     COMBO_BOX = "/".join([UI_SWING_BASE_URL, "ComboBoxDemoProject/ComboBoxDemo.jnlp"])
     DIALOG = "/".join([UI_SWING_BASE_URL, "DialogDemoProject/DialogDemo.jnlp"])
-    FILE_CHOOSER = "/".join(
-        [BASE_ORACLE_URL, "tutorial/uiswing/examples/zipfiles/components-FileChooserDemo2Project.zip"])
+    # This needs to be looked at how to do properly as needs making into launchable project
+    # FILE_CHOOSER = "/".join(
+    #     [BASE_ORACLE_URL, "tutorial/uiswing/examples/zipfiles/components-FileChooserDemo2Project.zip"])
     FRAME = "/".join([UI_SWING_BASE_URL, "FrameDemoProject/FrameDemo.jnlp"])
     INTERNAL_FRAME = "/".join([UI_SWING_BASE_URL, "InternalFrameDemoProject/InternalFrameDemo.jnlp"])
     LABEL = "/".join([UI_SWING_BASE_URL, "LabelDemoProject/LabelDemo.jnlp"])
@@ -102,5 +102,6 @@ def oracle_app(request) -> JABDriver:
 @pytest.fixture
 def java_control_app() -> JABDriver:
     # Assumes installation of some jdk 1.8 - currently hardcoded
-    with JABDriver(file_path=Path(r"C:\Program Files\Java\jdk1.8.0_311\jre\bin\javacpl.exe"), title="Java Control Panel") as jabdriver:
+    with JABDriver(file_path=Path(r"C:\Program Files\Java\jdk1.8.0_311\jre\bin\javacpl.exe"),
+                   title="Java Control Panel") as jabdriver:
         yield jabdriver
