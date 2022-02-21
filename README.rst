@@ -78,7 +78,7 @@ You may also use a context manager approach to kill the Java Window after the JA
        # Click a JABElement
        login_btn.click()
 
-You can also open the Java window process by specifying the file path when :
+You can also open the Java window process by specifying the file path which will launch the Java WebStart process for the given file :
 
 .. code-block:: python
 
