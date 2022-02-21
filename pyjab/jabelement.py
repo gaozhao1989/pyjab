@@ -679,7 +679,6 @@ class JABElement(object):
                     f"Failed to clear text in '{timeout}' seconds"
                 )
 
-
     def scroll(self, to_bottom: bool = True, hold: int = 2) -> None:
         """Scroll a scoll bar to top or to bottom.
 
@@ -892,7 +891,7 @@ class JABElement(object):
             return
         self._do_accessible_action("toggleexpand")
 
-    def send_text(self, value: Union[str, int], simulate: bool = False, wait_for_text_update: bool=True) -> None:
+    def send_text(self, value: Union[str, int], simulate: bool = False, wait_for_text_update: bool = True) -> None:
         """Type into the JABElement.
 
         Default will use JAB Accessible Action.
@@ -921,6 +920,8 @@ class JABElement(object):
                     self.int_func_err_msg.format("setTextContents")
                     + ", try set parameter 'simulate' with True"
                 )
+        if not wait_for_text_update:
+            return
         timeout = 5
         start = time()
         while True:

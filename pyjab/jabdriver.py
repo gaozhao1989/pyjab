@@ -9,7 +9,7 @@ from ctypes.wintypes import HWND
 from pathlib import Path
 from subprocess import Popen
 from time import time
-from typing import Any, Dict, Tuple, Union, Optional
+from typing import Any, Dict, Tuple, Optional
 
 import win32process
 from PIL import ImageGrab
