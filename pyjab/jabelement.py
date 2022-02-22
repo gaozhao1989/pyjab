@@ -1249,8 +1249,8 @@ class JABElement(object):
         Returns:
             JABElement: The child JABElement
         """
-        dict_gen, node_element, node_info = self.get_node_info(node, level, jabelement)
-        for _jabelement in dict_gen[level](jabelement=node_element, visible=visible):
+        node_element, node_info = self._get_node_info(node, jabelement)
+        for _jabelement in self._get_children_by_level(level)(jabelement=node_element, visible=visible):
             if node_info.get("role") not in ["*", _jabelement.role_en_us]:
                 self.release_jabelement(_jabelement)
                 continue
@@ -1262,7 +1262,7 @@ class JABElement(object):
         )
 
     def find_element_by_xpath(self, value: str, visible: bool = False) -> JABElement:
-        """find child JABElement by xpath
+        """Find child JABElement by xpath
 
         Args:
             value (str): Locator of JABElement need to find.
@@ -1459,9 +1459,9 @@ class JABElement(object):
         Returns:
             list[JABElement]: list of the JABElement
         """
-        dict_gen, node_element, node_info = self.get_node_info(node, level, jabelement)
+        node_element, node_info = self._get_node_info(node, jabelement)
         jabelements = []
-        for _jabelement in dict_gen[level](jabelement=node_element, visible=visible):
+        for _jabelement in self._get_children_by_level(level)(jabelement=node_element, visible=visible):
             if node_info.get("role") not in ["*", _jabelement.role_en_us]:
                 self.release_jabelement(_jabelement)
                 continue
@@ -1471,20 +1471,19 @@ class JABElement(object):
             self.release_jabelement(_jabelement)
         return jabelements
 
-    def get_node_info(self,
+    def _get_children_by_level(self, level: str = "root"):
+        if level in {"root", "level"}:
+            return self._generate_all_childs if level == "root" else self._generate_childs_from_element
+        else:
+            raise ValueError("level should be in 'root' or 'child'")
+
+    def _get_node_info(self,
                       node: str,
-                      level: str = "root",
                       jabelement: JABElement = None,
                       ):
-        dict_gen = {
-            "root": self._generate_all_childs,
-            "child": self._generate_childs_from_element,
-        }
-        if level not in dict_gen.keys():
-            raise ValueError("level should be in 'root' or 'child'")
         node_info = self.xpath_parser.get_node_information(node)
         node_element = self._get_node_element(jabelement)
-        return dict_gen, node_element, node_info
+        return node_element, node_info
 
     def find_elements_by_xpath(
             self, value: str, visible: bool = False

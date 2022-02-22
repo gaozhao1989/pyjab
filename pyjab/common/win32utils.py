@@ -4,6 +4,7 @@ from typing import Dict, Generator, List, Optional
 import pythoncom
 import win32api
 import win32clipboard
+import win32com.client
 import win32con
 import win32event
 import win32gui
@@ -267,13 +268,7 @@ class Win32Utils(object):
     def _set_window_foreground(self, hwnd: HWND) -> None:
         if hwnd == self._get_foreground_window():
             return
-        win32gui.SetForegroundWindow(hwnd)
-        # TODO: need find another way to set lag here, otherwise foreground will return 0
-        time.sleep(0.1)
-        if hwnd == self._get_foreground_window():
-            return
-        win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
-        win32gui.ShowWindow(hwnd, win32con.SW_SHOW)
+        win32com.client.Dispatch("WScript.Shell").SendKeys(' ')
         win32gui.SetForegroundWindow(hwnd)
 
     @staticmethod
