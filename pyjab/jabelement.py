@@ -207,14 +207,14 @@ class JABElement(object):
             self.bridge, self.hwnd, self.vmid, self.accessible_context
         )
 
-        for jabelement in self._generate_childs_from_element(
+        for _jabelement in self._generate_childs_from_element(
                 jabelement=jabelement, visible=visible
         ):
-            if jabelement.children_count != 0:
+            if _jabelement.children_count:
                 yield from self._generate_all_childs(
-                    jabelement=jabelement, visible=visible
+                    jabelement=_jabelement, visible=visible
                 )
-            yield jabelement
+            yield _jabelement
 
     def _generate_childs_from_element(
             self, jabelement: JABElement = None, visible: bool = False
@@ -686,7 +686,7 @@ class JABElement(object):
         Raises:
             JABException: Raise a JABException when JABElement role is not a scroll bar.
         """
-        if self.role_en_us != "scroll bar":
+        if self.role_en_us != Role.SCROLL_BAR:
             raise JABException("JABElement is not 'scroll bar'")
         is_horizontal = "horizontal" in self.states_en_us
         x = self.bounds["x"]
