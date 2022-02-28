@@ -1,3 +1,4 @@
+import fnmatch
 import time
 from ctypes.wintypes import HWND
 from typing import Dict, Generator, List, Optional
@@ -230,15 +231,13 @@ class Win32Utils(object):
         return dict_hwnd
 
     def get_hwnd_by_title(self, title: str) -> Optional[HWND]:
-        dict_hwnd = self.enum_windows()
-        try:
-            return list(dict_hwnd.keys())[list(dict_hwnd.values()).index(title)]
-        except ValueError:
-            return None
+        if possible_matches := self.get_hwnds_by_title(title):
+            return possible_matches[0]
+        return None
 
     def get_hwnds_by_title(self, title: str) -> List[HWND]:
         dict_hwnd = self.enum_windows()
-        return [hwnd for hwnd, win_title in dict_hwnd.items() if title == win_title]
+        return [hwnd for hwnd, win_title in dict_hwnd.items() if fnmatch.fnmatch(win_title, title)]
 
     @staticmethod
     def get_title_by_hwnd(hwnd: HWND) -> str:
