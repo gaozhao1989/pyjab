@@ -4,6 +4,7 @@ from typing import Dict, Generator, List, Optional
 import pythoncom
 import win32api
 import win32clipboard
+import win32com.client
 import win32con
 import win32event
 import win32gui
@@ -251,13 +252,13 @@ class Win32Utils(object):
                 return hwnd
             error_log = f"no hwnd found by win title =>'{title}'"
             if latest_log != error_log:
-                self.logger.error(error_log)
+                self.logger.debug(error_log)
                 latest_log = error_log
             current = time.time()
             elapsed = round(current - start)
             if elapsed >= timeout:
                 raise TimeoutError(
-                    f"no hwnd found by title '{title}' in '{timeout}'seconds"
+                    f"no hwnd found by title '{title}' in '{timeout}' seconds"
                 )
 
     @staticmethod
@@ -267,13 +268,7 @@ class Win32Utils(object):
     def _set_window_foreground(self, hwnd: HWND) -> None:
         if hwnd == self._get_foreground_window():
             return
-        win32gui.SetForegroundWindow(hwnd)
-        # TODO: need find another way to set lag here, otherwise foreground will return 0
-        time.sleep(0.1)
-        if hwnd == self._get_foreground_window():
-            return
-        win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
-        win32gui.ShowWindow(hwnd, win32con.SW_SHOW)
+        win32com.client.Dispatch("WScript.Shell").SendKeys(' ')
         win32gui.SetForegroundWindow(hwnd)
 
     @staticmethod

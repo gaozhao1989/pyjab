@@ -1,5 +1,10 @@
 from __future__ import annotations
+
+from time import time
+
 from pyjab.common.logger import Logger
+from pyjab.common.role import Role
+from pyjab.common.states import States
 from pyjab.common.textreader import TextReader
 import re
 from ctypes import Array, byref, CDLL, c_char, c_long, create_string_buffer
@@ -40,7 +45,7 @@ class JABElement(object):
         self._hwnd = hwnd
         self._vmid = vmid
         self._accessible_context = accessible_context
-        self._acc_info = self._get_accessible_context_info()
+        self._acc_info = self._get_accessible_context_info
 
     @property
     def bridge(self) -> CDLL:
@@ -76,27 +81,27 @@ class JABElement(object):
 
     @property
     def name(self) -> str:
-        return self._acc_info.name
+        return self._acc_info().name
 
     @property
     def description(self) -> str:
-        return self._acc_info.description
+        return self._acc_info().description
 
     @property
     def role(self) -> str:
-        return self._acc_info.role
+        return self._acc_info().role
 
     @property
     def role_en_us(self) -> str:
-        return self._acc_info.role_en_US
+        return self._acc_info().role_en_US
 
     @property
     def states(self) -> str:
-        return self._acc_info.states.split(",")
+        return self._acc_info().states.split(",")
 
     @property
     def states_en_us(self) -> str:
-        return self._acc_info.states_en_US.split(",")
+        return self._acc_info().states_en_US.split(",")
 
     @property
     def object_depth(self) -> int:
@@ -104,36 +109,36 @@ class JABElement(object):
 
     @property
     def index_in_parent(self) -> int:
-        return self._acc_info.indexInParent
+        return self._acc_info().indexInParent
 
     @property
     def children_count(self) -> int:
-        return self._acc_info.childrenCount
+        return self._acc_info().childrenCount
 
     @property
     def bounds(self) -> dict:
         return {
-            "x": self._acc_info.x,
-            "y": self._acc_info.y,
-            "height": self._acc_info.height,
-            "width": self._acc_info.width,
+            "x": self._acc_info().x,
+            "y": self._acc_info().y,
+            "height": self._acc_info().height,
+            "width": self._acc_info().width,
         }
 
     @property
     def accessible_component(self) -> bool:
-        return bool(self._acc_info.accessibleComponent)
+        return bool(self._acc_info().accessibleComponent)
 
     @property
     def accessible_action(self) -> bool:
-        return bool(self._acc_info.accessibleAction)
+        return bool(self._acc_info().accessibleAction)
 
     @property
     def accessible_selection(self) -> bool:
-        return bool(self._acc_info.accessibleSelection)
+        return bool(self._acc_info().accessibleSelection)
 
     @property
     def accessible_text(self) -> bool:
-        return bool(self._acc_info.accessibleText)
+        return bool(self._acc_info().accessibleText)
 
     @property
     def accessible_interfaces(self) -> bool:
@@ -153,11 +158,11 @@ class JABElement(object):
                 buffer=buffer, chars_len=chars_len, encoding="utf_16"
             )
         else:
-            self.logger.warning("current JABElement does not suuport Accessible Text")
+            self.logger.warning("current JABElement does not support Accessible Text")
 
     @property
     def table(self) -> dict:
-        if self.role_en_us == "table":
+        if self.role_en_us == Role.TABLE:
             info = self._get_accessible_table_info()
             tb = {
                 "row_count": info.rowCount,
@@ -202,14 +207,14 @@ class JABElement(object):
             self.bridge, self.hwnd, self.vmid, self.accessible_context
         )
 
-        for jabelement in self._generate_childs_from_element(
+        for _jabelement in self._generate_childs_from_element(
                 jabelement=jabelement, visible=visible
         ):
-            if jabelement.children_count != 0:
+            if _jabelement.children_count:
                 yield from self._generate_all_childs(
-                    jabelement=jabelement, visible=visible
+                    jabelement=_jabelement, visible=visible
                 )
-            yield jabelement
+            yield _jabelement
 
     def _generate_childs_from_element(
             self, jabelement: JABElement = None, visible: bool = False
@@ -640,7 +645,7 @@ class JABElement(object):
         else:
             self._do_accessible_action(action="click")
 
-    def clear(self, simulate: bool = False) -> None:
+    def clear(self, simulate: bool = False, wait_for_text_update: bool = True) -> None:
         """Clear existing text from JABElement.
 
         Default will use JAB Accessible Action.
@@ -648,6 +653,7 @@ class JABElement(object):
 
         Args:
             simulate (bool, optional): Simulate user input action by keyboard event. Defaults to False.
+            wait_for_text_update (bool, optional): Waits for the text attribute to be empty. Defaults to True.
 
         Use this to send simple key events or to fill out form fields::
 
@@ -658,13 +664,15 @@ class JABElement(object):
         if simulate:
             self.win32_utils._set_window_foreground(hwnd=self.hwnd)
             self._request_focus()
-            if self.text:
+            if self.accessible_text and self.text:
                 self.win32_utils._press_key("end")
-                self.win32_utils._press_hold_release_key("ctrl", "shift", "end")
                 for _ in self.text:
                     self.win32_utils._press_key("backspace")
         else:
             self.send_text(value="", simulate=False)
+        if not wait_for_text_update or self.role != Role.TEXT:
+            return
+        self._wait_for_value_to_be(None, self.text, error_msg_function="clear text")
 
     def scroll(self, to_bottom: bool = True, hold: int = 2) -> None:
         """Scroll a scoll bar to top or to bottom.
@@ -678,7 +686,7 @@ class JABElement(object):
         Raises:
             JABException: Raise a JABException when JABElement role is not a scroll bar.
         """
-        if self.role_en_us != "scroll bar":
+        if self.role_en_us != Role.SCROLL_BAR:
             raise JABException("JABElement is not 'scroll bar'")
         is_horizontal = "horizontal" in self.states_en_us
         x = self.bounds["x"]
@@ -734,13 +742,14 @@ class JABElement(object):
             x = x + width / 2
         self.win32_utils._click_mouse(x=int(x), y=int(y), hold=hold)
 
-    def select(self, option: str, simulate: bool = False) -> None:
+    def select(self, option: str, simulate: bool = False, wait_for_selection: bool = True) -> None:
         """Select an item from JABElement selector.
         Support select action from combo box, page tab list, list and menu.
 
         Args:
             option (str): Item selection from selector.
             simulate (bool, optional): Simulate user input action by mouse event. Defaults to False.
+            wait_for_selection (bool, optional): Waits for selection equal to the option value. Defaults to True.
         """
         _ = {
             "combo box": self._select_from_combobox,
@@ -748,6 +757,9 @@ class JABElement(object):
             "list": self._select_from_list,
             "menu": self._select_from_menu,
         }[self.role_en_us](option=option, simulate=simulate)
+        if wait_for_selection:
+            self._wait_for_value_to_contain([States.SELECTED, States.CHECKED],
+                                            self.find_element_by_name(option).states_en_us)
 
     def get_selected_element(self) -> JABElement:
         """Get selected JABElement from selection.
@@ -773,7 +785,7 @@ class JABElement(object):
             item = parent.find_element_by_name(value=option)
         except JABException as e:
             raise JABException(
-                f"{parent.role_en_us} option '{option}' does not found"
+                f"{parent.role_en_us} option '{option}' not found"
             ) from e
 
         self._add_accessible_selection_from_context(
@@ -813,7 +825,7 @@ class JABElement(object):
         self._add_selection_from_accessible_context(self, option=option)
 
     def _select_from_list(self, option: str, simulate: bool = False) -> None:
-        if self.role_en_us != "list":
+        if self.role_en_us != Role.LIST:
             raise JABException("JABElement is not 'list'")
         if simulate:
             self.win32_utils._set_window_foreground(hwnd=self.hwnd)
@@ -826,14 +838,14 @@ class JABElement(object):
             self.win32_utils._set_window_foreground(hwnd=self.hwnd)
             self.click(simulate=True)
             for item in self.find_elements_by_object_depth(self.object_depth + 1):
-                if item.accessible_action is False:
+                if not item.accessible_action:
                     continue
                 self.win32_utils._press_key("down_arrow")
                 if item.name == option:
                     self.win32_utils._press_key("enter")
                     break
-            return
-        self.find_element_by_name(value=option).click(simulate=False)
+        else:
+            self.find_element_by_name(value=option).click(simulate=False)
 
     def spin(
             self, option: str = None, increase: bool = True, simulate: bool = False
@@ -878,15 +890,16 @@ class JABElement(object):
             return
         self._do_accessible_action("toggleexpand")
 
-    def send_text(self, value: str, simulate: bool = False) -> None:
+    def send_text(self, value: Union[str, int], simulate: bool = False, wait_for_text_update: bool = True) -> None:
         """Type into the JABElement.
 
         Default will use JAB Accessible Action.
         Set parameter 'simulate' to True if internal action does not work.
 
         :Args:
-            value (str): A string for typing.
+            value (str, int): A string for typing.
             simulate (bool, optional): Simulate user input action by keyboard event. Defaults to False.
+            wait_for_text_update (bool, optional): Waits for the text attribute to be equal to the input value. Defaults to True.
 
         Use this to send simple key events or to fill out form fields::
 
@@ -907,33 +920,36 @@ class JABElement(object):
                     self.int_func_err_msg.format("setTextContents")
                     + ", try set parameter 'simulate' with True"
                 )
+        if not wait_for_text_update or self.role != Role.TEXT:
+            return
+        self._wait_for_value_to_be(value, self.text, error_msg_function=f"update text attribute to '{value}'")
 
     def is_checked(self) -> bool:
         """Returns whether the JABElement is checked.
 
         Can be used to check if a checkbox or radio button is checked.
         """
-        return "checked" in self.states_en_us
+        return States.CHECKED in self.states_en_us
 
     def is_enabled(self) -> bool:
         """Returns whether the JABElement is enabled."""
-        return "enabled" in self.states_en_us
+        return States.ENABLED in self.states_en_us
 
     def is_visible(self) -> bool:
         """Returns whether the JABElement is visible."""
-        return "visible" in self.states_en_us
+        return States.VISIBLE in self.states_en_us
 
     def is_showing(self) -> bool:
         """Returns whether the JABElement is showing."""
-        return "showing" in self.states_en_us
+        return States.SHOWING in self.states_en_us
 
     def is_selected(self) -> bool:
         """Returns whether the JABElement is selected."""
-        return "selected" in self.states_en_us
+        return States.SELECTED in self.states_en_us
 
     def is_editable(self) -> bool:
         """Returns whether the JABElement is editable."""
-        return "editable" in self.states_en_us
+        return States.EDITABLE in self.states_en_us
 
     def find_element_by_name(self, value: str, visible: bool = False) -> JABElement:
         """find child JABElement by name
@@ -1227,27 +1243,18 @@ class JABElement(object):
             Defaults to False to find available child element.
 
         Raises:
-            ValueError: Incorect level set
+            ValueError: Incorrect level set
             JABException: No JABElement found with specific node
 
         Returns:
             JABElement: The child JABElement
         """
-        dict_gen = {
-            "root": self._generate_all_childs,
-            "child": self._generate_childs_from_element,
-        }
-        if level not in dict_gen.keys():
-            raise ValueError("level should be in 'root' or 'child'")
-        node_info = self.xpath_parser.get_node_information(node)
-        node_role = node_info.get("role")
-        node_attributes = node_info.get("attributes")
-        jabelement = self._get_node_element(jabelement)
-        for _jabelement in dict_gen[level](jabelement=jabelement, visible=visible):
-            if node_role not in ["*", _jabelement.role_en_us]:
+        node_element, node_info = self._get_node_info(node, jabelement)
+        for _jabelement in self._get_children_by_level(level)(jabelement=node_element, visible=visible):
+            if node_info.get("role") not in ["*", _jabelement.role_en_us]:
                 self.release_jabelement(_jabelement)
                 continue
-            if self._is_match_attributes(node_attributes, _jabelement):
+            if self._is_match_attributes(node_info.get("attributes"), _jabelement):
                 return _jabelement
             self.release_jabelement(_jabelement)
         raise JABException(
@@ -1255,7 +1262,7 @@ class JABElement(object):
         )
 
     def find_element_by_xpath(self, value: str, visible: bool = False) -> JABElement:
-        """find child JABElement by xpath
+        """Find child JABElement by xpath
 
         Args:
             value (str): Locator of JABElement need to find.
@@ -1447,31 +1454,36 @@ class JABElement(object):
             Defaults to False to find all child elements.
 
         Raises:
-            ValueError: Incorect level set
+            ValueError: Incorrect level set
 
         Returns:
             list[JABElement]: list of the JABElement
         """
-        dict_gen = {
-            "root": self._generate_all_childs,
-            "child": self._generate_childs_from_element,
-        }
-        if level not in dict_gen.keys():
-            raise ValueError("level should be in 'root' or 'child'")
-        node_info = self.xpath_parser.get_node_information(node)
-        node_role = node_info.get("role")
-        node_attributes = node_info.get("attributes")
-        jabelement = self._get_node_element(jabelement)
+        node_element, node_info = self._get_node_info(node, jabelement)
         jabelements = []
-        for _jabelement in dict_gen[level](jabelement=jabelement, visible=visible):
-            if node_role not in ["*", _jabelement.role_en_us]:
+        for _jabelement in self._get_children_by_level(level)(jabelement=node_element, visible=visible):
+            if node_info.get("role") not in ["*", _jabelement.role_en_us]:
                 self.release_jabelement(_jabelement)
                 continue
-            if self._is_match_attributes(node_attributes, _jabelement):
+            if self._is_match_attributes(node_info.get("attributes"), _jabelement):
                 jabelements.append(_jabelement)
                 continue
             self.release_jabelement(_jabelement)
         return jabelements
+
+    def _get_children_by_level(self, level: str = "root"):
+        if level in {"root", "level"}:
+            return self._generate_all_childs if level == "root" else self._generate_childs_from_element
+        else:
+            raise ValueError("level should be in 'root' or 'child'")
+
+    def _get_node_info(self,
+                      node: str,
+                      jabelement: JABElement = None,
+                      ):
+        node_info = self.xpath_parser.get_node_information(node)
+        node_element = self._get_node_element(jabelement)
+        return node_element, node_info
 
     def find_elements_by_xpath(
             self, value: str, visible: bool = False
@@ -1487,25 +1499,25 @@ class JABElement(object):
             list[JABElement]: List of JABElement find by locator
         """
 
-        def generate_node(nodes: list[str]) -> Generator:
-            for index, node in enumerate(nodes):
-                level = "root" if index == 0 else "child"
-                yield node, level
+        def generate_node(_nodes: list[str]) -> Generator:
+            for index, _node in enumerate(_nodes):
+                _level = "root" if index == 0 else "child"
+                yield _node, _level
 
         def get_child_jabelements(
-                node: str,
-                level: str,
-                parent_jabelements: list[JABElement],
-                visible: bool = False,
+                _node: str,
+                _level: str,
+                _parent_jabelements: list[JABElement],
+                _visible: bool = False,
         ) -> list[JABElement]:
             child_jabelements = []
-            for parent_jabelement in parent_jabelements:
+            for _parent_jabelement in _parent_jabelements:
                 child_jabelements.extend(
                     self._get_elements_by_node(
-                        node=node,
-                        level=level,
-                        jabelement=parent_jabelement,
-                        visible=visible,
+                        node=_node,
+                        level=_level,
+                        jabelement=_parent_jabelement,
+                        visible=_visible,
                     )
                 )
             return child_jabelements
@@ -1518,7 +1530,7 @@ class JABElement(object):
             if not _jabelements:
                 raise JABException("no JABElement found")
             _jabelements = get_child_jabelements(
-                node=node, level=level, parent_jabelements=_jabelements, visible=visible
+                _node=node, _level=level, _parent_jabelements=_jabelements, _visible=visible
             )
         return _jabelements
 
@@ -1692,6 +1704,44 @@ class JABElement(object):
         }
         if self.accessible_text:
             info["text"] = self.text
-        if self.role_en_us == "table":
+        if self.role_en_us == Role.TABLE:
             info["table"] = self.table
         return info
+
+    @staticmethod
+    def _wait_for_value_to_be(expected_value: Optional[str], actual_value, timeout: int = 5,
+                              error_msg_function: str = None):
+        start = time()
+        while True:
+            if (
+                    expected_value
+                    and actual_value == expected_value
+                    or not expected_value
+                    and not actual_value
+            ):
+                return
+            current = time()
+            elapsed = round(current - start)
+            if elapsed >= timeout:
+                if error_msg_function:
+                    _error_msg = f"Failed to {error_msg_function} in '{timeout}' seconds"
+                else:
+                    _error_msg = f"Failed to wait for expected value '{expected_value}' in '{timeout}' seconds"
+                raise TimeoutError(_error_msg)
+
+    @staticmethod
+    def _wait_for_value_to_contain(expected_values: Union[str, list[str]], actual_values, timeout: int = 5,
+                                   error_msg_function: str = None):
+        start = time()
+        while True:
+            if any(v in expected_values for v in actual_values):
+                return
+            current = time()
+            elapsed = round(current - start)
+            if elapsed >= timeout:
+                if error_msg_function:
+                    _error_msg = f"Failed to {error_msg_function} in '{timeout}' seconds"
+                else:
+                    _expected_values = ", ".join(expected_values)
+                    _error_msg = f"Failed to wait for expected values '{_expected_values}' in '{timeout}' seconds"
+                raise TimeoutError(_error_msg)

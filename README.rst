@@ -63,6 +63,37 @@ Here's an example of how easy it is to get started:
    jabdriver.wait_until_element_exist(by=By.NAME, value="Dashboard")
    login_btn.get_screenshot_as_file("./screenshot.png")
 
+You may also use a context manager approach to kill the Java Window after the JABDriver is cleared:
+
+.. code-block:: python
+
+   from pyjab.jabdriver import JABDriver
+
+   # Create a JABDriver object.
+   with JABDriver("java app window title") as jabdriver:
+
+       # Find a JABElement by element name
+       login_btn = jabdriver.find_element_by_name("Login")
+
+       # Click a JABElement
+       login_btn.click()
+
+You can also open the Java window process by specifying the file path which will launch the Java WebStart process for the given file :
+
+.. code-block:: python
+
+   from pyjab.jabdriver import JABDriver
+
+   # Create a JABDriver object.
+   with JABDriver(title="java app window title", file_path="C:\\jnlps\\test.jnlp") as jabdriver:
+
+       # Find a JABElement by element name
+       login_btn = jabdriver.find_element_by_name("Login")
+
+       # Click a JABElement
+       login_btn.click()
+
+
 Contact
 -------
 
