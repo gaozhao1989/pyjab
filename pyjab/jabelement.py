@@ -1472,7 +1472,7 @@ class JABElement(object):
         return jabelements
 
     def _get_children_by_level(self, level: str = "root"):
-        if level in {"root", "level"}:
+        if level in {"root", "child"}:
             return self._generate_all_childs if level == "root" else self._generate_childs_from_element
         else:
             raise ValueError("level should be in 'root' or 'child'")
