@@ -18,6 +18,7 @@ class Role(str, Enum):
     COMBO_BOX = "combo box"
     DATE_EDITOR = "date editor"
     DESKTOP_ICON = "desktop icon"
+    DESKTOP_PANE = "desktop pane"
     DIALOG = "dialog"
     DIRECTORY_PANE = "directory pane"
     EDIT_BAR = "edit bar"
