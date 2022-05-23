@@ -1187,13 +1187,13 @@ class JABElement(object):
             bool: True for attributes matched False for not
         """
         dict_attribute = {
-            "name": self._is_match_attr_name,
-            "role": self._is_match_attr_role,
-            "description": self._is_match_attr_description,
-            "states": self._is_match_attr_states,
-            "objectdepth": self._is_match_attr_objectdepth,
-            "childrencount": self._is_match_attr_childrencount,
-            "indexinparent": self._is_match_attr_indexinparent,
+            By.NAME: self._is_match_attr_name,
+            By.ROLE: self._is_match_attr_role,
+            By.DESCRIPTION: self._is_match_attr_description,
+            By.STATES: self._is_match_attr_states,
+            By.OBJECT_DEPTH: self._is_match_attr_objectdepth,
+            By.CHILDREN_COUNT: self._is_match_attr_childrencount,
+            By.INDEX_IN_PARENT: self._is_match_attr_indexinparent,
         }
         for attribute in attributes:
             name = attribute.get("name")
