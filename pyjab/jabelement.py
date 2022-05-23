@@ -909,7 +909,7 @@ class JABElement(object):
         """
         value = str(value)
         if simulate:
-            self.clear(simulate=True)
+            self.clear(True, wait_for_text_update)
             self.win32_utils._send_keys(value)
         else:
             result = self.bridge.setTextContents(
