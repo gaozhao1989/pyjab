@@ -1320,7 +1320,7 @@ class JABElement(object):
         ]:
             raise JABException(f"incorrect by strategy '{by}'")
         if by == By.XPATH:
-            self.find_element_by_xpath(value=value, visible=visible)
+            return self.find_element_by_xpath(value=value, visible=visible)
         for jabelement in self._generate_all_childs(visible=visible):
             if self._is_element_matched(by=by, value=value, jabelement=jabelement):
                 return jabelement
@@ -1561,7 +1561,7 @@ class JABElement(object):
         ]:
             raise JABException(f"incorrect by strategy '{by}'")
         if by == By.XPATH:
-            self.find_elements_by_xpath(value=value, visible=visible)
+            return self.find_elements_by_xpath(value=value, visible=visible)
         jabelements = []
         for jabelement in self._generate_all_childs(visible=visible):
             if self._is_element_matched(by=by, value=value, jabelement=jabelement):
