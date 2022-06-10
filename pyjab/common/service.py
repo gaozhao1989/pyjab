@@ -20,12 +20,15 @@ class Service(object):
         self.init_bridge()
 
     def enable_bridge(self) -> None:
+        """Enable Java Access Bridge.
+        This is necessary step before use JAB API.
+        """
         with open(A11Y_PROPS_PATH, "wt") as fp:
             try:
-                self.logger.debug("enable bridge")
+                self.logger.debug("Enable Java Access Bridge")
                 fp.write(A11Y_PROPS_CONTENT)
             except (OSError, IOError):
-                self.logger.error("enable bridge failed")
+                self.logger.error("Enable Java Access Bridge failed")
 
     def is_bridge_enabled(self) -> bool:
         if not Path(A11Y_PROPS_PATH).is_file():
@@ -34,19 +37,19 @@ class Service(object):
             try:
                 data = fp.read()
             except (OSError, IOError):
-                self.logger.error("bridge is not enabled")
+                self.logger.error("Java Access Bridge NOT enabled")
                 return False
         is_enabled = data == A11Y_PROPS_CONTENT
-        self.logger.debug("is bridge enabled => '{}'".format(is_enabled))
+        self.logger.debug(f"Is Java Access Bridge enabled => '{is_enabled}'")
         return is_enabled
 
     def init_bridge(self) -> None:
-        self.logger.debug("init bridge")
+        self.logger.debug("Initialize Java Access Bridge")
         if not self.is_bridge_enabled():
             self.enable_bridge()
 
     def load_library(self, bridge_dll: str = "") -> CDLL:
-        self.logger.debug("load library of bridge")
+        self.logger.debug("Load library of Java Access Bridge")
         dll_bit = struct.calcsize("P") * 8
         for dll in [
             str(bridge_dll),
@@ -57,7 +60,7 @@ class Service(object):
             if os.path.isfile(dll):
                 return cdll.LoadLibrary(dll)
         raise FileNotFoundError(
-            "WindowsAccessBridge dll not found, "
-            "please set correct path for environment variable, "
-            "or check the passed customized WindowsAccessBridge dll."
+            "WindowsAccessBridge dll NOT found, "
+            "Please correct environment variable for JDK, JRE or JAB, "
+            "Anotherwise correct customized WindowsAccessBridge dll path."
         )
