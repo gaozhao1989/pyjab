@@ -14,35 +14,38 @@ class ActorScheduler:
         sched.run()
     """
 
-    def __init__(self):
-        self.actors = {}  # Mapping of names to actors
-        self.msg_queue = deque()  # Message queue
+    def __init__(self) -> None:
+        # Mapping of names to actors
+        self.actors = {}
+        # Message queue
+        self.msg_queue = deque()
         self.logger = Logger("pyjab")
 
-    def new_actor(self, name, actor):
+    def new_actor(self, name: str, actor) -> None:
         """
         Admit a newly started actor to the scheduler and give it a name
         """
-        self.logger.debug(f"msg queue append new actor '{name}'")
+        self.logger.debug(f"Append new actor '{actor}' to msg deque")
+        self.logger.debug(f"actor type => {type(actor)}")
         self.msg_queue.append((actor, None))
         self.actors[name] = actor
 
-    def send(self, name, msg):
+    def send(self, name: str, msg: str) -> None:
         """
         Send a message to a named actor
         """
         if actor := self.actors.get(name):
-            self.logger.debug(f"send msg '{msg}' to actor '{actor}'")
+            self.logger.debug(f"Send msg '{msg}' to actor '{actor}'")
             self.msg_queue.append((actor, msg))
 
-    def run(self):
+    def run_actor(self) -> None:
         """
         Run as long as there are pending messages.
         """
         while self.msg_queue:
             actor, msg = self.msg_queue.popleft()
             try:
-                self.logger.debug(f"run actor '{actor}' with msg '{msg}'")
+                self.logger.debug(f"Run actor '{actor}' with msg '{msg}'")
                 actor.send(msg)
             except StopIteration:
-                self.logger.debug("stop run action in scheduler")
+                self.logger.debug("Stop run action in scheduler")
