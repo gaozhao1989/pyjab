@@ -1,5 +1,10 @@
+from typing import Optional
+
+
 class CommonException(Exception):
-    def __init__(self, message: str = None, status: str = None) -> None:
+    def __init__(
+        self, message: Optional[str] = None, status: Optional[str] = None
+    ) -> None:
         super().__init__(message, status)
         self.message = message
         self.status = status
