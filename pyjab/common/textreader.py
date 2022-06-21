@@ -8,12 +8,12 @@ class TextReader(object):
 
     @staticmethod
     def get_text_from_raw_bytes(
-            buffer: bytes,
-            chars_len: int,
-            encoding: Optional[str] = None,
-            errors_fallback: str = "replace",
+        buffer: bytes,
+        chars_len: int,
+        encoding: Optional[str] = None,
+        errors_fallback: str = "replace",
     ) -> str:
-        """[summary]
+        """Decode RAW Bytes and return text as string.
 
         Args:
             buffer (bytes): bytes object to convert to str.
