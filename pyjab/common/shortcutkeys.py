@@ -13,8 +13,6 @@ class ShortcutKeys(object):
     def __init__(self) -> None:
         self.logger = Logger("pyjab")
         self.win32_utils = Win32Utils()
-        self.press_hold_release_key = self.win32_utils._press_hold_release_key
-        self.press_key = self.win32_utils._press_key
 
     def cut(self) -> None:
         self.logger.debug("Send Shortcut Key 'Cut'(Ctrl+X)")
