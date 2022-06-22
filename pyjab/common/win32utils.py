@@ -1,7 +1,6 @@
 import fnmatch
 import time
-from ctypes.wintypes import HWND
-from typing import Dict, Generator, List, Optional
+from typing import Generator, Union
 import pythoncom
 import win32api
 import win32clipboard
@@ -16,8 +15,6 @@ from pyjab.config import TIMEOUT
 
 @singleton
 class Win32Utils(object):
-    stop_event = win32event.CreateEvent(None, 0, 0, None)
-    other_event = win32event.CreateEvent(None, 0, 0, None)
     virtual_key_code = {
         "backspace": 0x08,
         "tab": 0x09,
@@ -170,8 +167,15 @@ class Win32Utils(object):
         self.logger = Logger("pyjab")
 
     def setup_msg_pump(self) -> Generator:
-        waitables = self.stop_event, self.other_event
-        self.logger.debug("setup message pumpup")
+        """Processing Windows Messages Using MsgWaitForMultipleObjects.
+
+        Reference from: https://www.oreilly.com/library/view/python-cookbook/0596001673/ch06s10.html
+        Credit: Michael Robin
+        """
+        stop_event = win32event.CreateEvent(None, 0, 0, None)
+        other_event = win32event.CreateEvent(None, 0, 0, None)
+        waitables = stop_event, other_event
+        self.logger.debug("Setup message pumpup")
         while True:
             rc = win32event.MsgWaitForMultipleObjects(
                 waitables,
@@ -181,30 +185,30 @@ class Win32Utils(object):
             )
             if rc == win32event.WAIT_OBJECT_0:
                 self.logger.debug(
-                    "first event listed, the StopEvent, was triggered, must exit"
+                    "First event listed, the StopEvent, was triggered, must exit"
                 )
                 break
             elif rc == win32event.WAIT_OBJECT_0 + 1:
                 # Our second event listed, "OtherEvent", was set. Do whatever needs
                 # to be done -- you can wait on as many kernel-waitable objects as
                 # needed (events, locks, processes, threads, notifications, and so on).
-                self.logger.debug("second event listed was set")
+                self.logger.debug("Second event listed was set")
             elif rc == win32event.WAIT_OBJECT_0 + len(waitables):
                 # A windows message is waiting - take care of it. (Don't ask me
                 # why a WAIT_OBJECT_MSG isn't defined < WAIT_OBJECT_0...!).
                 # This message-serving MUST be done for COM, DDE, and other
                 # Windowsy things to work properly!
-                self.logger.debug("windows message is waiting")
+                self.logger.debug("Windows message is waiting")
                 if pythoncom.PumpWaitingMessages():
-                    self.logger.debug("received a wm_quit message")
+                    self.logger.debug("Received a wm_quit message")
                     break
             elif rc == win32event.WAIT_TIMEOUT:
                 # Our timeout has elapsed.
                 # Do some work here (e.g, poll something you can't thread)
                 # or just feel good to be alive.
-                self.logger.debug("timeout")
+                self.logger.debug("Timeout")
             else:
-                raise RuntimeError("unexpected win32wait return value")
+                raise RuntimeError("Unexpected win32wait return value")
 
             # call functions here, if txtt doesn't take too long. It will
             # be executed at least every 200ms -- possibly a lot more often,
@@ -212,11 +216,11 @@ class Win32Utils(object):
             try:
                 yield
             finally:
-                self.logger.debug("teardown message pumpup")
-                win32event.SetEvent(self.stop_event)
+                self.logger.debug("Teardown message pumpup")
+                win32event.SetEvent(stop_event)
 
     @staticmethod
-    def enum_windows() -> Dict[HWND, str]:
+    def enum_windows() -> dict[int, str]:
         dict_hwnd = dict()
 
         def get_all_hwnds(hwnd, _):
@@ -230,75 +234,93 @@ class Win32Utils(object):
         win32gui.EnumWindows(get_all_hwnds, 0)
         return dict_hwnd
 
-    def get_hwnd_by_title(self, title: str) -> Optional[HWND]:
+    def get_hwnd_by_title(self, title: str) -> Union[int, None]:
         if possible_matches := self.get_hwnds_by_title(title):
             return possible_matches[0]
         return None
 
-    def get_hwnds_by_title(self, title: str) -> List[HWND]:
+    def get_hwnds_by_title(self, title: str) -> list[int]:
         dict_hwnd = self.enum_windows()
-        return [hwnd for hwnd, win_title in dict_hwnd.items() if fnmatch.fnmatch(win_title, title)]
+        return [
+            hwnd
+            for hwnd, win_title in dict_hwnd.items()
+            if fnmatch.fnmatch(win_title, title)
+        ]
 
     @staticmethod
-    def get_title_by_hwnd(hwnd: HWND) -> str:
+    def get_title_by_hwnd(hwnd: int) -> str:
         return win32api.GetWindowText(hwnd)
 
-    def wait_hwnd_by_title(self, title: str, timeout: int = TIMEOUT) -> HWND:
+    def wait_hwnd_by_title(self, title: str, timeout: int = TIMEOUT) -> int:
         latest_log = ""
+        error_log = f"NO HWND found by title => '{title}'"
         start = time.time()
         while True:
             if hwnd := self.get_hwnd_by_title(title):
                 return hwnd
-            error_log = f"no hwnd found by win title =>'{title}'"
             if latest_log != error_log:
                 self.logger.debug(error_log)
                 latest_log = error_log
             current = time.time()
             elapsed = round(current - start)
             if elapsed >= timeout:
-                raise TimeoutError(
-                    f"no hwnd found by title '{title}' in '{timeout}' seconds"
-                )
+                raise TimeoutError(f"{error_log} in '{timeout}' seconds")
 
     @staticmethod
-    def _get_foreground_window() -> HWND:
+    def get_foreground_window() -> int:
         return win32gui.GetForegroundWindow()
 
-    def _set_window_foreground(self, hwnd: HWND) -> None:
-        if hwnd == self._get_foreground_window():
+    def set_window_foreground(self, hwnd: int) -> None:
+        if hwnd == self.get_foreground_window():
             return
-        win32com.client.Dispatch("WScript.Shell").SendKeys(' ')
+        # SetForegroundWindow not working properly in some case
+        # Send an alt key before the win32gui call
+        # https://stackoverflow.com/questions/30200381/python-win32gui-setasforegroundwindow-function-not-working-properly
+        win32com.client.Dispatch("WScript.Shell").SendKeys("%")
         win32gui.SetForegroundWindow(hwnd)
 
     @staticmethod
-    def _set_window_maximize(hwnd: HWND) -> None:
+    def set_window_maximize(hwnd: int) -> None:
         win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
         win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
 
     @staticmethod
-    def _set_window_minimize(hwnd: HWND) -> None:
+    def set_window_minimize(hwnd: int) -> None:
         win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
         win32gui.ShowWindow(hwnd, win32con.SW_MINIMIZE)
 
     @staticmethod
-    def _set_window_size(hwnd: HWND, width: int, height: int) -> None:
+    def set_window_size(hwnd: int, width: int, height: int) -> None:
         left, top, _, _ = win32gui.GetWindowRect(hwnd)
         win32gui.MoveWindow(hwnd, left, top, width, height, True)
 
     @staticmethod
-    def _set_window_position(hwnd: HWND, left: int, top: int) -> None:
+    def get_window_size(hwnd: int) -> tuple:
+        left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+        return left - right, top - bottom
+
+    @staticmethod
+    def set_window_position(hwnd: int, left: int, top: int) -> None:
         _, _, right, bottom = win32gui.GetWindowRect(hwnd)
         win32gui.MoveWindow(hwnd, left, top, left - right, top - bottom, True)
 
     @staticmethod
-    def _get_window_position(hwnd: HWND) -> tuple:
+    def get_window_position(hwnd: int) -> tuple:
         left, top, _, _ = win32gui.GetWindowRect(hwnd)
         return left, top
 
     @staticmethod
-    def _click_mouse(x: int, y: int, hold: int = 0, button: str = "left") -> None:
-        mouse_down_act = win32con.MOUSEEVENTF_LEFTDOWN if button == "left" else win32con.MOUSEEVENTF_RIGHTDOWN
-        mouse_up_act = win32con.MOUSEEVENTF_LEFTUP if button == "left" else win32con.MOUSEEVENTF_RIGHTUP
+    def click_mouse(x: int, y: int, hold: int = 0, button: str = "left") -> None:
+        mouse_down_act = (
+            win32con.MOUSEEVENTF_LEFTDOWN
+            if button == "left"
+            else win32con.MOUSEEVENTF_RIGHTDOWN
+        )
+        mouse_up_act = (
+            win32con.MOUSEEVENTF_LEFTUP
+            if button == "left"
+            else win32con.MOUSEEVENTF_RIGHTUP
+        )
         win32api.SetCursorPos((x, y))
         win32api.mouse_event(mouse_down_act, x, y, 0, 0)
         if hold:
@@ -306,14 +328,14 @@ class Win32Utils(object):
         win32api.mouse_event(mouse_up_act, x, y, 0, 0)
 
     @staticmethod
-    def _get_clipboard() -> str:
+    def get_clipboard() -> str:
         win32clipboard.OpenClipboard()
         data = win32clipboard.GetClipboardData(win32con.CF_UNICODETEXT)
         win32clipboard.CloseClipboard()
         return data
 
     @staticmethod
-    def _set_clipboard(text: str) -> None:
+    def set_clipboard(text: str) -> None:
         win32clipboard.OpenClipboard()
         win32clipboard.EmptyClipboard()
         # TODO: error occurs when set clipboard
@@ -321,15 +343,17 @@ class Win32Utils(object):
         win32clipboard.CloseClipboard()
 
     @staticmethod
-    def _empty_clipboard() -> None:
+    def empty_clipboard() -> None:
         win32clipboard.OpenClipboard()
         win32clipboard.EmptyClipboard()
         win32clipboard.CloseClipboard()
 
-    def _press_key(self, *keys) -> None:
-        """
-        one press, one release.\n
-        accepts as many arguments as you want. e.g. press_key('left_arrow', 'a','b').
+    def press_key(self, *keys) -> None:
+        """Simluate keyboard one press, one release.
+
+        Accepts as many arguments as you want.
+            e.g.
+                press_key('left_arrow', 'a','b')
         """
         for key in keys:
             win32api.keybd_event(self.virtual_key_code[key], 0, 0, 0)
@@ -337,23 +361,27 @@ class Win32Utils(object):
                 self.virtual_key_code[key], 0, win32con.KEYEVENTF_KEYUP, 0
             )
 
-    def _press_and_hold_key(self, *keys) -> None:
-        """
-        press and hold. Do NOT release.\n
-        accepts as many arguments as you want.\n
-        e.g. press_and_hold_key('left_arrow', 'a','b').
+    def press_and_hold_key(self, *keys) -> None:
+        """Simluate keyboard press and hold, NO release.
+
+        Accepts as many arguments as you want.
+            e.g.
+                press_and_hold_key('left_arrow', 'a','b')
         """
         for key in keys:
             win32api.keybd_event(self.virtual_key_code[key], 0, 0, 0)
 
-    def _press_hold_release_key(self, *keys) -> None:
-        """
-        press and hold passed in strings. Once held, release\n
-        accepts as many arguments as you want.\n
-        e.g. press_hold_release_key('left_arrow', 'a','b').\n
+    def press_hold_release_key(self, *keys) -> None:
+        """Simluate keyboard press and hold passed in strings. Once held, release.
 
-        this is useful for issuing shortcut command or shift commands.\n
-        e.g. press_hold_release_key('ctrl', 'alt', 'del'), press_hold_release_key('shift','a')
+        Accepts as many arguments as you want.
+            e.g.
+                press_hold_release_key('left_arrow', 'a','b').
+
+        This is useful for issuing shortcut command or shift commands.
+            e.g.
+                press_hold_release_key('ctrl', 'alt', 'del')
+                press_hold_release_key('shift','a')
         """
         for key in keys:
             win32api.keybd_event(self.virtual_key_code[key], 0, 0, 0)
@@ -362,20 +390,21 @@ class Win32Utils(object):
             win32api.keybd_event(
                 self.virtual_key_code[key], 0, win32con.KEYEVENTF_KEYUP, 0
             )
-            time.sleep(0.1)
+            time.sleep(0.05)
 
-    def _release_key(self, *keys) -> None:
-        """
-        release depressed keys\n
-        accepts as many arguments as you want.\n
-        e.g. release_key('left_arrow', 'a','b').
+    def release_key(self, *keys) -> None:
+        """Simluate keyboard release depressed keys.
+
+        Accepts as many arguments as you want.
+            e.g.
+                release_key('left_arrow', 'a','b')
         """
         for key in keys:
             win32api.keybd_event(
                 self.virtual_key_code[key], 0, win32con.KEYEVENTF_KEYUP, 0
             )
 
-    def _send_keys(self, text: str) -> None:
+    def send_keys(self, text: str) -> None:
         """Simulate keyboard type for specific text.
 
         Characters will be typed one by one.
@@ -387,73 +416,71 @@ class Win32Utils(object):
         Args:
             text (str): text need type
         """
+        text = str(text)
         if not text.isascii():
-            self._paste_text(text=text)
+            self.logger.warn("Text contains non-ascii code, use system clipboard")
+            self.set_clipboard(text)
+            self.press_hold_release_key("ctrl", "v")
+            self.empty_clipboard()
             return
-        sp_key = {
-            " ": {"func": self._press_key, "keys": ["spacebar"]},
-            "~": {"func": self._press_hold_release_key, "keys": ["left_shift", "`"]},
-            "!": {"func": self._press_hold_release_key, "keys": ["left_shift", "1"]},
-            "@": {"func": self._press_hold_release_key, "keys": ["left_shift", "2"]},
-            "#": {"func": self._press_hold_release_key, "keys": ["left_shift", "3"]},
-            "$": {"func": self._press_hold_release_key, "keys": ["left_shift", "4"]},
-            "%": {"func": self._press_hold_release_key, "keys": ["left_shift", "5"]},
-            "^": {"func": self._press_hold_release_key, "keys": ["left_shift", "6"]},
-            "&": {"func": self._press_hold_release_key, "keys": ["left_shift", "7"]},
-            "*": {"func": self._press_hold_release_key, "keys": ["left_shift", "8"]},
-            "(": {"func": self._press_hold_release_key, "keys": ["left_shift", "9"]},
-            ")": {"func": self._press_hold_release_key, "keys": ["left_shift", "0"]},
-            "_": {"func": self._press_hold_release_key, "keys": ["left_shift", "-"]},
-            "+": {"func": self._press_hold_release_key, "keys": ["left_shift", "="]},
-            "{": {"func": self._press_hold_release_key, "keys": ["left_shift", "["]},
-            "}": {"func": self._press_hold_release_key, "keys": ["left_shift", "]"]},
-            "|": {"func": self._press_hold_release_key, "keys": ["left_shift", "\\"]},
-            ":": {"func": self._press_hold_release_key, "keys": ["left_shift", ";"]},
-            '"': {"func": self._press_hold_release_key, "keys": ["left_shift", "'"]},
-            "<": {"func": self._press_hold_release_key, "keys": ["left_shift", ","]},
-            ">": {"func": self._press_hold_release_key, "keys": ["left_shift", "."]},
-            "?": {"func": self._press_hold_release_key, "keys": ["left_shift", "/"]},
-            "A": {"func": self._press_hold_release_key, "keys": ["left_shift", "a"]},
-            "B": {"func": self._press_hold_release_key, "keys": ["left_shift", "b"]},
-            "C": {"func": self._press_hold_release_key, "keys": ["left_shift", "c"]},
-            "D": {"func": self._press_hold_release_key, "keys": ["left_shift", "d"]},
-            "E": {"func": self._press_hold_release_key, "keys": ["left_shift", "e"]},
-            "F": {"func": self._press_hold_release_key, "keys": ["left_shift", "f"]},
-            "G": {"func": self._press_hold_release_key, "keys": ["left_shift", "g"]},
-            "H": {"func": self._press_hold_release_key, "keys": ["left_shift", "h"]},
-            "I": {"func": self._press_hold_release_key, "keys": ["left_shift", "i"]},
-            "J": {"func": self._press_hold_release_key, "keys": ["left_shift", "j"]},
-            "K": {"func": self._press_hold_release_key, "keys": ["left_shift", "k"]},
-            "L": {"func": self._press_hold_release_key, "keys": ["left_shift", "l"]},
-            "M": {"func": self._press_hold_release_key, "keys": ["left_shift", "m"]},
-            "N": {"func": self._press_hold_release_key, "keys": ["left_shift", "n"]},
-            "O": {"func": self._press_hold_release_key, "keys": ["left_shift", "o"]},
-            "P": {"func": self._press_hold_release_key, "keys": ["left_shift", "p"]},
-            "Q": {"func": self._press_hold_release_key, "keys": ["left_shift", "q"]},
-            "R": {"func": self._press_hold_release_key, "keys": ["left_shift", "r"]},
-            "S": {"func": self._press_hold_release_key, "keys": ["left_shift", "s"]},
-            "T": {"func": self._press_hold_release_key, "keys": ["left_shift", "t"]},
-            "U": {"func": self._press_hold_release_key, "keys": ["left_shift", "u"]},
-            "V": {"func": self._press_hold_release_key, "keys": ["left_shift", "v"]},
-            "W": {"func": self._press_hold_release_key, "keys": ["left_shift", "w"]},
-            "X": {"func": self._press_hold_release_key, "keys": ["left_shift", "x"]},
-            "Y": {"func": self._press_hold_release_key, "keys": ["left_shift", "y"]},
-            "Z": {"func": self._press_hold_release_key, "keys": ["left_shift", "z"]},
+        dict_sp_key = {
+            "~": "`",
+            "!": "1",
+            "@": "2",
+            "#": "3",
+            "$": "4",
+            "%": "5",
+            "^": "6",
+            "&": "7",
+            "*": "8",
+            "(": "9",
+            ")": "0",
+            "_": "-",
+            "+": "=",
+            "{": "[",
+            "}": "]",
+            "|": "\\",
+            ":": ";",
+            '"': "'",
+            "<": ",",
+            ">": ".",
+            "?": "/",
+            "A": "a",
+            "B": "b",
+            "C": "c",
+            "D": "d",
+            "E": "e",
+            "F": "f",
+            "G": "g",
+            "H": "h",
+            "I": "i",
+            "J": "j",
+            "K": "k",
+            "L": "l",
+            "M": "m",
+            "N": "n",
+            "O": "o",
+            "P": "p",
+            "Q": "q",
+            "R": "r",
+            "S": "s",
+            "T": "t",
+            "U": "u",
+            "V": "v",
+            "W": "w",
+            "X": "x",
+            "Y": "y",
+            "Z": "z",
         }
-        for txt in str(text):
-            key_map = sp_key.get(txt, dict(func=self._press_key, keys=[txt]))
-            func = key_map.get("func")
-            keys = key_map.get("keys")
-            func(*keys)
-
-    def _paste_text(self, text: str) -> None:
-        """Simulates typing text with paste from clipboard.
-
-        RECOMMEND use this for text field directly typing or another launage typing support.
-
-        Args:
-            text (str): text need type
-        """
-        self._set_clipboard(text=str(text))
-        self._press_hold_release_key("ctrl", "v")
-        self._empty_clipboard()
+        for char in text:
+            # Get special keys
+            sp_key = dict_sp_key.get(char)
+            if sp_key:
+                keys = ["left_shift", sp_key]
+            elif char == " ":
+                keys = ["spacebar"]
+            # Common keys
+            else:
+                keys = [char]
+            key_func = self.press_key if len(keys) == 1 else self.press_hold_release_key
+            key_func(*keys)
