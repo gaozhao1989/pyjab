@@ -632,7 +632,7 @@ class JABElement(object):
             form_button.click(simulate=True)
         """
         if simulate:
-            self.win32_utils._set_window_foreground(hwnd=self.hwnd)
+            self.win32_utils.set_window_foreground(hwnd=self.hwnd)
             x = self.bounds.get("x")
             y = self.bounds.get("y")
             width = self.bounds.get("width")
@@ -641,7 +641,7 @@ class JABElement(object):
                 raise ValueError("element width or height is 0")
             position_x = round(x + width / 2)
             position_y = round(y + height / 2)
-            self.win32_utils._click_mouse(x=position_x, y=position_y)
+            self.win32_utils.click_mouse(x=position_x, y=position_y)
         else:
             self._do_accessible_action(action="click")
 
@@ -662,12 +662,12 @@ class JABElement(object):
             from_textfield.send_text(simulate=True)
         """
         if simulate:
-            self.win32_utils._set_window_foreground(hwnd=self.hwnd)
+            self.win32_utils.set_window_foreground(hwnd=self.hwnd)
             self._request_focus()
             if self.accessible_text and self.text:
-                self.win32_utils._press_key("end")
+                self.win32_utils.press_key("end")
                 for _ in self.text:
-                    self.win32_utils._press_key("backspace")
+                    self.win32_utils.press_key("backspace")
         else:
             self.send_text(value="", simulate=False)
         if not wait_for_text_update or self.role != Role.TEXT:
@@ -693,7 +693,7 @@ class JABElement(object):
         y = self.bounds["y"]
         height = self.bounds["height"]
         width = self.bounds["width"]
-        self.win32_utils._set_window_foreground(hwnd=self.hwnd)
+        self.win32_utils.set_window_foreground(hwnd=self.hwnd)
         # horizontal scroll to bottom(right)
         if to_bottom and is_horizontal:
             x = x + width - height - 5
@@ -707,7 +707,7 @@ class JABElement(object):
         else:
             x = x + width / 2
             y = y + width + 5
-        self.win32_utils._click_mouse(x=int(x), y=int(y), hold=hold)
+        self.win32_utils.click_mouse(x=int(x), y=int(y), hold=hold)
 
     def slide(self, to_bottom: bool = True, hold: int = 5) -> None:
         """Slide a slider to top or to bottom.
@@ -728,7 +728,7 @@ class JABElement(object):
         y = self.bounds["y"]
         height = self.bounds["height"]
         width = self.bounds["width"]
-        self.win32_utils._set_window_foreground(hwnd=self.hwnd)
+        self.win32_utils.set_window_foreground(hwnd=self.hwnd)
         # horizontal slide to bottom(right)
         if to_bottom and is_horizontal:
             x = x + width - 5
@@ -740,7 +740,7 @@ class JABElement(object):
             y = y + height / 2
         else:
             x = x + width / 2
-        self.win32_utils._click_mouse(x=int(x), y=int(y), hold=hold)
+        self.win32_utils.click_mouse(x=int(x), y=int(y), hold=hold)
 
     def select(self, option: str, simulate: bool = False, wait_for_selection: bool = True) -> None:
         """Select an item from JABElement selector.
@@ -797,7 +797,7 @@ class JABElement(object):
             raise JABException("JABElement is not 'check box'")
         self._request_focus()
         if simulate:
-            self.win32_utils._set_window_foreground(hwnd=self.hwnd)
+            self.win32_utils.set_window_foreground(hwnd=self.hwnd)
         self.click(simulate=simulate)
 
     def _select_from_combobox(self, option: str, simulate: bool = False) -> None:
@@ -805,12 +805,12 @@ class JABElement(object):
             raise JABException("JABElement is not 'combo box'")
         self._request_focus()
         if simulate:
-            self.win32_utils._set_window_foreground(hwnd=self.hwnd)
+            self.win32_utils.set_window_foreground(hwnd=self.hwnd)
             self._do_accessible_action(action="togglepopup")
             self._add_selection_from_accessible_context(
                 parent=self.find_element_by_role("list"), option=option
             )
-            self.win32_utils._press_key("enter")
+            self.win32_utils.press_key("enter")
             return
         self._clear_accessible_selection_from_context(self.accessible_context)
         self._add_selection_from_accessible_context(parent=self, option=option)
@@ -819,7 +819,7 @@ class JABElement(object):
         if self.role_en_us != "page tab list":
             raise JABException("JABElement is not 'page tab list'")
         if simulate:
-            self.win32_utils._set_window_foreground(hwnd=self.hwnd)
+            self.win32_utils.set_window_foreground(hwnd=self.hwnd)
             self.find_element_by_name(option).click(simulate=True)
             return
         self._add_selection_from_accessible_context(self, option=option)
@@ -828,21 +828,21 @@ class JABElement(object):
         if self.role_en_us != Role.LIST:
             raise JABException("JABElement is not 'list'")
         if simulate:
-            self.win32_utils._set_window_foreground(hwnd=self.hwnd)
+            self.win32_utils.set_window_foreground(hwnd=self.hwnd)
         self.find_element_by_name(value=option).click(simulate=simulate)
 
     def _select_from_menu(self, option: str, simulate: bool = False) -> None:
         if self.role_en_us != "menu":
             raise JABException("JABElement is not 'menu'")
         if simulate:
-            self.win32_utils._set_window_foreground(hwnd=self.hwnd)
+            self.win32_utils.set_window_foreground(hwnd=self.hwnd)
             self.click(simulate=True)
             for item in self.find_elements_by_object_depth(self.object_depth + 1):
                 if not item.accessible_action:
                     continue
-                self.win32_utils._press_key("down_arrow")
+                self.win32_utils.press_key("down_arrow")
                 if item.name == option:
-                    self.win32_utils._press_key("enter")
+                    self.win32_utils.press_key("enter")
                     break
         else:
             self.find_element_by_name(value=option).click(simulate=False)
@@ -874,10 +874,10 @@ class JABElement(object):
             y = self.bounds["y"]
             height = self.bounds["height"]
             width = self.bounds["width"]
-            self.win32_utils._set_window_foreground(hwnd=self.hwnd)
+            self.win32_utils.set_window_foreground(hwnd=self.hwnd)
             x = x + width - 5
             y = y + height / 2 + offset_y_position
-            self.win32_utils._click_mouse(x=int(x), y=int(y))
+            self.win32_utils.click_mouse(x=int(x), y=int(y))
             return
         self._do_accessible_action(action=action)
 
@@ -910,7 +910,7 @@ class JABElement(object):
         value = str(value)
         if simulate:
             self.clear(True, wait_for_text_update)
-            self.win32_utils._send_keys(value)
+            self.win32_utils.send_keys(value)
         else:
             result = self.bridge.setTextContents(
                 self.vmid, self.accessible_context, value
@@ -1625,7 +1625,7 @@ class JABElement(object):
         :Usage:
             img = element.get_screenshot()
         """
-        self.win32_utils._set_window_foreground(hwnd=self.hwnd)
+        self.win32_utils.set_window_foreground(hwnd=self.hwnd)
         x = self.bounds.get("x")
         y = self.bounds.get("y")
         width = self.bounds.get("width")

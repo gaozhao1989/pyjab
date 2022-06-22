@@ -147,7 +147,7 @@ class JABDriver(object):
         # invoke generator in message queue
         sched = ActorScheduler()
         sched.new_actor("pyjab", self.win32utils.setup_msg_pump())
-        sched.run()
+        sched.run_actor()
 
     def init_jab(self) -> None:
         # enum window and find hwnd
@@ -525,13 +525,13 @@ class JABDriver(object):
         """
         Maximizes the current java window that jabdriver is using
         """
-        self.win32utils._set_window_maximize(hwnd=self.root_element.hwnd)
+        self.win32utils.set_window_maximize(hwnd=self.root_element.hwnd)
 
     def minimize_window(self):
         """
         Invokes the window manager-specific 'minimize' operation
         """
-        self.win32utils._set_window_minimize(hwnd=self.root_element.hwnd)
+        self.win32utils.set_window_minimize(hwnd=self.root_element.hwnd)
 
     def wait_until_element_exist(
             self, by: str = By.NAME, value: Any = None, timeout: int = TIMEOUT
@@ -578,7 +578,7 @@ class JABDriver(object):
         :Usage:
             driver.get_screenshot_as_base64()
         """
-        self.win32utils._set_window_foreground(hwnd=self.root_element.hwnd)
+        self.win32utils.set_window_foreground(hwnd=self.root_element.hwnd)
         bounds = self.root_element.bounds
         x = bounds.get("x")
         y = bounds.get("y")
@@ -606,7 +606,7 @@ class JABDriver(object):
         :Usage:
             driver.set_window_size(800,600)
         """
-        self.win32utils._set_window_size(
+        self.win32utils.set_window_size(
             hwnd=self.root_element.hwnd, width=width, height=height
         )
 
@@ -621,7 +621,7 @@ class JABDriver(object):
         :Usage:
             driver.set_window_position(0,0)
         """
-        self.win32utils._set_window_position(
+        self.win32utils.set_window_position(
             hwnd=self.root_element.hwnd, left=x, top=y
         )
 
@@ -632,4 +632,4 @@ class JABDriver(object):
         :Usage:
             driver.get_window_position()
         """
-        return self.win32utils._get_window_position(hwnd=self.root_element.hwnd)
+        return self.win32utils.get_window_position(hwnd=self.root_element.hwnd)
