@@ -13,7 +13,7 @@ from typing import Any, Dict, Tuple, Optional
 
 import win32process
 from PIL import ImageGrab
-from pyjab.accessibleinfo import AccessBridgeVersionInfo
+from pyjab.jabdatastr import AccessBridgeVersionInfo
 from pyjab.common.actorscheduler import ActorScheduler
 from pyjab.common.by import By
 from pyjab.common.exceptions import JABException

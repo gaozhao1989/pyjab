@@ -16,7 +16,7 @@ from pyjab.common.exceptions import JABException
 from pyjab.common.types import jint, JOBJECT64
 from pyjab.common.win32utils import Win32Utils
 from pyjab.common.xpathparser import XpathParser
-from pyjab.accessibleinfo import (
+from pyjab.jabdatastr import (
     AccessibleActions,
     AccessibleActionsToDo,
     AccessibleContextInfo,
@@ -1284,7 +1284,7 @@ class JABElement(object):
         Returns:
             JABElement: The JABElement find by locator
         """
-        nodes = self.xpath_parser.split_nodes(value)
+        nodes = self.xpath_parser.get_nodes(value)
         jabelement = None
         for node in nodes:
             level = "root" if nodes.index(node) == 0 else "child"
@@ -1522,7 +1522,7 @@ class JABElement(object):
                 )
             return child_jabelements
 
-        nodes = self.xpath_parser.split_nodes(value)
+        nodes = self.xpath_parser.get_nodes(value)
         _jabelements = [
             JABElement(self.bridge, self.hwnd, self.vmid, self.accessible_context)
         ]
