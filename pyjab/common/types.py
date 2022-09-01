@@ -8,6 +8,23 @@ class JOBJECT64(c_int64):
 class AccessibleContext(JOBJECT64):
     pass
 
+class AccessibleText(AccessibleContext):
+    pass
+
+class AccessibleTable(AccessibleContext):
+    pass
+
+class AccessibleHypertext(AccessibleContext):
+    pass
+
+class AccessibleValue(AccessibleContext):
+    pass
+
+class AccessibleSelection(AccessibleContext):
+    pass
+
+class AccessibleHyperlink(AccessibleContext):
+    pass
 
 class jint(c_int):
     pass

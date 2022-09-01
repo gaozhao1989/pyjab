@@ -23,7 +23,7 @@ from pyjab.common.win32utils import Win32Utils
 from pyjab.common.types import JOBJECT64
 from pyjab.config import TIMEOUT
 from pyjab.jabelement import JABElement
-from pyjab.jabfixedfunc import JABFixedFunc
+from pyjab.jabcfunc import JABCFunc
 
 
 class JABDriver(object):
@@ -73,7 +73,7 @@ class JABDriver(object):
         self._bridge = None
         self._root_element = None
         self.init_jab()
-        JABFixedFunc(self.bridge)._fix_bridge_functions()
+        JABCFunc(self.bridge).reset_funcs()
 
     def __enter__(self):
         return self
