@@ -3,8 +3,8 @@ from __future__ import annotations
 from time import time
 
 from pyjab.common.logger import Logger
-from pyjab.common.role import Role
-from pyjab.common.states import States
+from pyjab.jab.role import Role
+from pyjab.jab.states import States
 from pyjab.common.textreader import TextReader
 import re
 from ctypes import Array, byref, CDLL, c_char, c_long, create_string_buffer
@@ -13,10 +13,10 @@ from typing import Any, Generator, Optional, Union
 from PIL import Image, ImageGrab
 from pyjab.common.by import By
 from pyjab.common.exceptions import JABException
-from pyjab.common.types import jint, JOBJECT64
+from pyjab.jab.type import jint, JOBJECT64
 from pyjab.common.win32utils import Win32Utils
 from pyjab.common.xpathparser import XpathParser
-from pyjab.jabdatastr import (
+from pyjab.jab.datastructure import (
     AccessibleActions,
     AccessibleActionsToDo,
     AccessibleContextInfo,

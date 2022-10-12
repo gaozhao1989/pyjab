@@ -13,17 +13,17 @@ from typing import Any, Dict, Tuple, Optional
 
 import win32process
 from PIL import ImageGrab
-from pyjab.jabdatastr import AccessBridgeVersionInfo
+from pyjab.jab.datastructure import AccessBridgeVersionInfo
 from pyjab.common.actorscheduler import ActorScheduler
 from pyjab.common.by import By
 from pyjab.common.exceptions import JABException
 from pyjab.common.logger import Logger
 from pyjab.common.service import Service
 from pyjab.common.win32utils import Win32Utils
-from pyjab.common.types import JOBJECT64
+from pyjab.jab.type import JOBJECT64
 from pyjab.config import TIMEOUT
 from pyjab.jabelement import JABElement
-from pyjab.jabcfunc import JABCFunc
+from pyjab.jab.fixedcfunc import JABCFunc
 
 
 class JABDriver(object):
@@ -73,7 +73,7 @@ class JABDriver(object):
         self._bridge = None
         self._root_element = None
         self.init_jab()
-        JABCFunc(self.bridge).reset_funcs()
+        JABCFunc(self.bridge).fix_funcs()
 
     def __enter__(self):
         return self

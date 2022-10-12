@@ -2,6 +2,7 @@ import encodings
 import locale
 from typing import Optional
 
+WCHAR_ENCODING = "utf_16_le"
 
 class TextReader(object):
     """Text reader for retrieve text or transfer text in different types."""
@@ -26,7 +27,7 @@ class TextReader(object):
         """
         if encoding is None:
             if chars_len > 1 and any(buffer[chars_len:]):
-                encoding = "utf_16_le"
+                encoding = WCHAR_ENCODING
             else:
                 encoding = locale.getpreferredencoding()
         else:

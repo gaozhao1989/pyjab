@@ -2,8 +2,8 @@ from datetime import date
 
 import pytest
 
-from pyjab.common.role import Role
-from pyjab.common.states import States
+from pyjab.jab.role import Role
+from pyjab.jab.states import States
 from pyjab.jabdriver import JABDriver
 from logging import Logger
 

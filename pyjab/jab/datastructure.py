@@ -2,7 +2,7 @@
 from ctypes import Structure
 from ctypes.wintypes import BOOL
 from ctypes.wintypes import WCHAR
-from pyjab.common.types import (
+from pyjab.jab.type import (
     JOBJECT64,
     AccessibleContext,
     jboolean,
