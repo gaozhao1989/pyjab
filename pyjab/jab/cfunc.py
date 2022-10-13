@@ -10,7 +10,7 @@ from ctypes import (
     c_wchar,
 )
 from ctypes.wintypes import BOOL, HWND
-from pyjab.jab.datastructure import (
+from pyjab.jab.structure import (
     AccessBridgeVersionInfo,
     AccessibleActions,
     AccessibleActionsToDo,
@@ -43,7 +43,7 @@ from pyjab.jab.type import (
 )
 
 
-class JABCFunc(object):
+class CFunc(object):
     def __init__(self, bridge: CDLL) -> None:
         self.logger = Logger("pyjab")
         self.bridge = bridge

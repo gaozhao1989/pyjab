@@ -16,7 +16,7 @@ from pyjab.common.exceptions import JABException
 from pyjab.jab.type import jint, JOBJECT64
 from pyjab.common.win32utils import Win32Utils
 from pyjab.common.xpathparser import XpathParser
-from pyjab.jab.datastructure import (
+from pyjab.jab.structure import (
     AccessibleActions,
     AccessibleActionsToDo,
     AccessibleContextInfo,

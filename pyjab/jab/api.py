@@ -11,8 +11,7 @@ from ctypes import (
 from ctypes.wintypes import HWND
 from typing import Sequence, Union
 from pyjab.common.exceptions import JABException
-from pyjab.common.singleton import singleton
-from pyjab.jab.datastructure import (
+from pyjab.jab.structure import (
     MAX_ACTIONS_TO_DO,
     SHORT_STRING_SIZE,
     AccessBridgeVersionInfo,
