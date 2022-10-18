@@ -3,6 +3,7 @@ import struct
 from ctypes import cdll
 from ctypes import CDLL
 from pathlib import Path
+from typing import Union
 
 from pyjab.common.logger import Logger
 from pyjab.common.singleton import singleton
@@ -48,17 +49,17 @@ class Service(object):
         if not self.is_bridge_enabled():
             self.enable_bridge()
 
-    def load_library(self, bridge_dll: str = "") -> CDLL:
+    def load_library(self, dll: Union[Path, str]) -> CDLL:
         self.logger.debug("Load library of Java Access Bridge")
         dll_bit = struct.calcsize("P") * 8
-        for dll in [
-            str(bridge_dll),
+        for path in [
+            str(dll),
             JDK_BRIDGE_DLL.format(dll_bit),
             JRE_BRIDGE_DLL.format(dll_bit),
             JAB_BRIDGE_DLL.format(dll_bit),
         ]:
-            if os.path.isfile(dll):
-                return cdll.LoadLibrary(dll)
+            if os.path.isfile(path):
+                return cdll.LoadLibrary(path)
         raise FileNotFoundError(
             "WindowsAccessBridge dll NOT found, "
             "Please correct environment variable for JDK, JRE or JAB, "
