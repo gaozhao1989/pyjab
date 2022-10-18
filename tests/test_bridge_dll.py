@@ -9,7 +9,7 @@ class TestBridgeDll(object):
         # JDK 1.8
         jabdriver = JABDriver(
             title="Java Control Panel",
-            bridge_dll=r"C:\Program Files (x86)\Java\jdk8\jre\bin\WindowsAccessBridge-32.dll",
+            dll=r"C:\Program Files (x86)\Java\jdk8\jre\bin\WindowsAccessBridge-32.dll",
         )
         assert jabdriver
 
@@ -17,7 +17,7 @@ class TestBridgeDll(object):
         # JDK 1.8
         jabdriver = JABDriver(
             title="Java Control Panel",
-            bridge_dll=r"C:\Program Files\Java\jdk8\jre\bin\WindowsAccessBridge-64.dll",
+            dll=r"C:\Program Files\Java\jdk8\jre\bin\WindowsAccessBridge-64.dll",
         )
         assert jabdriver
 
@@ -25,7 +25,7 @@ class TestBridgeDll(object):
         # OpenJDK 16
         jabdriver = JABDriver(
             title="Java Control Panel",
-            bridge_dll=r"C:\Users\garygao\scoop\apps\openjdk16\16.0.2-7\bin\windowsaccessbridge-64.dll",
+            dll=r"C:\Users\garygao\scoop\apps\openjdk16\16.0.2-7\bin\windowsaccessbridge-64.dll",
         )
         assert jabdriver
 
@@ -33,6 +33,6 @@ class TestBridgeDll(object):
         # JAB 2.0.2
         jabdriver = JABDriver(
             title="Java Control Panel",
-            bridge_dll=r"C:\Users\garygao\AppData\Local\Programs\accessbridge-2_0_2-fcs-bin-b06\accessbridge2_0_2\WindowsAccessBridge-64.dll",
+            dll=r"C:\Users\garygao\AppData\Local\Programs\accessbridge-2_0_2-fcs-bin-b06\accessbridge2_0_2\WindowsAccessBridge-64.dll",
         )
         assert jabdriver

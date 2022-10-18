@@ -95,13 +95,13 @@ def get_test_jnlp_files():
 @pytest.fixture
 def oracle_app(request) -> JABDriver:
     app: TestFile = request.param.value
-    with JABDriver(file_path=app.file, title=app.window_title) as jab_driver:
+    with JABDriver(app=app.file, title=app.window_title) as jab_driver:
         yield jab_driver
 
 
 @pytest.fixture
 def java_control_app() -> JABDriver:
     # Assumes installation of some jdk 1.8 - currently hardcoded
-    with JABDriver(file_path=Path(r"C:\Program Files\Java\jdk1.8.0_311\jre\bin\javacpl.exe"),
+    with JABDriver(app=Path(r"C:\Program Files\Java\jdk1.8.0_311\jre\bin\javacpl.exe"),
                    title="Java Control Panel") as jabdriver:
         yield jabdriver
