@@ -2,93 +2,107 @@ from __future__ import annotations
 
 import os
 import signal
-from ctypes import byref
 from ctypes import CDLL
 from ctypes import c_long
 from ctypes.wintypes import HWND
 from pathlib import Path
 from subprocess import Popen
 from time import time
-from typing import Any, Dict, Tuple, Optional
+from types import TracebackType
+from typing import Any, Dict, Tuple, Optional, Type, Union
+from pyjab.common.wait import JABDriverWait
+from pyjab.jab.api import API
 
-import win32process
 from PIL import ImageGrab
-from pyjab.jab.structure import AccessBridgeVersionInfo
 from pyjab.common.actorscheduler import ActorScheduler
 from pyjab.common.by import By
 from pyjab.common.exceptions import JABException
 from pyjab.common.logger import Logger
 from pyjab.common.service import Service
 from pyjab.common.win32utils import Win32Utils
-from pyjab.jab.type import JOBJECT64
+from pyjab.jab.type import AccessibleContext
 from pyjab.config import TIMEOUT
 from pyjab.jabelement import JABElement
 from pyjab.jab.cfunc import CFunc
 
 
 class JABDriver(object):
-    """Controls a Java application by Java Access Bridge.
+    """Controls a Java Application by sending commands to JAB APIs.
 
     Args:
-        Service ([type]): Host system to initialize the JAB and load JAB dll file.
+        title (str, optional): Window title of Java application need to bind. 
+        JABDriver can be bind with existing Java application. 
+        Must to have if `app` invalid. Defaults to None.
+
+        app (Union[Path, str, None]): Path of Java application to launch. 
+        JABDriver can help to launch Java application with command `javaws`. 
+        Must to have if `title` invalid. Defaults to None.
+
+        dll (Union[Path, str, None]): Path of WindowsAccessBridge dll file.
+        File can be found in `JAVA_HOME`, `JRE_HOME` or `JAB_HOME`.
+        Need to match the application version. 
+        Must to have if NO environment variable for `JAVA_HOME`, `JRE_HOME` or `JAB_HOME`.
+
+        hwnd (HWND, optional): HWND of current Java application window. Defaults to None.
+        Must to have if both `vmid` and `accessible_context` invalid.
+
+        vmid (c_long, optional): vmid of current Java application window. Defaults to None.
+
+        accessible_context (JOBJECT64, optional): Root component of AccessibleContext 
+        for current Java application window. Defaults to None.
+
+        timeout (Union[int, float]): Timeout seconds for JABDriver global settings.
+        Defaults to TIMEOUT.
     """
 
     def __init__(
             self,
-            title: str = "",
-            file_path: Path = None,
-            bridge_dll: str = "",
-            hwnd: HWND = None,
-            vmid: c_long = None,
-            accessible_context: JOBJECT64 = None,
-            timeout: int = TIMEOUT,
+            title: Optional[str] = None,
+            app: Union[Path, str, None] = None,
+            dll: Union[Path, str, None] = None,
+            hwnd: Optional[HWND] = None,
+            vmid: Optional[c_long] = None,
+            accessible_context: Optional[AccessibleContext] = None,
+            timeout: Union[int, float] = TIMEOUT,
     ) -> None:
-        """Create a new jab driver.
-
-        Args:
-            title (str, optional): Window title of Java application need to bind. Defaults to "".
-            file_path (Path, optional): File path of the application to launch. Defaults to None.
-            bridge_dll (str, optional): WindowsAccessBridge dll file path. Defaults to "".
-            hwnd (HWND, optional): HWND of Java Window. Defaults to None.
-            vmid (c_long, optional): vmid of Java Window. Defaults to None.
-            accessible_context (JOBJECT64, optional): Any Accessible Context Component in Java Window.
-            Defaults to None.
-            timeout (int, optional): Default timeout set for JABDriver waiting. Defaults to TIMEOUT.
-        """
-        super(JABDriver, self).__init__()
-        self.win32utils = Win32Utils()
-        self.file_path = file_path
-        self._title = title
-        if self.file_path:
-            self.open_application()
-        self.serv = Service()
         self.logger = Logger("pyjab")
+        self.win32utils = Win32Utils()
+        self.app = app
+        self.dll = dll
+        self.timeout = timeout
+        self.open_app()
         self.latest_log = None
-        self._bridge_dll = bridge_dll
-        self._timeout = timeout
+        self._title = title
         self._hwnd = hwnd
         self._vmid = vmid
+        self._acc = accessible_context
         self._pid = None
-        self._accessible_context = accessible_context
-        self._bridge = None
-        self._root_element = None
-        self.init_jab()
+        self._bridge = Service().load_library(self.dll)
         CFunc(self.bridge).fix_funcs()
+        self.api = API(self.bridge)
+        self._root = None
+        self.init_jab()
 
-    def __enter__(self):
+    def __enter__(self) -> JABDriver:
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type: Type, exc_val: BaseException, exc_tb: TracebackType) -> None:
+        if self.pid is None:
+            self.logger.debug("Nothing to exit sine pid is None")
+            return
         os.kill(self.pid, signal.SIGTERM)
 
-    def open_application(self):
-        cmd = " ".join(["javaws", str(self.file_path)]) if self.file_path.suffix == "jnlp" else str(self.file_path)
-        p = Popen(cmd, shell=True)
-        p.wait()
-        return p
+    def open_app(self):
+        if self.app is None:
+            self.logger.debug("No app set, ignore open app")
+            return
+        app = str(self.app)
+        cmd = " ".join(["javaws", app]
+                       ) if app.endswith("jnlp") else app
+        Popen(cmd, shell=True).wait()
 
     @property
-    def title(self) -> str:
+    def title(self) -> Union[str, None]:
         return self._title
 
     @title.setter
@@ -97,6 +111,8 @@ class JABDriver(object):
 
     @property
     def hwnd(self) -> HWND:
+        if self._hwnd is None:
+            raise ValueError("hwnd is None")
         return self._hwnd
 
     @hwnd.setter
@@ -104,7 +120,7 @@ class JABDriver(object):
         self._hwnd = hwnd
 
     @property
-    def pid(self) -> int:
+    def pid(self) -> Union[int, None]:
         return self._pid
 
     @pid.setter
@@ -113,6 +129,8 @@ class JABDriver(object):
 
     @property
     def vmid(self) -> c_long:
+        if self._vmid is None:
+            raise ValueError("vmid is None")
         return self._vmid
 
     @vmid.setter
@@ -120,12 +138,14 @@ class JABDriver(object):
         self._vmid = vmid
 
     @property
-    def accessible_context(self) -> JOBJECT64:
-        return self._accessible_context
+    def accessible_context(self) -> AccessibleContext:
+        if self._acc is None:
+            raise ValueError("accessible_context is None")
+        return self._acc
 
     @accessible_context.setter
-    def accessible_context(self, accessible_context: JOBJECT64) -> None:
-        self._accessible_context = accessible_context
+    def accessible_context(self, accessible_context: AccessibleContext) -> None:
+        self._acc = accessible_context
 
     @property
     def bridge(self) -> CDLL:
@@ -137,11 +157,13 @@ class JABDriver(object):
 
     @property
     def root_element(self) -> JABElement:
-        return self._root_element
+        if self._root is None:
+            raise ValueError("root_element is None")
+        return self._root
 
     @root_element.setter
     def root_element(self, root_element: JABElement) -> None:
-        self._root_element = root_element
+        self._root = root_element
 
     def _run_actor_sched(self) -> None:
         # invoke generator in message queue
@@ -150,99 +172,56 @@ class JABDriver(object):
         sched.run_actor()
 
     def init_jab(self) -> None:
-        # enum window and find hwnd
-        self.logger.info("init jab")
-        # load AccessBridge dll file
-        self.bridge = self.serv.load_library(self._bridge_dll)
+        self.logger.info("Initialize pyjab")
+        # Starts Java Access Bridge. You cannot use any part of the Java Access Bridge API until you call this function.
         self.bridge.Windows_run()
-        # setup message queue for actor scheduler
+        # Setup message queue for actor scheduler
         self._run_actor_sched()
-        # wait java window by title and get hwnd if not specific hwnd and vmid
-        if not (self.hwnd or (self.vmid and self.accessible_context)):
-            self.hwnd = self.wait_java_window_by_title(
-                title=self.title, timeout=self._timeout
+        # Get HWND by Java applicaiton window title
+        if self.title:
+            self.hwnd = self.hwnd or self.wait_java_window_by_title(
+                self.title, self.timeout
             )
-        # get vmid and accessible_context by hwnd
+        # Get vmid and AccessibleContext by HWND
         if self.hwnd:
-            self.accessible_context, self.vmid = self._get_accessible_context_from_hwnd(
-                self.hwnd
-            )
-        # get hwnd by vmid and accessible_context
+            self.accessible_context, self.vmid = self.api.get_accessible_context_from_hwnd(
+                self.hwnd)
+        # Get HWND by vmid and AccessibleContext
         elif self.vmid and self.accessible_context:
-            # must have vmid and accessible_context
-            top_level_object = self.bridge.getTopLevelObject(
-                self.vmid, self.accessible_context
+            self.hwnd = self.api.get_hwnd_from_accessible_context(
+                self.vmid, self.api.get_top_level_object(
+                    self.vmid, self.accessible_context
+                )
             )
-            self.hwnd = self.bridge.getHWNDFromAccessibleContext(
-                self.vmid, top_level_object
-            )
-        else:
+        # HWND, vmid and AccessibleContext are requried for pyjab
+        if not all([self.hwnd, self.vmid, self.accessible_context]):
             raise RuntimeError(
-                "At least hwnd or vmid and accessible_context is required"
+                "hwnd, vmid and AccessibleContext are required, please check"
+                f"hwnd => {self.hwnd}"
+                f"vmid => {self.vmid}"
+                f"AccessibleContext => {self.accessible_context}"
             )
-        # check if Java Window HWND valid
-        if not self._is_java_window(self.hwnd):
-            raise RuntimeError(f"HWND:{self.hwnd} is not Java Window, please check!")
-        self.pid = self.get_pid_from_hwnd()
+        self.pid = self.win32utils.get_pid_from_hwnd(self.hwnd)
         self.root_element = JABElement(
-            bridge=self.bridge,
-            hwnd=self.hwnd,
-            vmid=self.vmid,
-            accessible_context=self.accessible_context,
+            self.bridge,
+            self.hwnd,
+            self.vmid,
+            self.accessible_context,
         )
-        self.logger.info("init jab success")
+        self.logger.info("Initialize pyjab success")
 
-    # Gateway functions
-    def _is_java_window(self, hwnd: HWND) -> bool:
-        """Return the specific window is or not a Java Window
-
-        Args:
-            hwnd (HWND): The hwnd of window.
-
-        Returns:
-            bool: True if is a Java Window. False is not a Java Window.
+    def maximize_window(self):
         """
-        return bool(self.bridge.isJavaWindow(hwnd))
-
-    def _get_accessible_context_from_hwnd(self, hwnd: HWND) -> Tuple[JOBJECT64, int]:
-        """Gets the AccessibleContext and vmID values for the given window.
-
-        Args:
-            hwnd (HWND): hwnd (HWND): The hwnd of window.
-
-        Returns:
-            Tuple: tuple of AccessibleContext and vmID
+        Maximizes the current java window that jabdriver is using
         """
-        vmid = c_long()
-        accessible_context = JOBJECT64()
-        self.bridge.getAccessibleContextFromHWND(
-            hwnd, byref(vmid), byref(accessible_context)
-        )
-        return accessible_context, vmid.value
+        self.win32utils.set_window_maximize(self.hwnd)
 
-    def get_pid_from_hwnd(self):
-        _, pid = win32process.GetWindowThreadProcessId(self.hwnd)
-        return pid
-
-    def get_version_info(self) -> Dict[str, str]:
-        """Gets the version information of the instance of Java Access Bridge instance your application is using.
-
-        Returns:
-            Dict[str]: Dict of AccessBridgeVersionInfo, contains:
-                VMVersion
-                bridgeJavaClassVersion
-                bridgeJavaDLLVersion
-                bridgeWinDLLVersion
+    def minimize_window(self):
         """
-        info = AccessBridgeVersionInfo()
-        self.bridge.getVersionInfo(self.vmid, byref(info))
-        return {
-            "VMVersion": info.VMVersion,
-            "bridgeJavaClassVersion": info.bridgeJavaClassVersion,
-            "bridgeJavaDLLVersion": info.bridgeJavaDLLVersion,
-            "bridgeWinDLLVersion": info.bridgeWinDLLVersion,
-        }
-
+        Invokes the window manager-specific 'minimize' operation
+        """
+        self.win32utils.set_window_minimize(self.hwnd)
+        
     def get_java_window_hwnd(self, title: str) -> Optional[HWND]:
         """Get Java Window hwnd by title.
 
@@ -252,16 +231,21 @@ class JABDriver(object):
         Returns:
             Optional[HWND]: HWND if found Java Window, otherwise return None
         """
-        for hwnd in self.win32utils.get_hwnds_by_title(title=title):
-            if self._is_java_window(hwnd):
+        for hwnd in self.win32utils.get_hwnds_by_title(title):
+            if self.api.is_java_window(hwnd):
                 return hwnd
 
-    def wait_java_window_by_title(self, title: str, timeout: int = TIMEOUT) -> HWND:
+    def switch_to(self):
+        # TODO:
+        pass
+
+    def wait_java_window_by_title(self, title: Union[str, None], timeout: Union[int, float] = TIMEOUT) -> HWND:
         """Wait until a Java Window exists in specific seconds.
 
         Args:
-            title (str): The title of specific Java Window need to wait.
-            timeout (int, optional): The timeout seconds. Defaults to TIMEOUT.
+            title (Union[str, None]): The title of specific Java Window need to wait.
+
+            timeout (Union[int, float], optional): The timeout seconds. Defaults to TIMEOUT.
 
         Raises:
             TimeoutError: Timeout error occurs when wait time over the specific timeout
@@ -269,23 +253,8 @@ class JABDriver(object):
         Returns:
             HWND of Java window found in specific seconds.
         """
-        start = time()
-        while True:
-            if hwnd := self.get_java_window_hwnd(title=title):
-                return hwnd
-            log_out = f"no java window found by title '{title}'"
-            if self.latest_log != log_out:
-                self.logger.debug(log_out)
-                self.latest_log = log_out
-            current = time()
-            elapsed = round(current - start)
-            if elapsed >= timeout:
-                raise TimeoutError(
-                    f"no java window found by title '{title}' in '{timeout}'seconds"
-                )
-            self._run_actor_sched()
+        return JABDriverWait(timeout).until(self.get_java_window_hwnd, title)
 
-    # jab driver functions: similar with webdriver
     def find_element_by_name(self, value: str, visible: bool = False) -> JABElement:
         """
         Find an JABElement given a name locator.
@@ -399,7 +368,8 @@ class JABDriver(object):
         if value == self.root_element.name:
             jabelements.append(self.root_element)
         jabelements.extend(
-            self.root_element.find_elements_by_name(value=value, visible=visible)
+            self.root_element.find_elements_by_name(
+                value=value, visible=visible)
         )
         return jabelements
 
@@ -413,7 +383,8 @@ class JABDriver(object):
         if value == self.root_element.description:
             jabelements.append(self.root_element)
         jabelements.extend(
-            self.root_element.find_elements_by_description(value=value, visible=visible)
+            self.root_element.find_elements_by_description(
+                value=value, visible=visible)
         )
         return jabelements
 
@@ -427,7 +398,8 @@ class JABDriver(object):
         if value == self.root_element.role:
             jabelements.append(self.root_element)
         jabelements.extend(
-            self.root_element.find_elements_by_role(value=value, visible=visible)
+            self.root_element.find_elements_by_role(
+                value=value, visible=visible)
         )
         return jabelements
 
@@ -441,7 +413,8 @@ class JABDriver(object):
         if value == self.root_element.states:
             jabelements.append(self.root_element)
         jabelements.extend(
-            self.root_element.find_elements_by_states(value=value, visible=visible)
+            self.root_element.find_elements_by_states(
+                value=value, visible=visible)
         )
         return jabelements
 
@@ -520,18 +493,6 @@ class JABDriver(object):
         if by not in dict_finds.keys():
             raise JABException(f"incorrect by strategy '{by}'")
         return dict_finds[by](value=value, visible=visible)
-
-    def maximize_window(self):
-        """
-        Maximizes the current java window that jabdriver is using
-        """
-        self.win32utils.set_window_maximize(hwnd=self.root_element.hwnd)
-
-    def minimize_window(self):
-        """
-        Invokes the window manager-specific 'minimize' operation
-        """
-        self.win32utils.set_window_minimize(hwnd=self.root_element.hwnd)
 
     def wait_until_element_exist(
             self, by: str = By.NAME, value: Any = None, timeout: int = TIMEOUT
