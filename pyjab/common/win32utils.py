@@ -1,6 +1,7 @@
+from ctypes.wintypes import HWND
 import fnmatch
 import time
-from typing import Generator, Union
+from typing import Generator, Optional, Union
 import pythoncom
 import win32api
 import win32clipboard
@@ -8,6 +9,7 @@ import win32com.client
 import win32con
 import win32event
 import win32gui
+import win32process
 from pyjab.common.logger import Logger
 from pyjab.common.singleton import singleton
 from pyjab.config import TIMEOUT
@@ -220,7 +222,7 @@ class Win32Utils(object):
                 win32event.SetEvent(stop_event)
 
     @staticmethod
-    def enum_windows() -> dict[int, str]:
+    def enum_windows() -> dict[HWND, str]:
         dict_hwnd = dict()
 
         def get_all_hwnds(hwnd, _):
@@ -234,12 +236,11 @@ class Win32Utils(object):
         win32gui.EnumWindows(get_all_hwnds, 0)
         return dict_hwnd
 
-    def get_hwnd_by_title(self, title: str) -> Union[int, None]:
+    def get_hwnd_by_title(self, title: str) -> Optional[HWND]:
         if possible_matches := self.get_hwnds_by_title(title):
             return possible_matches[0]
-        return None
 
-    def get_hwnds_by_title(self, title: str) -> list[int]:
+    def get_hwnds_by_title(self, title: str) -> list[HWND]:
         dict_hwnd = self.enum_windows()
         return [
             hwnd
@@ -251,7 +252,7 @@ class Win32Utils(object):
     def get_title_by_hwnd(hwnd: int) -> str:
         return win32api.GetWindowText(hwnd)
 
-    def wait_hwnd_by_title(self, title: str, timeout: int = TIMEOUT) -> int:
+    def wait_hwnd_by_title(self, title: str, timeout: int = TIMEOUT) -> HWND:
         latest_log = ""
         error_log = f"NO HWND found by title => '{title}'"
         start = time.time()
@@ -267,6 +268,11 @@ class Win32Utils(object):
                 raise TimeoutError(f"{error_log} in '{timeout}' seconds")
 
     @staticmethod
+    def get_pid_from_hwnd(hwnd: HWND) -> int:
+        _, pid = win32process.GetWindowThreadProcessId(hwnd)
+        return pid
+
+    @staticmethod
     def get_foreground_window() -> int:
         return win32gui.GetForegroundWindow()
 
@@ -280,12 +286,12 @@ class Win32Utils(object):
         win32gui.SetForegroundWindow(hwnd)
 
     @staticmethod
-    def set_window_maximize(hwnd: int) -> None:
+    def set_window_maximize(hwnd: HWND) -> None:
         win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
         win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
 
     @staticmethod
-    def set_window_minimize(hwnd: int) -> None:
+    def set_window_minimize(hwnd: HWND) -> None:
         win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
         win32gui.ShowWindow(hwnd, win32con.SW_MINIMIZE)
 
@@ -418,7 +424,8 @@ class Win32Utils(object):
         """
         text = str(text)
         if not text.isascii():
-            self.logger.warn("Text contains non-ascii code, use system clipboard")
+            self.logger.warn(
+                "Text contains non-ascii code, use system clipboard")
             self.set_clipboard(text)
             self.press_hold_release_key("ctrl", "v")
             self.empty_clipboard()
@@ -482,5 +489,6 @@ class Win32Utils(object):
             # Common keys
             else:
                 keys = [char]
-            key_func = self.press_key if len(keys) == 1 else self.press_hold_release_key
+            key_func = self.press_key if len(
+                keys) == 1 else self.press_hold_release_key
             key_func(*keys)
