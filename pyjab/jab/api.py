@@ -59,7 +59,7 @@ class API(object):
 
     def __init__(self, bridge: CDLL) -> None:
         self.bridge = bridge
-        self.logger = Logger()
+        self.logger = Logger("pyjab")
 
     # Gateway Functions
 
