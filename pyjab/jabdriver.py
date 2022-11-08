@@ -633,3 +633,25 @@ class JABDriver(object):
             driver.get_window_position()
         """
         return self.win32utils._get_window_position(hwnd=self.root_element.hwnd)
+
+    def get_focused_element(self) -> Optional[JABElement]:
+        """
+        Gets the focused element of the current window.
+
+        Returns:
+            JABElement: JABElement of focused element if found, otherwise return None.
+        """
+        vmid = c_long()
+        accessible_context = JOBJECT64()
+        result = self.bridge.getAccessibleContextWithFocus(
+            self.hwnd, byref(vmid), byref(accessible_context)
+        )
+        if result == 0 or accessible_context.value == 0:
+            return None
+
+        return JABElement(
+            bridge=self.bridge,
+            hwnd=self.hwnd,
+            vmid=vmid,
+            accessible_context=accessible_context
+        )
