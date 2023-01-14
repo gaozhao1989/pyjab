@@ -5,25 +5,27 @@ class JABDriverException(Exception):
     """Base JABDriver exceptions.
 
     Attributes:
-
+        message (Optional[str], optional): exception message content. Defaults to None.
+        screen (Optional[str], optional): screenshot additional message content. Defaults to None.
+        stacktrace (Optional[str], optional): stacktrace additional message content. Defaults to None.
     """
 
     def __init__(
         self, message: Optional[str] = None, screen: Optional[str] = None, stacktrace: Optional[Sequence[str]] = None
     ) -> None:
         super().__init__()
-        self.msg = message
+        self.message = message
         self.screen = screen
         self.stacktrace = stacktrace
 
     def __str__(self) -> str:
-        exception_msg = f"Message: {self.msg}\n"
+        exception_message = f"Message: {self.message}\n"
         if self.screen:
-            exception_msg += "Screenshot: available via screen\n"
+            exception_message += "Screenshot: available via screen\n"
         if self.stacktrace:
             stacktrace = "\n".join(self.stacktrace)
-            exception_msg += f"Stacktrace:\n{stacktrace}"
-        return exception_msg
+            exception_message += f"Stacktrace:\n{stacktrace}"
+        return exception_message
 
 
 class JABException(JABDriverException):
@@ -89,13 +91,13 @@ class TimeoutException(JABDriverException):
 
 
 class MoveTargetOutOfBoundsException(JABDriverException):
-    """Thrown when the target provided to the `ActionsChains` move() method is
+    """Thrown when the target provided to the move() method is
     invalid, i.e. out of document."""
 
 
 class InvalidSelectorException(JABDriverException):
     """Thrown when the combo box which is used to find an element does not
-    return a WebElement.
+    return a JABElement.
     Currently this only happens when the combo box is an xpath expression
     and it is either syntactically invalid (i.e. it is not a xpath
     expression) or the expression does not combo box JABElement.
