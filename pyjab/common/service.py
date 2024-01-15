@@ -10,6 +10,7 @@ from pyjab.config import A11Y_PROPS_CONTENT
 from pyjab.config import A11Y_PROPS_PATH
 from pyjab.config import JAB_BRIDGE_DLL
 from pyjab.config import JDK_BRIDGE_DLL
+from pyjab.config import JDKBEF16_BRIDGE_DLL
 from pyjab.config import JRE_BRIDGE_DLL
 
 
@@ -51,6 +52,7 @@ class Service(object):
         for dll in [
             str(bridge_dll),
             JDK_BRIDGE_DLL.format(dll_bit),
+            JDKBEF16_BRIDGE_DLL.format(dll_bit),
             JRE_BRIDGE_DLL.format(dll_bit),
             JAB_BRIDGE_DLL.format(dll_bit),
         ]:

@@ -12,7 +12,8 @@ TIMEOUT = 30
 
 # set JAB dll
 WAB_DLL = "WindowsAccessBridge-{}.dll"
-JDK_BRIDGE_DLL = os.environ.get("JAVA_HOME", ".") + f"\\jre\\bin\\{WAB_DLL}"
+JDK_BRIDGE_DLL = os.environ.get("JAVA_HOME", ".") + f"\\bin\\{WAB_DLL}"
+JDKBEF16_BRIDGE_DLL = os.environ.get("JAVA_HOME", ".") + f"\\jre\\bin\\{WAB_DLL}"
 JRE_BRIDGE_DLL = os.environ.get("JRE_HOME", ".") + f"\\bin\\{WAB_DLL}"
 JAB_BRIDGE_DLL = os.environ.get("JAB_HOME", ".") + f"\\{WAB_DLL}"
 
