@@ -255,6 +255,11 @@ class JABElement(object):
                     jabelement.bridge, jabelement.hwnd, jabelement.vmid, child_acc
                 )
 
+    def get_children(self) -> list[JABElement]:
+        """Get immediate children of an element"""
+        children = list(self._generate_childs_from_element())
+        return children
+
     # JAB apis
     def release_jabelement(self, jabelement: JABElement = None) -> None:
         """Release the memory used by the Java object object,
