@@ -1,5 +1,17 @@
 from __future__ import annotations
 
+import sys
+
+# See the matching guard in pyjab/jabdriver.py: fail with a clear message before
+# any pywin32 import is attempted, instead of a bare ModuleNotFoundError.
+if sys.platform != "win32":  # pragma: no cover - platform dependent
+    raise ImportError(
+        "pyjab drives the Windows Java Access Bridge and only runs on Windows.\n"
+        "  detected platform: {!r}\n"
+        "The package installs on every platform, but it can only run on "
+        "Windows with a JDK installed.".format(sys.platform)
+    )
+
 from time import time
 
 from pyjab.common.logger import Logger
