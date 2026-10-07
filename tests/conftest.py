@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import itertools
 import os
 import shutil
 import subprocess
@@ -45,6 +46,10 @@ JAVA_CLASSES_DIR = JAVA_SRC_DIR / "classes"
 
 TEST_APP_CLASS = "PyjabTestApp"
 TEST_APP_TITLE = "PyjabTestApp"
+
+#: Makes each launch's window title unique, so a window left behind by an
+#: earlier run can never be bound by mistake.  See the test_app fixture.
+_TITLE_COUNTER = itertools.count(1)
 
 #: Pinned so that assertions on component names do not depend on the language of
 #: the machine running the tests.
@@ -132,15 +137,24 @@ def test_app(test_application_classes: Path) -> "JABDriver":
     because that parameter takes a single executable path and cannot express
     ``java -cp <dir> PyjabTestApp``.  Starting the process and binding to it by
     title is also the arrangement the documentation recommends.
+
+    Every run gets its own window title.  Binding by a fixed title means that a
+    window left behind by an earlier run -- one whose JVM outlived its test,
+    which happens whenever binding itself failed and there was therefore no pid
+    to stop -- can be matched instead of the new one.  The tests then inspect a
+    window whose buttons are already in whatever state the previous test left
+    them, and fail intermittently with no obvious cause.
     """
     from pyjab.jabdriver import JABDriver
 
     java = find_java_tool("java")
+    title = "{}-{}".format(TEST_APP_TITLE, next(_TITLE_COUNTER))
     process = subprocess.Popen(
-        [java] + JAVA_LOCALE_ARGS + ["-cp", str(test_application_classes), TEST_APP_CLASS],
+        [java] + JAVA_LOCALE_ARGS
+        + ["-cp", str(test_application_classes), TEST_APP_CLASS, "--title=" + title],
     )
     try:
-        with JABDriver(title=TEST_APP_TITLE, timeout=60) as driver:
+        with JABDriver(title=title, timeout=60) as driver:
             yield driver
     finally:
         # JABDriver.__exit__ stops the bound process; this covers the case where

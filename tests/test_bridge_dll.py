@@ -13,7 +13,6 @@ import pytest
 
 from pyjab.config import find_bridge_dll, get_dll_bit
 from pyjab.jabdriver import JABDriver
-from tests.conftest import TEST_APP_TITLE
 
 pytestmark = pytest.mark.gui
 
@@ -39,10 +38,14 @@ class TestBridgeDll(object):
         """
         dll = _dll_or_skip(get_dll_bit())
 
+        # The title comes from the running fixture rather than the constant:
+        # every launch gets its own title so a window from an earlier run
+        # cannot be matched instead.
+        #
         # Deliberately not a context manager: __exit__ terminates the bound
         # process by pid, which would tear down the test_app fixture's
         # application and break its teardown.
-        driver = JABDriver(title=TEST_APP_TITLE, bridge_dll=dll)
+        driver = JABDriver(title=test_app.title, bridge_dll=dll)
 
         assert driver
         assert driver.hwnd
@@ -62,4 +65,4 @@ class TestBridgeDll(object):
             pytest.skip("the two bitnesses resolve to the same file here")
 
         with pytest.raises(OSError):
-            JABDriver(title=TEST_APP_TITLE, bridge_dll=wrong)
+            JABDriver(title=test_app.title, bridge_dll=wrong)

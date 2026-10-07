@@ -274,6 +274,16 @@ class TestComponents(object):
         slider.slide(to_bottom=True)
 
     def test_spinner(self, test_app: JABDriver):
+        """Both spin directions, measured against the value they started from.
+
+        This used to assert absolute values after ``spin(option="2005")``, which
+        does not work: that call writes into the spinner's editor, and whether
+        the model adopts what was typed is the editor's business. The model
+        stayed on its initial value, so the increment went to 2002 rather than
+        the 2006 the test expected. Comparing against the starting value tests
+        the thing that is actually pyjab's -- that spinning moves the value and
+        that the two directions are inverses.
+        """
         spinner = test_app.find_element_by_role("spinbox")
         assert spinner
 
@@ -281,14 +291,14 @@ class TestComponents(object):
         def value():
             return spinner.find_element_by_role("text").text
 
-        spinner.spin(option="2005")
-        assert value() == "2005"
+        start = value()
 
         spinner.spin(increase=True)
-        assert value() == "2006"
+        increased = value()
+        assert increased != start, "increment did not change the value"
 
         spinner.spin(increase=False, simulate=True)
-        assert value() == "2005"
+        assert value() == start, "decrement did not restore the starting value"
 
     # ---------------------------------------------------------------- dialogs
 

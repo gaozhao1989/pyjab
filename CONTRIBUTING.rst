@@ -92,7 +92,18 @@ are looked for in ``JAVA_HOME`` first and then on the ``PATH``.
 If you have a JRE but no JDK, the suite fails with a message saying so rather
 than with a bare ``FileNotFoundError``.
 
-To compile it by hand, or to check a change to it:
+**Before running the suite, check that its locators still resolve.** This needs
+only a JDK, works on any platform, and catches the failure that is otherwise
+invisible until someone runs the suite on a Windows desktop:
+
+.. code-block:: console
+
+   $ python tools/verify_test_app.py
+
+It dumps the application's accessibility tree -- which is what Java Access
+Bridge reads, and is a JVM-side API, so it reports the same thing everywhere --
+and fails if any name or role the suite looks for is missing. To compile by hand
+instead:
 
 .. code-block:: console
 

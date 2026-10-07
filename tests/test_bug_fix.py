@@ -27,8 +27,14 @@ class TestBugFix(object):
 
         The original bug left the target unresponsive, so the assertion is that
         the window is still queryable afterwards.
+
+        The chord goes through ``JABDriver.win32utils``: the key helpers live on
+        ``Win32Utils``, and ``JABDriver`` does not forward them.  This called
+        ``test_app._press_hold_release_key(...)`` and therefore raised
+        ``AttributeError`` -- it had been broken since it was written, which
+        nobody noticed because the GUI suite never ran.
         """
         test_app.find_element_by_name("A Label").click(simulate=True)
-        test_app._press_hold_release_key("tab", "shift")
+        test_app.win32utils._press_hold_release_key("tab", "shift")
 
         assert test_app.find_element_by_role("push button")

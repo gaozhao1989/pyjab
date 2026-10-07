@@ -25,6 +25,7 @@
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
+import java.awt.Container;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.GridBagConstraints;
@@ -33,6 +34,12 @@ import java.awt.Insets;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 
+import javax.accessibility.Accessible;
+import javax.accessibility.AccessibleContext;
+import javax.swing.CellRendererPane;
+import javax.swing.tree.DefaultTreeCellRenderer;
+import javax.swing.DefaultListCellRenderer;
+import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.ButtonGroup;
@@ -80,12 +87,33 @@ public class PyjabTestApp {
     /** The window title the test suite binds to; also used as the frame name. */
     private static final String FRAME_TITLE = "PyjabTestApp";
 
+    /**
+     * The title actually used, which the caller may override.
+     *
+     * The fixture gives every run its own title so that a window left behind by
+     * an earlier run can never be matched by mistake -- binding to a stale
+     * window whose buttons are already in the state a previous test left them
+     * is a very confusing way to fail.
+     */
+    private static String frameTitle = FRAME_TITLE;
+
+    /** Set by --dump-accessibility: print the accessible tree and exit. */
+    private static boolean dumpAndExit = false;
+
     /** Widths of the three columns of the main panel. */
     private static final int BUTTON_COLUMN_WIDTH = 240;
     private static final int INPUT_COLUMN_WIDTH = 310;
     private static final int TABLE_COLUMN_WIDTH = 390;
 
     public static void main(String[] args) {
+        for (String arg : args) {
+            if ("--dump-accessibility".equals(arg)) {
+                dumpAndExit = true;
+            } else if (arg.startsWith("--title=")) {
+                frameTitle = arg.substring("--title=".length());
+            }
+        }
+
         // Install the cross-platform look and feel before creating any
         // component, so that names, roles and the component hierarchy are
         // identical on every machine and in every locale.
@@ -99,7 +127,11 @@ public class PyjabTestApp {
         // from main immediately: nothing here may block.
         SwingUtilities.invokeLater(new Runnable() {
             public void run() {
-                buildAndShowUi();
+                JFrame frame = buildAndShowUi();
+                if (dumpAndExit) {
+                    dumpAccessibility(frame.getAccessibleContext(), 0);
+                    System.exit(0);
+                }
             }
         });
     }
@@ -108,9 +140,9 @@ public class PyjabTestApp {
      * Creates the single frame: menu bar, tool bar and one main panel holding
      * every component the tests look for.
      */
-    private static void buildAndShowUi() {
-        JFrame frame = new JFrame(FRAME_TITLE);
-        frame.setName(FRAME_TITLE);
+    private static JFrame buildAndShowUi() {
+        JFrame frame = new JFrame(frameTitle);
+        frame.setName(frameTitle);
         // The automation framework terminates the process; the application
         // should still close cleanly when the user does it instead.
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -125,7 +157,99 @@ public class PyjabTestApp {
 
         frame.setSize(1000, 800);
         frame.setLocationRelativeTo(null);
+        applyAccessibleNames(frame);
         frame.setVisible(true);
+        return frame;
+    }
+
+    /**
+     * Copies every component's name into its <em>accessible</em> name.
+     *
+     * {@code setName()} is not the property Java Access Bridge reads.  Swing
+     * components build their accessible context in a class that often ignores
+     * the component name -- a {@code JSlider} or {@code JComboBox} reports a null
+     * name, and a locator by name then either finds nothing or finds the
+     * {@code JLabel} that happens to carry the same text.  {@code
+     * AccessibleContext.setAccessibleName()} is what the accessibility layer
+     * actually exposes, so every name the tests use is set through it as well.
+     *
+     * Buttons, labels and menu items already derive their accessible name from
+     * their text; setting the same string explicitly is harmless and makes the
+     * rule uniform.
+     */
+    private static void applyAccessibleNames(Component root) {
+        // A cell renderer is one shared component that every row draws itself
+        // with. Naming it would give every row the same accessible name -- the
+        // tree would report "Tree.cellRenderer" for the root, for its children
+        // and for every leaf -- because the rows derive their names from the
+        // model only while nothing has set the renderer's.
+        if (isCellRenderer(root)) {
+            return;
+        }
+        if (root instanceof JComponent) {
+            JComponent component = (JComponent) root;
+            String name = component.getName();
+            AccessibleContext context = component.getAccessibleContext();
+            if (name != null && context != null) {
+                context.setAccessibleName(name);
+            }
+        }
+        if (root instanceof Container) {
+            for (Component child : ((Container) root).getComponents()) {
+                applyAccessibleNames(child);
+            }
+        }
+        // A menu's items live in its popup, which is not one of its children in
+        // the component tree, so the walk above never reaches them.
+        if (root instanceof JMenu) {
+            for (Component item : ((JMenu) root).getMenuComponents()) {
+                applyAccessibleNames(item);
+            }
+        }
+    }
+
+    /** True for the shared renderers that lists, tables and trees draw with. */
+    private static boolean isCellRenderer(Component component) {
+        return component instanceof CellRendererPane
+                || component instanceof DefaultTreeCellRenderer
+                || component instanceof DefaultListCellRenderer
+                || component instanceof DefaultTableCellRenderer;
+    }
+
+    /**
+     * Print the accessibility name and role of every component, then exit.
+     *
+     * Java Access Bridge reports exactly what {@code AccessibleContext} exposes,
+     * and that is a JVM-side API -- the same on every platform -- so this shows
+     * what the Windows tests will see without needing Windows.  Check a locator
+     * here before wondering why it fails there.
+     *
+     *     java -cp tests/java/classes PyjabTestApp --dump-accessibility
+     *
+     * This walks the <em>accessible</em> children, not the component children.
+     * They are not the same tree: a {@code JTree} renders its rows through the
+     * UI delegate rather than as child components, and the rows -- which are
+     * exactly what a locator has to reach -- appear only here.
+     */
+    private static void dumpAccessibility(AccessibleContext context, int depth) {
+        if (context == null) {
+            return;
+        }
+        StringBuilder indent = new StringBuilder();
+        for (int i = 0; i < depth; i++) {
+            indent.append("  ");
+        }
+        Object role = context.getAccessibleRole();
+        System.out.println(indent + "name=" + context.getAccessibleName()
+                + "  role=" + (role == null ? "null" : role.toString()));
+
+        int children = context.getAccessibleChildrenCount();
+        for (int i = 0; i < children; i++) {
+            Accessible child = context.getAccessibleChild(i);
+            if (child != null) {
+                dumpAccessibility(child.getAccessibleContext(), depth + 1);
+            }
+        }
     }
 
     // ------------------------------------------------------------------
@@ -231,8 +355,14 @@ public class PyjabTestApp {
     /** A one-line row: a label on the left, the component filling the rest. */
     private static JPanel buildLabeledRow(String labelText, JComponent component, int height) {
         JPanel row = new JPanel(new BorderLayout(6, 0));
-        JLabel label = new JLabel(labelText);
-        label.setName(labelText);
+        // The label's accessible name comes from its text, so the text must not
+        // be the same string the control beside it is named. Otherwise a locator
+        // by name finds the label first -- it comes earlier in the walk -- and
+        // reports the role "label" for what should have been a slider or a
+        // spinner. A trailing colon keeps the two apart and changes nothing
+        // about how the row looks.
+        JLabel label = new JLabel(labelText + ":");
+        label.setName(labelText + " label");
         row.add(label, BorderLayout.WEST);
         row.add(component, BorderLayout.CENTER);
         row.setName(labelText + " row");

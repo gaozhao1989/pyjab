@@ -168,6 +168,20 @@ jobs:
           python -c "from tests.conftest import find_java_tool, needs_compiling; print('javac:', find_java_tool('javac')); print('java:', find_java_tool('java')); print('needs compiling:', needs_compiling())"
           python -c "from tests.conftest import TEST_APP_TITLE, TEST_APP_CLASS; print('app:', TEST_APP_CLASS, '/', TEST_APP_TITLE)"
 
+      - name: Check the GUI suite's locators resolve in the application
+        shell: pwsh
+        run: |
+          # Compiling only proves the application builds. This proves the
+          # components the GUI tests look for actually exist, with the names and
+          # roles they expect -- by dumping the accessibility tree, which is what
+          # Java Access Bridge reads and is a JVM-side API, so it says the same
+          # thing here as it will on a desktop.
+          #
+          # Without this the first machine to notice a broken locator is a user's
+          # Windows box, which is exactly what happened: the application named
+          # components with setName(), which the accessibility layer ignores.
+          python tools/verify_test_app.py
+
   # ---------------------------------------------------------------------------
   # Build the distributions and validate the metadata, so a broken release is
   # caught on the PR rather than at tag time.
