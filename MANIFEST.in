@@ -8,6 +8,10 @@ include requirements.txt
 include requirements-dev.txt
 
 recursive-include tests *.py
+# The maintainer scripts the documentation tells people to run. CONTRIBUTING
+# and docs/ both reference them, and an sdist cannot include the repository
+# they would otherwise be read from.
+recursive-include tools *.py
 # The Swing application the GUI tests drive. Its sources ship so the GUI suite
 # can be run from an sdist; the compiled classes do not.
 recursive-include tests *.java

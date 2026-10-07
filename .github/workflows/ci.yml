@@ -249,6 +249,13 @@ jobs:
               print("  java sources present:", [n for n in names if n.endswith(".java")])
               sys.exit(1)
 
+          # The documentation in this sdist tells the reader to run these, so
+          # they have to be here. They never were until 1.4.3.
+          for tool in ("verify_test_app.py", "verify_message_pump.py", "sync_wiki.py"):
+              if not any(n.endswith("/tools/" + tool) for n in names):
+                  print(f"::error::the sdist is missing tools/{tool}")
+                  sys.exit(1)
+
           stale = [n for n in names if "/tests/java/classes/" in n]
           if stale:
               print(f"::error::the sdist ships compiled classes: {stale[:5]}")
