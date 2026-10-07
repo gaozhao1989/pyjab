@@ -100,6 +100,15 @@ invisible until someone runs the suite on a Windows desktop:
 
    $ python tools/verify_test_app.py
 
+There is also a diagnosis for the coordinate problem tracked as #62, which
+cannot be settled by reading the source because it depends on the DPI
+awareness of two separate processes. It clicks a control whose state change
+is observable, so it reports which coordinate space this display needs:
+
+.. code-block:: console
+
+   $ python tools/verify_dpi.py
+
 It dumps the application's accessibility tree -- which is what Java Access
 Bridge reads, and is a JVM-side API, so it reports the same thing everywhere --
 and fails if any name or role the suite looks for is missing. To compile by hand

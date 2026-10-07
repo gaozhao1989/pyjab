@@ -301,5 +301,7 @@ These are tracked, and are the honest answer to "why is this slow / missing":
   window with a large table can take tens of seconds for a failed lookup.
   Narrowing the search root with an element-level `find_element_*` helps.
 * **DPI scaling.** On a display at 125% or 150%, `simulate=True` can miss
-  because logical and physical coordinates differ.
+  because logical and physical coordinates differ. Whether it does depends on
+  this process's DPI awareness and on the target's, so `tools/verify_dpi.py`
+  measures it rather than guessing -- run that before reporting it (#62).
 * **XPath coverage** is the subset listed above.

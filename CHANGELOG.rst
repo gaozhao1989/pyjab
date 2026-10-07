@@ -7,6 +7,48 @@ This project adheres to `Semantic Versioning`_ and `Keep a Changelog`_.
 .. _Semantic Versioning: https://semver.org/
 .. _Keep a Changelog: https://keepachangelog.com/
 
+1.5.0 (2026-10-08)
+------------------
+
+Added
+~~~~~
+
+* **``double_click()`` and ``context_click()``** (#71, #23).  Neither has an
+  accessibility action, so both move the mouse and, unlike ``click()``, have no
+  non-simulated form.  ``double_click()`` asks Windows for the configured
+  double-click interval and puts the gap between its two clicks at half of it,
+  rather than assuming a constant -- the documented workaround, two ``click()``
+  calls, was only a double click when they happened to fall close enough
+  together.
+* **``tools/verify_dpi.py``**, which measures what coordinate space
+  ``simulate=True`` needs on a given display (#62).  See below for why this is a
+  measurement and not a fix.
+
+Fixed
+~~~~~
+
+* **A mouse click on an element with impossible bounds moved the cursor to the
+  corner of the display.**  ``click(simulate=True)`` rejected only a width or
+  height of exactly zero, not the ``-1`` that JAB reports for anything it does
+  not place on screen -- table cells above all.  Such a click now raises
+  ``JABException`` saying the element cannot be clicked with the mouse and that
+  the accessibility action is the way to click it.
+
+Not fixed: DPI scaling (#62)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``simulate=True`` still uses the coordinates JAB reports, unchanged.  Whether
+those need converting depends on the DPI awareness of *this* process and of the
+*target*: an aware process gives ``SetCursorPos`` physical pixels, an unaware one
+gets a virtualised space that Windows scales for it, and the target decides
+whether JAB reported logical or physical coordinates in the first place.
+
+Guessing wrong makes a working setup stop working, so this release adds the
+measurement instead.  ``tools/verify_dpi.py`` clicks a control whose state change
+is observable and reports which coordinate space the display needed.  The
+conversion follows once that is in, as its own change with real evidence behind
+it.
+
 1.4.3 (2026-10-08)
 ------------------
 
