@@ -1341,44 +1341,6 @@ class JABElement(object):
         # (issue #54). Use a leading '.' for a search relative to this element.
         return JABElement(self.bridge, self.hwnd, self.vmid, top_object)
 
-    def _get_element_by_node(
-            self,
-            node: str,
-            level: str = "root",
-            jabelement: JABElement = None,
-            visible: bool = False,
-    ) -> JABElement:
-        """Get child JABElement by specific node.
-
-        Args:
-            node (str): Node content for every single content in xpath.
-
-            level (str, optional): Level for node, two options: "root" and "child". Defaults to "root".
-
-            jabelement (JABElement, optional): The parent JABElement. Defaults to None.
-
-            visible (bool, optional): The switch for find only visible child jab element or not.
-            Defaults to False to find available child element.
-
-        Raises:
-            ValueError: Incorrect level set
-            JABException: No JABElement found with specific node
-
-        Returns:
-            JABElement: The child JABElement
-        """
-        node_element, node_info = self._get_node_info(node, jabelement)
-        for _jabelement in self._get_children_by_level(level)(jabelement=node_element, visible=visible):
-            if node_info.get("role") not in ["*", _jabelement.role_en_us]:
-                self.release_jabelement(_jabelement)
-                continue
-            if self._is_match_attributes(node_info.get("attributes"), _jabelement):
-                return _jabelement
-            self.release_jabelement(_jabelement)
-        raise JABException(
-            f"no JABElement found in level {level} with node '{node}'"
-        )
-
     def find_element_by_xpath(self, value: str, visible: bool = False) -> JABElement:
         """Find child JABElement by xpath
 
