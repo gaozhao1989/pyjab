@@ -55,6 +55,12 @@ Changed
 * ``JABDriver.wait_until_element_exist()`` gained a ``poll_interval`` argument.
 * New settings in ``pyjab.config``: ``WINDOW_POLL_INTERVAL`` (0.05s) and
   ``ELEMENT_POLL_INTERVAL`` (0.1s).
+* ``JABDriver.open_application()`` no longer waits for the launched process to
+  exit.  ``file_path=`` is meant to start an application and then bind to its
+  window, which is impossible if the constructor blocks until that application
+  closes -- and with ``javaws`` it could block for as long as the user left the
+  window open.  Regression from 1.2.0, which made the ``javaws`` branch work for
+  the first time.
 
 Added
 ~~~~~
@@ -63,15 +69,27 @@ Added
   generator pump and ``ActorScheduler`` being reintroduced, and asserts that
   every lookup entry point pumps the queue before touching the tree.  It runs
   on Linux and macOS by stubbing pywin32, rather than being skipped.
+* ``tests/test_message_pump_gui.py`` -- the Windows end-to-end counterpart, part
+  of the opt-in GUI suite.  ``test_new_window_is_found_after_a_plain_click``
+  asserts that a dialog opened with the default ``simulate=False`` click is
+  discoverable, which is the behaviour 1.3.0 set out to fix;
+  ``test_wait_until_element_exist_backs_off`` compares process CPU time against
+  wall-clock time to prove the wait sleeps rather than spins.
+* ``tools/verify_message_pump.py`` -- a standalone script that reproduces issue
+  #56's scenario using the Java Control Panel and prints ``PASSED`` or
+  ``FAILED``, for checking a specific machine without running pytest.
+* ``tools/sync_wiki.py`` -- publishes ``docs/`` to the GitHub wiki.
 
 Note on verification
 ~~~~~~~~~~~~~~~~~~~~
 
 CI has no interactive desktop session, so the pump cannot be exercised against
-a live Java application.  The tests above cover the logic and the wiring; the
-end-to-end behaviour of a window opening mid-script still needs a manual check
-on Windows.  See ``docs/TRIAGE.md`` section 3.9 for the analysis behind this
-change.
+a live Java application there.  The portable tests cover the logic and the
+wiring, and the Windows smoke job proves the real ``pythoncom`` call works; the
+end-to-end behaviour is covered by ``tests/test_message_pump_gui.py`` and
+``tools/verify_message_pump.py``, both of which need a Windows machine with a
+desktop session.  See ``CONTRIBUTING.rst`` for how to run them.  The analysis
+behind this change is in ``docs/TRIAGE.md`` section 3.9 (not versioned).
 
 1.2.1 (2026-10-07)
 ------------------

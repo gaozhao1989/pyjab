@@ -22,6 +22,7 @@ GUI_TEST_MODULES = [
     "test_bridge_dll.py",
     "test_bug_fix.py",
     "test_components.py",
+    "test_message_pump_gui.py",
 ]
 
 collect_ignore: list[str] = []

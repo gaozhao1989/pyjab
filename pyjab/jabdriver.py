@@ -97,13 +97,24 @@ class JABDriver(object):
         os.kill(self.pid, signal.SIGTERM)
 
     def open_application(self):
+        """Launch the application named by ``file_path``, without waiting for it.
+
+        A ``.jnlp`` is started through ``javaws``; anything else is executed
+        directly.
+
+        Note:
+            This used to call ``p.wait()``, which blocks until the launched
+            process exits.  That defeats the purpose: ``JABDriver`` needs to bind
+            to the application's window, and the window only exists while the
+            application is running.  Waiting meant the bind could never succeed,
+            and for a ``javaws`` launch it could block for as long as the user
+            kept the application open.
+        """
         # NOTE: Path.suffix includes the leading dot, so this comparison used to
         # be `== "jnlp"` and never matched -- the javaws branch was dead code and
         # .jnlp files were executed directly instead of via Java Web Start.
         cmd = " ".join(["javaws", str(self.file_path)]) if self.file_path.suffix == ".jnlp" else str(self.file_path)
-        p = Popen(cmd, shell=True)
-        p.wait()
-        return p
+        return Popen(cmd, shell=True)
 
     @property
     def title(self) -> str:
