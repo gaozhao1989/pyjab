@@ -10,9 +10,41 @@ This project adheres to `Semantic Versioning`_ and `Keep a Changelog`_.
 1.4.0 (unreleased)
 ------------------
 
-Adds methods for walking one level of the accessibility tree at a time, and for
-locating elements by a regular expression on their name.  Contributed by
-`shine-jayakumar`_ in #77.
+Makes element lookups walk the accessibility tree in an order that follows the
+locator, and adds methods for walking one level at a time.  The lookup change is
+the larger one: on a window with a few thousand nodes it turns a path lookup
+from thousands of cross-process calls into tens.
+
+Contributed by `shine-jayakumar`_ in #77.
+
+Fixed
+~~~~~
+
+* **A lookup walked a node's whole subtree before looking at the node itself.**
+  ``_generate_all_childs`` yields a node *after* recursing into it -- post-order
+  -- so the search root's own first child was reached only once everything
+  beneath it had been visited. A path six levels deep over a table with a few
+  thousand cells therefore cost ~2000 ``getAccessibleContextInfo`` calls instead
+  of a handful, which is where the 40 seconds in #33 went. Lookups now test a
+  node before descending into it; measured on a synthetic tree, the same path
+  costs 30 calls in a 28-node window and 30 calls in a 2008-node one.
+* **The path did not prune the walk, and there was no backtracking.** Once a
+  node matched its role and attributes, the remainder of the path had to fit
+  underneath *that* node or the lookup raised -- even if a later candidate
+  matched. The search now tries the rest of the path under each candidate and
+  carries on when it does not fit.
+* **A locator issued from a child element silently started at its parent.**
+  ``_get_node_element`` substituted ``self.parent`` for any element that was not
+  the window's top-level object (#54). An absolute locator now starts at the
+  top-level object, as XPath's ``//`` means, and a locator beginning with ``.``
+  is relative to the element it is issued from:
+
+  .. code-block:: python
+
+     # anywhere in the window
+     button = pane.find_element_by_xpath("//push button")
+     # this pane's own button, and only this one
+     button = pane.find_element_by_xpath(".//push button")
 
 Added
 ~~~~~
@@ -32,6 +64,16 @@ The filtered-out children in ``get_children()`` are released with
 ``release_jabelement()``.  Java Access Bridge holds its own reference to every
 object it returns, so a child that is dropped without being released
 accumulates Java objects for the life of the process -- the pattern behind #43.
+
+Note on ownership, for anyone extending the traversal: JAB returns a fresh
+object reference from every call that hands one out, and each must be released
+exactly once. A node that matches the first path segment is enumerated twice
+when the rest of the path does not fit under it, so the search collects what it
+created and releases the whole lot once it is done, rather than releasing as it
+walks.
+
+``find_elements_by_xpath`` still walks with the old level-based traversal, so it
+does not benefit from the pruning yet. It is the next piece of this work.
 
 .. _shine-jayakumar: https://github.com/shine-jayakumar
 

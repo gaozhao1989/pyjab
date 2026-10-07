@@ -152,25 +152,40 @@ for them anyway is what destabilises the application.
 
 ## Lookups are slow, or CPU is high while waiting
 
-Every `find_element_*` walks the accessibility tree from the root, and each node
-costs a cross-process call. On a window with a large table a failed lookup can
-take tens of seconds.
+Every `find_element_*` walks part of the accessibility tree, and each node it
+touches costs a cross-process call to the JVM. On a window with a large table
+that adds up.
 
-Two things help today:
+**Since 1.4.0, a locator's path decides how much of the tree is walked.** A node
+on the path is only searched for inside the node before it, so a path that names
+the levels you care about costs about as many calls as the path is long, however
+big the window is. Writing the path out *does* make it faster now; before 1.4.0
+it did not, which is why older advice says otherwise.
 
-1. **Narrow the search root.** Find a stable ancestor once and search under it:
+What still costs time:
 
-   ```python
-   panel = driver.find_element_by_name("OrderPanel")
-   button = panel.find_element_by_name("Submit")     # subtree only
-   ```
+* **A locator that can match anywhere.** `//push button` means "any push button
+  in the window", so pyjab has to look until it finds one. If the window has a
+  table with a few thousand cells and the button comes after it, those cells are
+  visited first. Name the levels (`//panel[@name='Order']/push button`) and only
+  that subtree is searched.
+* **A locator issued from a child element without a leading `.`.** `//x` is
+  absolute — it searches the whole window — even when you call it on a child.
+  Use `.//x` to search under that element only.
+* **Hand-rolled polling.** `wait_until_element_exist()` backs off between
+  attempts; a `try/except` loop around `find_element_by_xpath` does not, and
+  every failed attempt is another walk.
 
-2. **Do not poll by hand.** `wait_until_element_exist()` backs off between
-   attempts; a `try/except` loop around `find_element_by_xpath` does not, and
-   every failed attempt is a full traversal.
+```python
+# Searches the whole window for a push button, however deep it is.
+driver.find_element_by_xpath("//push button")
 
-Writing out the full XPath path does **not** make it faster — pyjab does not yet
-use the path to prune the traversal.
+# Searches only under the panel that matched, which is what prunes the walk.
+driver.find_element_by_xpath("//panel[@name='Order']/push button")
+
+# Relative to the element it is called on, and nowhere else.
+panel.find_element_by_xpath(".//push button")
+```
 
 ---
 

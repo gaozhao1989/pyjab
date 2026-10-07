@@ -42,44 +42,11 @@ def make_element() -> "JABElement":
 
 
 # ---------------------------------------------------------------------------
-# find_element_by_xpath: the node level follows position, not node name
+# find_element_by_xpath is covered behaviourally, against a synthetic tree, in
+# tests/test_xpath_traversal.py. The two tests that used to live here asserted
+# on _get_element_by_node receiving a particular level -- an implementation
+# detail of the traversal that the 1.4.0 pruning work replaced.
 # ---------------------------------------------------------------------------
-
-def test_xpath_levels_follow_position_not_node_name():
-    """Regression: ``nodes.index(node)`` was used to decide the level.
-
-    For a path whose nodes repeat -- ``//panel/panel`` -- ``index`` always
-    returns 0, so the second node was looked up as a root-level node and the
-    path silently degraded into a whole-tree search.
-    """
-    element = make_element()
-    seen = []
-
-    def record(node, level, jabelement, visible):
-        seen.append((node, level))
-        return MagicMock()  # truthy, so the loop continues
-
-    with patch.object(JABElement, "_get_element_by_node", side_effect=record):
-        with patch.object(Win32UtilsClass, "pump_messages"):
-            element.find_element_by_xpath("//panel/panel")
-
-    assert seen == [("panel", "root"), ("panel", "child")]
-
-
-def test_xpath_with_a_slash_in_an_attribute_value_stays_one_node():
-    """End-to-end guard for the quote-aware split, through the real caller."""
-    element = make_element()
-    seen = []
-
-    def record(node, level, jabelement, visible):
-        seen.append(node)
-        return MagicMock()
-
-    with patch.object(JABElement, "_get_element_by_node", side_effect=record):
-        with patch.object(Win32UtilsClass, "pump_messages"):
-            element.find_element_by_xpath("//panel[@name='a/b']")
-
-    assert seen == ["panel[@name='a/b']"]
 
 
 # ---------------------------------------------------------------------------

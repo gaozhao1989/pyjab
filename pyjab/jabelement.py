@@ -238,6 +238,41 @@ class JABElement(object):
                 )
             yield _jabelement
 
+    def _search_element(
+            self,
+            root: JABElement,
+            predicate,
+            visible: bool = False,
+    ) -> Optional[JABElement]:
+        """Return the first element below *root* that satisfies *predicate*.
+
+        Depth-first in document order, and each node is tested **before** its
+        children are visited.
+
+        That ordering is the point. Lookups used to go only through
+        ``_generate_all_childs``, which yields a node *after* its whole subtree
+        -- post-order. A match one level below the search root was therefore
+        reached only once everything underneath it had been walked. On a window
+        containing a large table that is the difference between a handful of
+        cross-process calls and thousands, and it is what made a lookup take
+        tens of seconds (issues #33, #29).
+
+        Ownership: the returned element belongs to the caller. Every other
+        element created here is released before returning. Children the
+        generator had not produced yet simply never come into existence, because
+        abandoning it is what stops the walk.
+        """
+        for child in self._generate_childs_from_element(
+                jabelement=root, visible=visible
+        ):
+            if predicate(child):
+                return child
+            found = self._search_element(child, predicate, visible=visible)
+            self.release_jabelement(child)
+            if found is not None:
+                return found
+        return None
+
     def _generate_childs_from_element(
             self, jabelement: JABElement = None, visible: bool = False
     ) -> Generator[JABElement]:
@@ -1298,7 +1333,13 @@ class JABElement(object):
             return jabelement
         top_object = self._get_top_level_object(self.accessible_context)
         is_top_level = self._is_same_object(self.accessible_context, top_object)
-        return jabelement if is_top_level else self.parent
+        if is_top_level:
+            return jabelement
+        # An absolute locator issued from a child element searches the whole
+        # window, which is what XPath's '//' means. This used to substitute
+        # self.parent, so a lookup from a child silently began one level up
+        # (issue #54). Use a leading '.' for a search relative to this element.
+        return JABElement(self.bridge, self.hwnd, self.vmid, top_object)
 
     def _get_element_by_node(
             self,
@@ -1364,18 +1405,108 @@ class JABElement(object):
         # Reachable directly by callers, so it needs its own pump even though
         # find_element() also routes through here.
         self.win32_utils.pump_messages()
-        nodes = self.xpath_parser.split_nodes(value)
-        jabelement = None
-        for index, node in enumerate(nodes):
-            # index, not nodes.index(node): with a repeated node name such as
-            # '//panel/panel' the latter always returns 0, so the second node was
-            # looked up as a root-level node and the path silently degraded into
-            # a whole-tree search. find_elements_by_xpath already used enumerate.
-            level = "root" if index == 0 else "child"
-            jabelement = self._get_element_by_node(
-                node=node, level=level, jabelement=jabelement, visible=visible
-            )
-        return jabelement
+        relative = value.startswith(".")
+        nodes = self.xpath_parser.split_nodes(value[1:] if relative else value)
+        root = self if relative else self._xpath_search_root()
+        examined = []
+        try:
+            found = self._search_path(nodes, 0, root, visible, examined)
+        finally:
+            # The search may have created and abandoned any number of objects;
+            # none of them belongs to the caller, so all of them go back here.
+            for element in examined:
+                self.release_jabelement(element)
+        if found is not None:
+            return found
+        raise JABException(f"no JABElement found by xpath '{value}'")
+
+    def _xpath_search_root(self) -> JABElement:
+        """The element an absolute locator starts from.
+
+        XPath reads ``//x`` as "any x in the document", so an absolute locator
+        starts at the window's top-level accessible object. A locator beginning
+        with ``.`` is relative and starts at this element instead -- which is
+        what a caller searching under a subtree wants, and what issue #54 was
+        asking for.
+        """
+        top_object = self._get_top_level_object()
+        return JABElement(self.bridge, self.hwnd, self.vmid, top_object)
+
+    def _search_path(
+            self,
+            nodes: list,
+            index: int,
+            parent: JABElement,
+            visible: bool,
+            examined: list,
+    ) -> Optional[JABElement]:
+        """First element matching ``nodes[index:]`` under *parent*, or None.
+
+        The path prunes the walk. The first node may match at any depth, but a
+        later node is a direct child of the previous match -- so once a node has
+        matched, only its own subtree is considered rather than the whole tree
+        again. When the rest of the path does not fit under a match, the search
+        continues with the next candidate instead of giving up, which is what the
+        previous implementation did: it took the first role-and-attribute match
+        and raised if the remainder of the path was not underneath it.
+
+        Ownership: the returned element belongs to the caller. Everything else
+        created here is appended to *examined* and released by the caller once
+        the whole search is over.
+
+        That deferral is not laziness. A node that matches the first path segment
+        gets enumerated twice when the rest of the path does not fit under it --
+        once looking for the next segment, once looking for a deeper match of
+        this one -- and releasing during the first pass would leave the second
+        pass reading handles that are already gone. Java Access Bridge hands out
+        a fresh reference on every call, so both passes are legal as long as
+        every reference is released, and releasing them together at the end is
+        what makes that true.
+        """
+        info = self.xpath_parser.get_node_information(nodes[index])
+        last = index == len(nodes) - 1
+        role = info.get("role")
+        attributes = info.get("attributes")
+
+        def matches(candidate) -> bool:
+            if role not in ("*", candidate.role_en_us):
+                return False
+            return self._is_match_attributes(attributes, candidate)
+
+        # A path step after the first means "child of the previous match"; the
+        # first may match at any depth.
+        if index > 0:
+            for child in self._generate_childs_from_element(
+                    jabelement=parent, visible=visible
+            ):
+                if matches(child):
+                    if last:
+                        return child
+                    found = self._search_path(
+                        nodes, index + 1, child, visible, examined
+                    )
+                    if found is not None:
+                        examined.append(child)
+                        return found
+                examined.append(child)
+            return None
+
+        for child in self._generate_childs_from_element(
+                jabelement=parent, visible=visible
+        ):
+            if matches(child):
+                if last:
+                    return child
+                found = self._search_path(nodes, 1, child, visible, examined)
+                if found is not None:
+                    examined.append(child)
+                    return found
+            found = self._search_path(nodes, 0, child, visible, examined)
+            if found is not None:
+                examined.append(child)
+                return found
+            examined.append(child)
+        return None
 
     def find_element(
             self, by: str = By.NAME, value: Any = None, visible: bool = False
@@ -1410,10 +1541,15 @@ class JABElement(object):
             raise JABException(f"incorrect by strategy '{by}'")
         if by == By.XPATH:
             return self.find_element_by_xpath(value=value, visible=visible)
-        for jabelement in self._generate_all_childs(visible=visible):
-            if self._is_element_matched(by=by, value=value, jabelement=jabelement):
-                return jabelement
-            self.release_jabelement(jabelement)
+        found = self._search_element(
+            self,
+            lambda element: self._is_element_matched(
+                by=by, value=value, jabelement=element
+            ),
+            visible=visible,
+        )
+        if found is not None:
+            return found
         raise JABException(
             f"jab element not found by '{by}' with locator '{value}'"
         )
