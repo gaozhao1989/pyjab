@@ -125,6 +125,14 @@ jobs:
           python -c "import pyjab.jabdriver; print('pyjab.jabdriver OK')"
           python -c "from pyjab.config import find_bridge_dll; print('DLL:', find_bridge_dll())"
 
+      - name: Message pump runs against the real pythoncom
+        shell: pwsh
+        run: |
+          # The portable suite stubs pywin32, so it cannot prove that the real
+          # pythoncom.PumpWaitingMessages() call works or that pythoncom.com_error
+          # is the right exception to catch. This does, with pywin32 installed.
+          python -c "from pyjab.common.win32utils import Win32Utils; w = Win32Utils.__wrapped__(); print('pumped:', w.pump_messages()); w.pump_messages(); print('repeat call OK')"
+
   # ---------------------------------------------------------------------------
   # Build the distributions and validate the metadata, so a broken release is
   # caught on the PR rather than at tag time.
