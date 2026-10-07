@@ -279,18 +279,36 @@ class JABElement(object):
                 )
 
     def get_children(
-        self, by: By = None, value: Optional[str] = None
+        self, by: str = None, value: Optional[str] = None
     ) -> list[JABElement]:
-        """Get immediate children elements under a parent"""
-        elements = list(self._generate_childs_from_element())
-        if by:
-            elements = [
-                element for element in elements
-                if self._is_element_matched(
-                    jabelement=element, by=by, value=value
-                )
-            ]
-        return elements
+        """Get the immediate children of this JABElement.
+
+        Unlike the ``find_elements_by_*`` family this does not search
+        descendants, and it does not raise when nothing matches: an element with
+        no children is an ordinary state, so an empty list is returned.
+
+        Args:
+            by (str, optional): A ``By`` strategy used to filter the children.
+            Defaults to None, which returns every immediate child.
+            value (optional): The locator to filter by. Defaults to None.
+
+        Returns:
+            list[JABElement]: The immediate children. The caller owns these; pass
+            each to :meth:`release_jabelement` when finished with it.
+        """
+        children = []
+        for child in self._generate_childs_from_element():
+            if by and not self._is_element_matched(
+                jabelement=child, by=by, value=value
+            ):
+                # A filtered-out child is never handed to the caller, so it has
+                # to be released here. JAB keeps its own reference to every
+                # object it returns, so dropping it silently accumulates Java
+                # objects for the life of the process -- see release_jabelement.
+                self.release_jabelement(child)
+                continue
+            children.append(child)
+        return children
 
     # JAB apis
     def release_jabelement(self, jabelement: JABElement = None) -> None:

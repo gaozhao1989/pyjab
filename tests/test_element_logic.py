@@ -24,6 +24,7 @@ from pyjab.accessibleinfo import (
     VisibleChildrenInfo,
 )
 from pyjab.common.by import By
+from pyjab.common.exceptions import JABException
 from pyjab.common.states import States
 from pyjab.common.types import JOBJECT64
 from pyjab.common.win32utils import Win32Utils
@@ -298,3 +299,128 @@ def test_do_accessible_action_passes_the_failure_index_by_reference():
     assert isinstance(args[3], BYREF_TYPE), (
         "the jint *failure out-parameter must be passed with byref()"
     )
+
+
+# ---------------------------------------------------------------------------
+# get_children and the name-pattern finders (contributed in #77)
+# ---------------------------------------------------------------------------
+
+class _FakeChild:
+    """Enough of a JABElement for _is_element_matched and the pattern finders."""
+
+    def __init__(self, name: str):
+        self.name = name
+
+    def __repr__(self):
+        return f"_FakeChild({self.name!r})"
+
+
+def children_of(element, kids, method="_generate_childs_from_element"):
+    """Patch a child generator to yield *kids*, and record releases."""
+    generator = patch.object(JABElement, method, return_value=iter(kids))
+    release = patch.object(JABElement, "release_jabelement")
+    return generator, release
+
+
+def test_get_children_returns_every_immediate_child():
+    element = make_element()
+    kids = [_FakeChild("alpha"), _FakeChild("beta")]
+
+    generator, release = children_of(element, kids)
+    with generator, release as released:
+        result = element.get_children()
+
+    assert result == kids
+    released.assert_not_called()
+
+
+def test_get_children_filters_and_releases_the_rest():
+    """The filtered-out children must be released, not dropped.
+
+    Java Access Bridge keeps its own reference to every object it hands out, so
+    a child that is never returned to the caller has to be released here. Every
+    other filtering method in jabelement.py does this; get_children did not.
+    """
+    element = make_element()
+    kept, dropped = _FakeChild("keep"), _FakeChild("drop")
+
+    generator, release = children_of(element, [kept, dropped])
+    with generator, release as released:
+        result = element.get_children(by=By.NAME, value="keep")
+
+    assert result == [kept]
+    released.assert_called_once_with(dropped)
+
+
+def test_get_children_without_a_filter_releases_nothing():
+    element = make_element()
+    kids = [_FakeChild("a"), _FakeChild("b"), _FakeChild("c")]
+
+    generator, release = children_of(element, kids)
+    with generator, release as released:
+        element.get_children(by=None)
+
+    released.assert_not_called()
+
+
+def test_get_children_of_a_childless_element_is_an_empty_list():
+    """Not an error: no children is an ordinary state, unlike find_elements()."""
+    element = make_element()
+
+    generator, release = children_of(element, [])
+    with generator, release:
+        assert element.get_children() == []
+
+
+@pytest.mark.parametrize("pattern, expected_names", [
+    ("^Save", ["Save As", "Save"]),
+    ("Save", ["Save As", "Save"]),
+    ("As$", ["Save As"]),
+    ("nothing-matches", []),
+])
+def test_find_elements_by_name_pattern(pattern, expected_names):
+    element = make_element()
+    kids = [_FakeChild("Save As"), _FakeChild("Save"), _FakeChild("Cancel")]
+
+    generator, release = children_of(element, kids, "_generate_all_childs")
+    with generator, release as released:
+        if expected_names:
+            result = element.find_elements_by_name_pattern(pattern)
+            assert [c.name for c in result] == expected_names
+        else:
+            with pytest.raises(JABException):
+                element.find_elements_by_name_pattern(pattern)
+
+    # Whatever was not returned must have been released.
+    assert released.call_count + len(expected_names) == len(kids)
+
+
+def test_find_elements_by_name_pattern_ignores_case_on_request():
+    element = make_element()
+    kids = [_FakeChild("Save")]
+
+    generator, release = children_of(element, kids, "_generate_all_childs")
+    with generator, release:
+        assert element.find_elements_by_name_pattern("save", ignorecase=True) == kids
+
+
+def test_find_element_by_name_pattern_stops_at_the_first_match():
+    element = make_element()
+    first, second = _FakeChild("Cancel"), _FakeChild("Save")
+
+    generator, release = children_of(element, [first, second], "_generate_all_childs")
+    with generator, release as released:
+        assert element.find_element_by_name_pattern("^Save") is second
+
+    released.assert_called_once_with(first)
+
+
+def test_find_element_by_name_pattern_raises_when_nothing_matches():
+    element = make_element()
+    kids = [_FakeChild("Cancel")]
+
+    generator, release = children_of(element, kids, "_generate_all_childs")
+    with generator, release:
+        with pytest.raises(JABException):
+            element.find_element_by_name_pattern("^Save")
+

@@ -7,6 +7,34 @@ This project adheres to `Semantic Versioning`_ and `Keep a Changelog`_.
 .. _Semantic Versioning: https://semver.org/
 .. _Keep a Changelog: https://keepachangelog.com/
 
+1.4.0 (unreleased)
+------------------
+
+Adds methods for walking one level of the accessibility tree at a time, and for
+locating elements by a regular expression on their name.  Contributed by
+`shine-jayakumar`_ in #77.
+
+Added
+~~~~~
+
+* ``JABElement.get_children()`` returns the *immediate* children of an element,
+  optionally filtered by a ``By`` strategy and locator.  The existing
+  ``find_elements_by_*`` methods search the whole descendant tree and are the
+  only way to enumerate children today; this makes one level explicit.  It
+  returns an empty list when the element has no children, unlike the
+  ``find_elements_by_*`` family, which raises.
+* ``JABElement.find_elements_by_name_pattern()`` and
+  ``JABElement.find_element_by_name_pattern()`` match a name with a regular
+  expression, optionally case-insensitively.  Useful where a name carries a
+  changing suffix such as a file path or a counter.
+
+The filtered-out children in ``get_children()`` are released with
+``release_jabelement()``.  Java Access Bridge holds its own reference to every
+object it returns, so a child that is dropped without being released
+accumulates Java objects for the life of the process -- the pattern behind #43.
+
+.. _shine-jayakumar: https://github.com/shine-jayakumar
+
 1.3.1 (2026-10-07)
 ------------------
 
