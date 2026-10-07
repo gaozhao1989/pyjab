@@ -7,6 +7,52 @@ This project adheres to `Semantic Versioning`_ and `Keep a Changelog`_.
 .. _Semantic Versioning: https://semver.org/
 .. _Keep a Changelog: https://keepachangelog.com/
 
+1.4.2 (2026-10-08)
+------------------
+
+A test-only release, like 1.4.1.  The wheel is functionally identical to 1.4.0;
+what changed is the GUI suite and the application it drives.
+
+The GUI suite had never been run against a real desktop until 1.4.1 reached one,
+and five things were wrong.  Three were the application's, one the test's, one
+the harness's.
+
+* **The application named components with ``setName()``, which the accessibility
+  layer ignores.**  A ``JSlider``, ``JComboBox``, ``JList``, ``JTextComponent``
+  or ``JSpinner`` builds its accessible context in a class that does not read the
+  component name, so a lookup by name either found nothing or found the label
+  beside the control -- and reported the role ``label`` for what should have been
+  a slider.  Names are now set through ``AccessibleContext.setAccessibleName()``
+  as well.
+* **Those labels carried the same text as the controls**, so a lookup by name
+  matched the label first.  They read ``First slider:`` now, and the control
+  stays ``First slider``.
+* **Copying every component name into its accessible name flattened the tree.**
+  ``JTree`` names its shared cell renderer ``Tree.cellRenderer``, so every row
+  reported that instead of its own node text.  Renderers are skipped, and rows
+  report ``Root`` / ``Child one`` / ``Child one leaf A`` again.
+* **``test_multiple_key_press`` called a method that does not exist.**
+  ``JABDriver`` has no ``_press_hold_release_key``; the key helpers live on
+  ``Win32Utils``.  It had raised ``AttributeError`` since it was written.
+* **``test_spinner`` asserted absolute values** after ``spin(option=...)``, which
+  writes into the spinner's editor without the model adopting it.  It compares
+  against the value it started from now.
+* **``test_push_button`` was intermittent** because every launch bound to the
+  same window title, so a JVM left behind by an earlier test could be matched
+  instead of the new one.  Each launch gets its own title.
+
+Added
+~~~~~
+
+* ``tools/verify_test_app.py`` checks that every name and role the GUI suite
+  looks for actually exists in the application, by dumping its accessibility
+  tree.  That is a JVM-side API, so it reports the same thing on every platform:
+  the check needs only a JDK, takes about a second, and runs in CI on every push.
+  It closes the gap that let all of the above reach a user -- the suite cannot
+  run without a Windows desktop, so nothing else was looking.
+* ``PyjabTestApp --dump-accessibility`` prints that tree, and is what the check
+  uses.
+
 1.4.1 (2026-10-08)
 ------------------
 
