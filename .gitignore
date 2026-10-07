@@ -16,6 +16,10 @@ wheels/
 .coverage
 htmlcov/
 
+# Downloaded by the GUI test fixtures (tests/conftest.py). 27 Oracle demo
+# applications, fetched on demand; never committed.
+tests/jnlps/
+
 # Editor / OS
 .vscode/
 .idea/
@@ -24,6 +28,20 @@ Thumbs.db
 
 # Scratch files
 temp*
+
+# Local-only agent configuration.
+#
+# AGENTS.md and .agents/skills/ describe how this checkout is worked on -- the
+# project rules, the maintainer procedures, the machine's own setup. They are
+# local working configuration rather than part of the package or its public
+# documentation, so they are deliberately not published.
+#
+# Note they still take effect: the harness reads them from the working tree.
+/AGENTS.md
+/AGENTS.local.md
+/CLAUDE.md
+/CLAUDE.local.md
+/.agents/
 
 # Internal working documents.
 #

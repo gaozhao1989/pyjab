@@ -1,38 +1,60 @@
+"""Binding to a Java window with an explicit bridge DLL.
+
+The previous version of this file hardcoded four absolute paths from one
+developer's machine (``C:\\Users\\garygao\\scoop\\...``), so it could only ever
+pass there.  These tests ask pyjab where the DLL actually is instead, and skip
+when the machine does not have the bitness being exercised.
+"""
+
+import pytest
+
+from pyjab.config import find_bridge_dll, get_dll_bit
 from pyjab.jabdriver import JABDriver
+
+pytestmark = pytest.mark.gui
+
+
+def _dll_or_skip(bitness: int):
+    path = find_bridge_dll(bitness)
+    if path is None:
+        pytest.skip(f"no {bitness}-bit WindowsAccessBridge DLL on this machine")
+    return str(path)
 
 
 class TestBridgeDll(object):
-    def test_bridge_default(self, java_control_app) -> None:
+    def test_bridge_by_discovery(self, java_control_app) -> None:
+        """No explicit path: discovery alone binds successfully."""
         assert java_control_app
 
-    def test_bridge_x86(self) -> None:
-        # JDK 1.8
-        jabdriver = JABDriver(
-            title="Java Control Panel",
-            bridge_dll=r"C:\Program Files (x86)\Java\jdk8\jre\bin\WindowsAccessBridge-32.dll",
-        )
-        assert jabdriver
+    def test_explicit_bridge_dll(self, java_control_app) -> None:
+        """An explicit bridge_dll= path is honoured.
 
-    def test_bridge_x64(self) -> None:
-        # JDK 1.8
-        jabdriver = JABDriver(
-            title="Java Control Panel",
-            bridge_dll=r"C:\Program Files\Java\jdk8\jre\bin\WindowsAccessBridge-64.dll",
-        )
-        assert jabdriver
+        The panel is already running (java_control_app), so this only exercises
+        loading the DLL from a path we name ourselves.
+        """
+        dll = _dll_or_skip(get_dll_bit())
 
-    def test_openjdk(self) -> None:
-        # OpenJDK 16
-        jabdriver = JABDriver(
-            title="Java Control Panel",
-            bridge_dll=r"C:\Users\garygao\scoop\apps\openjdk16\16.0.2-7\bin\windowsaccessbridge-64.dll",
-        )
-        assert jabdriver
+        # Deliberately not a context manager: __exit__ terminates the bound
+        # process by pid, which would tear down the java_control_app fixture's
+        # application and break its teardown.
+        driver = JABDriver(title="Java Control Panel", bridge_dll=dll)
 
-    def test_jab(self) -> None:
-        # JAB 2.0.2
-        jabdriver = JABDriver(
-            title="Java Control Panel",
-            bridge_dll=r"C:\Users\garygao\AppData\Local\Programs\accessbridge-2_0_2-fcs-bin-b06\accessbridge2_0_2\WindowsAccessBridge-64.dll",
-        )
-        assert jabdriver
+        assert driver
+        assert driver.hwnd
+
+    def test_other_bitness_is_not_substituted(self, java_control_app) -> None:
+        """Asking for the bitness we do not run must fail, not silently succeed.
+
+        This is the regression guard for the wrong-architecture DLL case: before
+        1.2.0 the error message did not say which architecture was found.
+        """
+        other = 32 if get_dll_bit() == 64 else 64
+        if find_bridge_dll(other) is None:
+            pytest.skip(f"this machine has no {other}-bit DLL to be confused by")
+
+        wrong = _dll_or_skip(other)
+        if wrong == _dll_or_skip(get_dll_bit()):
+            pytest.skip("the two bitnesses resolve to the same file here")
+
+        with pytest.raises(OSError):
+            JABDriver(title="Java Control Panel", bridge_dll=wrong)

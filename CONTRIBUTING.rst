@@ -43,8 +43,8 @@ Portable suite -- runs on any OS
 
    $ pytest
 
-42 tests, a couple of seconds. This covers the parts of pyjab that have no
-Windows dependency: Java Access Bridge DLL discovery, and the message pump
+A couple of seconds. This covers the parts of pyjab that have no Windows
+dependency: Java Access Bridge DLL discovery, and the message pump
 (``pywin32`` is stubbed out so it can be tested anywhere). The GUI modules are
 not collected unless you opt in.
 
@@ -62,6 +62,11 @@ applications. They are opt-in:
 
    $ set PYJAB_RUN_GUI_TESTS=1
    $ pytest -v
+
+Every module in this suite is marked ``gui``, so once opted in you can narrow
+the run with ``-m "not gui"`` -- though with the opt-in above that is rarely
+useful. Note that the authoritative switch is the module list in
+``tests/conftest.py``; the marker only lets you deselect.
 
 Individual modules, and what each one covers:
 

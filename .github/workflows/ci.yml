@@ -20,8 +20,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # The cross-platform sweep covers the middle of the supported range.
         os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ["3.9", "3.12"]
+        # requires-python is ">=3.8" and the classifiers claim 3.8 through
+        # 3.13, so the rest of the declared range is covered here on Linux
+        # rather than left untested. 3.8 needs the older runner image.
+        include:
+          - os: ubuntu-22.04
+            python-version: "3.8"
+          - os: ubuntu-latest
+            python-version: "3.10"
+          - os: ubuntu-latest
+            python-version: "3.11"
+          - os: ubuntu-latest
+            python-version: "3.13"
     steps:
       - uses: actions/checkout@v4
 

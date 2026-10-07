@@ -10,6 +10,9 @@ from logging import Logger
 from tests.conftest import OracleApp
 
 
+pytestmark = pytest.mark.gui
+
+
 class TestComponents(object):
     logger = Logger("TestComponents")
 

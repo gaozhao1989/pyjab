@@ -111,8 +111,10 @@ def pytest_configure(config):
 def test_jnlp_files():
     """Download the Oracle Swing demo JNLP files used by the GUI tests.
 
-    Deliberately *not* autouse: it needs network access and is only relevant to
-    the GUI test modules, which request this fixture explicitly.
+    Deliberately *not* autouse: it needs network access, and as an autouse
+    fixture in this file it would also run for the portable suite.  The GUI
+    fixtures that need the files depend on it instead, so running a single GUI
+    module on its own works.
     """
     import requests
 
@@ -121,15 +123,20 @@ def test_jnlp_files():
     existing_files = os.listdir(TEST_FILES_DIR)
 
     for test_file in OracleApp:
-        if test_file.value.file.name in existing_files:
+        target = test_file.value.file
+        if target.name in existing_files:
             continue
-        r = requests.get(test_file.value.url, allow_redirects=True)
-        with open(test_file.value.file, 'wb') as f:
-            f.write(r.content)
+        response = requests.get(test_file.value.url, allow_redirects=True, timeout=60)
+        # Without this the HTML of a 404 page would be written to disk as though
+        # it were a .jnlp, and the "file exists" check above would then skip it
+        # forever, producing a confusing failure much further downstream.
+        response.raise_for_status()
+        with open(target, 'wb') as f:
+            f.write(response.content)
 
 
 @pytest.fixture
-def oracle_app(request) -> JABDriver:
+def oracle_app(request, test_jnlp_files) -> JABDriver:
     from pyjab.jabdriver import JABDriver
 
     app: TestFile = request.param.value
