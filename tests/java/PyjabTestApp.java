@@ -303,9 +303,11 @@ public class PyjabTestApp {
             }
         });
 
-        // A JOptionPane would be modal in some look and feels, and the tests
-        // only need a second window carrying a label, so this is a plain
-        // modeless dialog as well.
+        // The alert is a modeless dialog holding a JOptionPane.  A JOptionPane
+        // whose message type is WARNING or ERROR is the component whose
+        // accessibility role is "alert", which is what the suite checks; using
+        // the pane as a plain component rather than showMessageDialog keeps the
+        // dialog modeless, so nothing blocks.
         JButton showAlertButton = new JButton("Show alert");
         showAlertButton.setName("Show alert");
         showAlertButton.addActionListener(new ActionListener() {
@@ -313,10 +315,15 @@ public class PyjabTestApp {
                 JDialog dialog = new JDialog(frame, "An Alert", false);
                 dialog.setName("An Alert");
 
-                // A JOptionPane, not a bare panel: it is the component whose
-                // accessibility role is "alert", which is what the suite checks.
+                // The message is a JLabel named "Alert message", and the pane
+                // carries the same name: the pane is the component with the
+                // "alert" role, while the label is the component with the
+                // visible text of that name.
+                JLabel alertLabel = new JLabel("Alert message");
+                alertLabel.setName("Alert message");
+
                 JOptionPane alertPane = new JOptionPane(
-                        "Alert message", JOptionPane.WARNING_MESSAGE);
+                        alertLabel, JOptionPane.WARNING_MESSAGE);
                 alertPane.setName("Alert message");
                 dialog.setContentPane(alertPane);
                 dialog.setSize(320, 160);

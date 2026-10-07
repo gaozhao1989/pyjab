@@ -30,7 +30,6 @@ import pytest
 from pyjab.common.by import By
 from pyjab.common.exceptions import JABException
 from pyjab.common.role import Role
-from pyjab.common.states import States
 from pyjab.jabdriver import JABDriver
 
 pytestmark = pytest.mark.gui
@@ -38,14 +37,6 @@ pytestmark = pytest.mark.gui
 #: The dialog that ``Show dialog`` opens in tests/java/PyjabTestApp.java.
 DIALOG_BUTTON_NAME = "Show dialog"
 DIALOG_WINDOW_TITLE = "A Dialog"
-
-
-def first_showing_push_button(driver: JABDriver):
-    for element in driver.find_elements_by_role(Role.PUSH_BUTTON):
-        if States.SHOWING in element.states:
-            return element
-    raise AssertionError("the application window has no showing push button")
-
 
 # ---------------------------------------------------------------------------
 # The pump itself

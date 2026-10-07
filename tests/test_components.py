@@ -315,7 +315,14 @@ class TestComponents(object):
         self.logger.info(color_chooser.get_element_information())
 
     def test_page_tab_list(self, test_app: JABDriver):
-        """The colour chooser carries a real page tab list."""
+        """The colour chooser carries a real page tab list.
+
+        Its tab titles come from a resource bundle, so they are ``HSV``/``HSL``/
+        ``RGB`` in English and ``HSV(H)``/``HSL(L)``/``RGB(G)`` elsewhere.  The
+        conftest pins the test JVM to ``en_US``, and the assertions below use a
+        substring match as well, so neither the locale nor a cosmetic rename
+        breaks them.
+        """
         dialog = self.open_dialog(test_app, "Show color chooser", "A Color Chooser")
 
         page_tab_list = dialog.find_element_by_role(Role.PAGE_TAB_LIST)
@@ -323,15 +330,19 @@ class TestComponents(object):
         self.logger.info(page_tab_list.get_element_information())
 
         page_tab_list.select("HSL")
-        assert dialog.find_element_by_xpath("//page tab[@name='HSL']").is_selected()
+        assert dialog.find_element_by_xpath(
+            "//page tab[@name=contains('HSL')]"
+        ).is_selected()
 
         page_tab_list.select("RGB", simulate=True)
-        assert dialog.find_element_by_xpath("//page tab[@name='RGB']").is_selected()
+        assert dialog.find_element_by_xpath(
+            "//page tab[@name=contains('RGB')]"
+        ).is_selected()
 
     def test_page_tab(self, test_app: JABDriver):
         dialog = self.open_dialog(test_app, "Show color chooser", "A Color Chooser")
 
-        page_tab = dialog.find_element_by_xpath("//page tab[@name='HSV']")
+        page_tab = dialog.find_element_by_xpath("//page tab[@name=contains('HSV')]")
         assert page_tab
         self.logger.info(page_tab.get_element_information())
 

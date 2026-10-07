@@ -46,6 +46,18 @@ JAVA_CLASSES_DIR = JAVA_SRC_DIR / "classes"
 TEST_APP_CLASS = "PyjabTestApp"
 TEST_APP_TITLE = "PyjabTestApp"
 
+#: Pinned so that assertions on component names do not depend on the language of
+#: the machine running the tests.
+#:
+#: Swing builds some labels from resource bundles.  A colour chooser's page tabs
+#: are ``HSV``, ``HSL``, ``RGB``, ``CMYK`` under an English locale, and
+#: ``HSV(H)``, ``HSL(L)``, ``RGB(G)``, ``CMYK`` plus a localised ``Swatches``
+#: under any other -- verified on this project by running the same probe with and
+#: without these arguments.  A locator written as ``@name='HSV'`` therefore
+#: passes or fails depending on where the test runs, which is not a property
+#: anybody wants to debug.
+JAVA_LOCALE_ARGS = ["-Duser.language=en", "-Duser.country=US"]
+
 
 def find_java_tool(name: str) -> str:
     """Locate ``javac`` or ``java``.
@@ -125,7 +137,7 @@ def test_app(test_application_classes: Path) -> "JABDriver":
 
     java = find_java_tool("java")
     process = subprocess.Popen(
-        [java, "-cp", str(test_application_classes), TEST_APP_CLASS],
+        [java] + JAVA_LOCALE_ARGS + ["-cp", str(test_application_classes), TEST_APP_CLASS],
     )
     try:
         with JABDriver(title=TEST_APP_TITLE, timeout=60) as driver:
