@@ -25,6 +25,7 @@ exclude docs/TRIAGE.md
 exclude docs/ROADMAP.md
 exclude docs/PYJAB_MCP_PLAN.md
 exclude docs/ISSUE_REPLIES.md
+exclude docs/CONSENT_REQUESTS.md
 prune docs/replies
 
 prune build
