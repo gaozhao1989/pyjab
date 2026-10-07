@@ -34,6 +34,17 @@ to start with -- which is roughly where pyjab is now.
 If your employer owns your work, check that you have their permission before
 signing off. There is no CLA to sign and nothing to email.
 
+CI checks this on every pull request, and you can check it yourself first:
+
+.. code-block:: console
+
+   $ python tools/check_dco.py --base origin/master
+
+It fails on a commit with no sign-off, and on one whose sign-off names somebody
+who is neither the author nor the committer -- a trailer naming nobody states
+nothing. Merge commits and bots are skipped. If you have already committed
+without ``-s``, ``git rebase --signoff <base>`` adds it to the whole branch.
+
 .. _Developer Certificate of Origin: https://developercertificate.org/
 
 Reporting a bug

@@ -183,6 +183,33 @@ jobs:
           python tools/verify_test_app.py
 
   # ---------------------------------------------------------------------------
+  # CONTRIBUTING.rst asks for a sign-off on every commit: the Developer
+  # Certificate of Origin, plus a grant that lets the project be relicensed.
+  # A requirement nobody checks prevents nothing, so this checks it.
+  #
+  # Pull requests only. The commits already on master predate the requirement,
+  # and a direct push is the maintainer's own work rather than a contribution
+  # arriving from outside.
+  # ---------------------------------------------------------------------------
+  dco:
+    name: Contributor sign-off
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Both ends of the range have to be present, so the whole history
+          # rather than the single commit a shallow clone would give.
+          fetch-depth: 0
+
+      # The two SHAs rather than a branch name: checkout leaves HEAD on the
+      # merge commit for a pull request, which is not what should be inspected.
+      - name: Check that every commit is signed off
+        run: |
+          python tools/check_dco.py --range \
+            "${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
+
+  # ---------------------------------------------------------------------------
   # Every runtime dependency has to stay permissively licensed. pyjab is GPLv2
   # only because that is what it inherited, and it is on its way to a permissive
   # licence -- a copyleft dependency added in the meantime would either block
