@@ -202,8 +202,21 @@ jobs:
           # rather than the single commit a shallow clone would give.
           fetch-depth: 0
 
-      # The two SHAs rather than a branch name: checkout leaves HEAD on the
-      # merge commit for a pull request, which is not what should be inspected.
+      # A pull request from a fork keeps its commits in the fork, and every
+      # contribution this repository has ever received came from one -- #77, #70,
+      # #65, #40, #39. So this is the ordinary path, not an edge case, and it is
+      # fetched explicitly rather than relied on: checkout leaves the *merged*
+      # result, and whether its full-history fetch happens to include the head
+      # commit is an implementation detail of the action to depend on for
+      # something that would block every outside contribution if it changed.
+      - name: Fetch both ends of the range
+        run: |
+          git fetch --no-tags --quiet origin \
+            "${{ github.event.pull_request.base.ref }}" \
+            "pull/${{ github.event.pull_request.number }}/head"
+
+      # The two SHAs rather than a branch name: HEAD is the merge commit for a
+      # pull request, which is not what should be inspected.
       - name: Check that every commit is signed off
         run: |
           python tools/check_dco.py --range \

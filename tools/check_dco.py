@@ -56,9 +56,30 @@ def git(*args: str) -> str:
 
 
 def commits_in(revision_range: str) -> list:
-    """The commit hashes in a revision range, oldest first."""
-    output = git("rev-list", "--reverse", revision_range)
-    return [line.strip() for line in output.splitlines() if line.strip()]
+    """The commit hashes in a revision range, oldest first.
+
+    A range that will not resolve is reported as such rather than as a bare git
+    error, because the person reading the output is usually the person whose pull
+    request is being checked, and the cause is always the same: one end of the
+    range was never fetched.  A pull request from a fork keeps its commits in the
+    fork, and every outside contribution to pyjab has arrived that way.
+    """
+    result = subprocess.run(["git", "rev-list", "--reverse", revision_range],
+                            capture_output=True, text=True)
+    if result.returncode != 0:
+        detail = result.stderr.strip().splitlines()
+        print(f"could not resolve the range {revision_range}\n")
+        if detail:
+            print(f"  git said: {detail[0]}\n")
+        print("  Both ends of the range have to be present in this checkout.")
+        print("  A pull request from a fork keeps its commits in the fork, so the")
+        print("  workflow fetches `pull/<number>/head` before running this check.")
+        print("  If that step was skipped or failed, no commit can be checked --")
+        print("  and since every outside contribution comes from a fork, the fetch")
+        print("  is worth fixing rather than the check being run without it.")
+        sys.exit(1)
+
+    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
 def describe(sha: str) -> dict:
