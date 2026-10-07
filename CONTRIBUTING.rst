@@ -214,15 +214,23 @@ reproduces `issue #56`_'s scenario using the Java Control Panel, and prints
 What CI runs
 ------------
 
-``.github/workflows/ci.yml`` runs four jobs on every push:
+``.github/workflows/ci.yml`` runs six jobs. Five run on every push:
 
 * the portable suite on Ubuntu, Windows and macOS, on Python 3.9 and 3.12;
 * DLL discovery on Windows against real Temurin JDK 8, 11, 17 and 21, asserting
   the DLL is both found **and loaded**;
 * a Windows import smoke test, which also exercises the message pump against the
   real ``pythoncom``;
+* a check that every runtime dependency is permissively licensed
+  (``tools/check_dependency_licences.py``) and that the licence pyjab declares is
+  the one it ships (``tools/check_license_consistency.py``);
 * a distribution build with metadata checks, including a guard that no stale
   copy of the package was packaged.
+
+The sixth runs on pull requests only: **every commit must be signed off**
+(``tools/check_dco.py``). It is not run on a push because the commits already on
+``master`` predate the requirement. See `Licence of your contribution`_ above for
+why the sign-off is asked for.
 
 CI has no interactive desktop session, so the GUI suite does not run there.
 
