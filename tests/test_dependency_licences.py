@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import requires
 from pathlib import Path
 
 import pytest
@@ -22,6 +24,15 @@ _spec = importlib.util.spec_from_file_location(
 gate = importlib.util.module_from_spec(_spec)
 sys.modules["check_dependency_licences"] = gate
 _spec.loader.exec_module(gate)
+
+
+def _installed() -> bool:
+    """Whether pyjab is installed as a distribution in this environment."""
+    try:
+        requires("pyjab")
+    except PackageNotFoundError:
+        return False
+    return True
 
 
 def refuses(license_text: str) -> bool:
@@ -75,20 +86,47 @@ def test_permissive_is_allowed(text):
 
 def test_the_project_itself_is_not_in_its_own_requirement_list():
     """pyjab is GPLv2; checking it against itself would always fail."""
-    assert gate.SELF.lower() not in {n.lower() for n in gate.direct_requirement_names()}
+    names = gate.runtime_requirement_names(requires("pyjab") or []) \
+        if _installed() else set()
+
+    assert gate.SELF.lower() not in names
 
 
-def test_only_runtime_requirements_are_collected():
-    """Extras are opt-in, so a dev-only dependency must not be gated."""
+# ---------------------------------------------------------------------------
+# Parsing a Requires-Dist list, without needing anything installed
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("declared, expected", [
+    (["Pillow>=8.3.2"], {"pillow"}),
+    (["pywin32>=302; sys_platform == 'win32'"], {"pywin32"}),
+    (["Pillow>=8.3.2", "pywin32>=302; sys_platform == 'win32'"], {"pillow", "pywin32"}),
+    # An extra is opt-in, so a dev-only dependency must not be gated.
+    (["pytest>=7.0.1; extra == 'dev'"], set()),
+    (["Pillow>=8.3.2", "pytest>=7.0.1; extra == 'dev'"], {"pillow"}),
+    # Normalised so a lookup by metadata name succeeds.
+    (["Some_Package>=1"], {"some-package"}),
+    ([], set()),
+])
+def test_only_runtime_requirements_are_collected(declared, expected):
+    assert gate.runtime_requirement_names(declared) == expected
+
+
+def test_a_requirement_without_a_version_is_still_read():
+    assert gate.runtime_requirement_names(["pywin32"]) == {"pywin32"}
+
+
+# ---------------------------------------------------------------------------
+# The real metadata, when there is any to read
+# ---------------------------------------------------------------------------
+
+def test_the_installed_distribution_declares_only_runtime_dependencies():
+    """Integration check: runs where pyjab is pip-installed, as it is in CI."""
+    if not _installed():
+        pytest.skip("pyjab is not installed as a distribution here")
+
     names = gate.direct_requirement_names()
 
     assert names, "pyjab declares no runtime dependencies at all?"
     assert "pytest" not in names, "the dev extra leaked into the runtime list"
-
-
-def test_requirement_names_are_normalised():
-    """compare_underscores-to-dashes so a lookup by metadata name succeeds."""
-    names = gate.direct_requirement_names()
-
     assert all("_" not in name for name in names)
     assert all(name == name.lower() for name in names)

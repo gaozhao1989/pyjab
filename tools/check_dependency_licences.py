@@ -56,8 +56,31 @@ SELF = "pyjab"
 _REQUIREMENT_NAME = re.compile(r"^\s*([A-Za-z0-9._-]+)")
 
 
+def runtime_requirement_names(declared) -> set:
+    """The distribution names in a ``Requires-Dist`` list, extras excluded.
+
+    Split out from the metadata lookup so that the parsing can be tested without
+    pyjab installed as a distribution -- which is the normal state of a checkout,
+    and the reason an earlier version of this checked nothing in the portable
+    suite while appearing to pass.
+    """
+    names = set()
+    for requirement in declared:
+        # An extra is opt-in, so a dev-only dependency must not be gated.
+        if "extra ==" in requirement:
+            continue
+        match = _REQUIREMENT_NAME.match(requirement)
+        if match:
+            names.add(match.group(1).lower().replace("_", "-"))
+    return names
+
+
 def direct_requirement_names() -> set:
-    """The distributions pyjab declares a dependency on, normalised."""
+    """The distributions pyjab declares a dependency on, normalised.
+
+    Read from the installed metadata rather than from pyproject.toml, because what
+    matters is the licence of the distribution that would actually be installed.
+    """
     try:
         declared = requires(SELF) or []
     except PackageNotFoundError:
@@ -65,16 +88,7 @@ def direct_requirement_names() -> set:
             f"{SELF} is not installed, so there is nothing to check.\n"
             "  Run: pip install ."
         )
-
-    names = set()
-    for requirement in declared:
-        # Skip the optional extras; only what `pip install pyjab` pulls in counts.
-        if "extra ==" in requirement:
-            continue
-        match = _REQUIREMENT_NAME.match(requirement)
-        if match:
-            names.add(match.group(1).lower().replace("_", "-"))
-    return names
+    return runtime_requirement_names(declared)
 
 
 def installed_licences() -> dict:
