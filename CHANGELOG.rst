@@ -7,6 +7,57 @@ This project adheres to `Semantic Versioning`_ and `Keep a Changelog`_.
 .. _Semantic Versioning: https://semver.org/
 .. _Keep a Changelog: https://keepachangelog.com/
 
+Unreleased
+----------
+
+Fixed
+~~~~~
+
+* **``get_focused_element()`` raised on a window with nothing focused.**  Its
+  docstring has always said it returns ``None`` for that; it did not.
+  ``getAccessibleContextWithFocus`` was declared with ``errorcheck=True``, and
+  that hook raises ``RuntimeError`` on a falsy result before the caller can see
+  it, so the guard written for exactly that case was unreachable.  The symbol no
+  longer has ``errorcheck``, and the caller checks the status itself.  Found while
+  rewriting the method for provenance reasons (below); the live test could not
+  have caught it, because on a desktop that has been clicked, something always
+  has focus.
+
+Changed
+~~~~~~~
+
+* **The code derived from NVDA has been written again.**  Five files --
+  ``common/textreader.py``, ``config.py``, ``common/service.py``,
+  ``accessibleinfo.py`` and ``jabfixedfunc.py`` -- are now pyjab's own work rather
+  than a derivative of another project's, which is what allows the licence to
+  change at all.  Every rewrite was checked against the behaviour it replaced:
+  1,896 differential comparisons for the encoding heuristics, a field-by-field
+  round trip for the structures and the symbol table, and the stream of JAB calls
+  left identical.  No behaviour was intended to change, and none was found to.
+* ``jabfixedfunc.py`` is a table of signatures rather than three hundred
+  repetitive calls, and ``tools/check_jab_symbols.py`` compares its names against
+  ``WinAccessBridge.DEF`` from a real JDK.  Doing that found two functions --
+  ``getAccessibleTableRowSelectionCount`` and
+  ``getAccessibleTableColumnSelectionCount`` -- that were being called with no
+  signature declared, so ctypes narrowed their 64-bit context handle to a C int.
+  Both are declared now.
+* ``get_focused_element()`` has been written again from its behaviour.  The
+  method is still Chih-Yu's, and ``CONTRIBUTORS.txt`` says so.
+
+Added
+~~~~~
+
+* ``tools/check_license_consistency.py`` -- fails if the licence pyjab declares
+  is not the one it ships, across ``LICENSE``, ``pyproject.toml`` and every
+  published page that states it.
+* ``tools/check_dco.py``, run in CI on pull requests -- fails a commit with no
+  ``Signed-off-by``, or one whose sign-off names nobody involved in it.
+* ``tools/check_dependency_licences.py``, run in CI -- fails on a copyleft
+  runtime dependency, which would either block the licence change or impose its
+  terms on everyone who installs pyjab.
+* ``tools/verify_dpi.py`` -- measures which coordinate space ``simulate=True``
+  needs on a given display, rather than assuming (#62).
+
 1.5.0 (2026-10-08)
 ------------------
 

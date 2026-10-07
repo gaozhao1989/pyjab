@@ -62,7 +62,13 @@ SIGNATURES = (
     ("getAccessibleContextFromHWND", BOOL, (HWND, POINTER(c_long), POINTER(JOBJECT64)), True),
     ("getHWNDFromAccessibleContext", HWND, (c_long, JOBJECT64), True),
     ("getAccessibleContextAt", BOOL, (c_long, JOBJECT64, c_int, c_int, POINTER(JOBJECT64)), True),
-    ("getAccessibleContextWithFocus", BOOL, (HWND, POINTER(c_long), POINTER(JOBJECT64)), True),
+    # No errorcheck, deliberately.  The caller treats a falsy result as "nothing
+    # has focus", which is an ordinary answer about a window rather than a
+    # failure of the call.  With errorcheck=True the hook raises RuntimeError
+    # from inside the call and that branch can never run -- which is what
+    # happened: get_focused_element() raised on a window with nothing focused,
+    # having documented that it returns None.  See the note on _check_error.
+    ("getAccessibleContextWithFocus", BOOL, (HWND, POINTER(c_long), POINTER(JOBJECT64)), False),
     ("getAccessibleContextInfo", BOOL, (c_long, JOBJECT64, POINTER(AccessibleContextInfo)), True),
     ("getAccessibleChildFromContext", JOBJECT64, (c_long, JOBJECT64, c_int), True),
     ("getAccessibleParentFromContext", JOBJECT64, (c_long, JOBJECT64), False),
