@@ -1,8 +1,8 @@
 """End-to-end tests for the 1.3.0 message pump rewrite.
 
-These drive real Java Swing applications and therefore need Windows, a JDK, an
-interactive desktop session and network access to fetch the Oracle demo
-applications.  They are part of the opt-in GUI suite:
+These drive the Swing application in ``tests/java``, which the ``test_app``
+fixture compiles and launches, so they need Windows, a JDK and an interactive
+desktop session but no network access.  They are part of the opt-in GUI suite:
 
     set PYJAB_RUN_GUI_TESTS=1
     pytest tests/test_message_pump_gui.py -v
@@ -15,9 +15,8 @@ called ``Windows_run()``.  Before 1.3.0 pyjab only serviced that queue while
 waiting for the *first* window, and every second servicing call was a no-op, so
 anything opening later could go unnoticed.
 
-The headline test is
-``test_new_window_is_found_after_a_plain_click``.  The pre-1.3.0 comment in
-``test_components.py`` says it best:
+The headline test is ``test_new_window_is_found_after_a_plain_click``.  The old
+comment in ``test_components.py`` says it best:
 
     "Doesn't seem to recognise the new window unless click is simulated"
 
@@ -33,41 +32,32 @@ from pyjab.common.exceptions import JABException
 from pyjab.common.role import Role
 from pyjab.common.states import States
 from pyjab.jabdriver import JABDriver
-from tests.conftest import OracleApp
 
 pytestmark = pytest.mark.gui
 
-# The dialog opened by Oracle's DialogDemo.
-DIALOG_WINDOW_TITLE = "Message"
+#: The dialog that ``Show dialog`` opens in tests/java/PyjabTestApp.java.
+DIALOG_BUTTON_NAME = "Show dialog"
+DIALOG_WINDOW_TITLE = "A Dialog"
 
 
-@pytest.fixture(autouse=True, scope="module")
-def _fetch_demo_applications(test_jnlp_files):
-    """Every test here drives an Oracle demo, so download them once."""
-    return test_jnlp_files
-
-
-def _first_showing_push_button(driver: JABDriver):
-    """The button Oracle's demos use to open their popup."""
+def first_showing_push_button(driver: JABDriver):
     for element in driver.find_elements_by_role(Role.PUSH_BUTTON):
         if States.SHOWING in element.states:
             return element
-    raise AssertionError("the demo window has no showing push button")
+    raise AssertionError("the application window has no showing push button")
 
 
 # ---------------------------------------------------------------------------
 # The pump itself
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("oracle_app", [OracleApp.BUTTON], indirect=True)
-def test_pump_messages_is_safe_to_call(oracle_app: JABDriver):
+def test_pump_messages_is_safe_to_call(test_app: JABDriver):
     """Servicing the queue must be harmless and repeatable on a live app."""
     for _ in range(5):
-        oracle_app._pump_messages()
+        test_app._pump_messages()
 
 
-@pytest.mark.parametrize("oracle_app", [OracleApp.BUTTON], indirect=True)
-def test_repeated_lookups_do_not_alternate(oracle_app: JABDriver):
+def test_repeated_lookups_do_not_alternate(test_app: JABDriver):
     """Regression: every second pump used to be a silent no-op.
 
     The old pump built a fresh generator per call and discarded it, and the
@@ -76,17 +66,16 @@ def test_repeated_lookups_do_not_alternate(oracle_app: JABDriver):
     lookup is the pattern that exposed it.
     """
     for attempt in range(6):
-        oracle_app._pump_messages()
-        element = oracle_app.find_element_by_role(Role.PUSH_BUTTON)
+        test_app._pump_messages()
+        element = test_app.find_element_by_role(Role.PUSH_BUTTON)
         assert element is not None, f"lookup failed on attempt {attempt}"
 
 
 # ---------------------------------------------------------------------------
-# Issue #29 / #33: waiting must not spin the CPU
+# Issues #29 / #33: waiting must not spin the CPU
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("oracle_app", [OracleApp.BUTTON], indirect=True)
-def test_wait_until_element_exist_backs_off(oracle_app: JABDriver):
+def test_wait_until_element_exist_backs_off(test_app: JABDriver):
     """wait_until_element_exist used to be a tight loop with no sleep.
 
     It re-walked the whole accessibility tree as fast as the CPU allowed.
@@ -97,7 +86,7 @@ def test_wait_until_element_exist_backs_off(oracle_app: JABDriver):
     cpu_start = time.process_time()
 
     with pytest.raises(JABException):
-        oracle_app.wait_until_element_exist(
+        test_app.wait_until_element_exist(
             By.NAME, "pyjab-definitely-not-here", timeout=3
         )
 
@@ -111,11 +100,10 @@ def test_wait_until_element_exist_backs_off(oracle_app: JABDriver):
     )
 
 
-@pytest.mark.parametrize("oracle_app", [OracleApp.BUTTON], indirect=True)
-def test_wait_until_element_exist_finds_an_existing_element(oracle_app: JABDriver):
+def test_wait_until_element_exist_finds_an_existing_element(test_app: JABDriver):
     """The common path must still return promptly."""
     wall_start = time.time()
-    element = oracle_app.wait_until_element_exist(By.ROLE, Role.PUSH_BUTTON, timeout=10)
+    element = test_app.wait_until_element_exist(By.ROLE, Role.PUSH_BUTTON, timeout=10)
     wall = time.time() - wall_start
 
     assert element is not None
@@ -126,8 +114,7 @@ def test_wait_until_element_exist_finds_an_existing_element(oracle_app: JABDrive
 # Issues #56 / #74: a window that opens later has to be noticed
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("oracle_app", [OracleApp.DIALOG], indirect=True)
-def test_new_window_is_found_after_a_plain_click(oracle_app: JABDriver):
+def test_new_window_is_found_after_a_plain_click(test_app: JABDriver):
     """The 1.3.0 fix, stated directly.
 
     Clicking with the default ``simulate=False`` goes through the Java Access
@@ -140,8 +127,7 @@ def test_new_window_is_found_after_a_plain_click(oracle_app: JABDriver):
     exercises ``wait_java_window_by_title()`` -- one of the places that now
     pumps.
     """
-    button = _first_showing_push_button(oracle_app)
-    button.click()  # simulate=False on purpose: this is the assertion
+    test_app.find_element_by_name(DIALOG_BUTTON_NAME).click()  # simulate=False
 
     try:
         popup = JABDriver(title=DIALOG_WINDOW_TITLE, timeout=15)
@@ -156,23 +142,21 @@ def test_new_window_is_found_after_a_plain_click(oracle_app: JABDriver):
     assert popup.find_element_by_role(Role.DIALOG) is not None
 
 
-@pytest.mark.parametrize("oracle_app", [OracleApp.DIALOG], indirect=True)
-def test_dialog_is_reachable_after_pumping(oracle_app: JABDriver):
+def test_dialog_is_reachable_after_pumping(test_app: JABDriver):
     """After an explicit pump, a freshly opened dialog must be enumerable.
 
     This is the low-level counterpart to the test above: it does not depend on
     whether the accessibility action itself triggers the dialog.
     """
-    button = _first_showing_push_button(oracle_app)
-    button.click()
+    test_app.find_element_by_name(DIALOG_BUTTON_NAME).click()
 
     # Give the dialog a moment, servicing the queue as we go -- exactly what
     # wait_until_element_exist does in production.
     deadline = time.time() + 15
     found = False
     while time.time() < deadline:
-        oracle_app._pump_messages()
-        if oracle_app.get_java_window_hwnd(title=DIALOG_WINDOW_TITLE):
+        test_app._pump_messages()
+        if test_app.get_java_window_hwnd(title=DIALOG_WINDOW_TITLE):
             found = True
             break
         time.sleep(0.1)
@@ -183,15 +167,31 @@ def test_dialog_is_reachable_after_pumping(oracle_app: JABDriver):
     )
 
 
+def test_a_second_new_window_is_also_found(test_app: JABDriver):
+    """Opening a window twice must work, not just the first time.
+
+    A pump that only runs while waiting for *a* window would pass the first test
+    and fail this one.
+    """
+    for attempt in range(2):
+        button = test_app.find_element_by_name(DIALOG_BUTTON_NAME)
+        button.click()
+        try:
+            popup = JABDriver(title=DIALOG_WINDOW_TITLE, timeout=15)
+        except TimeoutError as exc:  # pragma: no cover - failure path
+            pytest.fail(f"the dialog was not found on attempt {attempt + 1}: {exc}")
+        assert popup.find_element_by_role(Role.DIALOG) is not None
+        popup.find_element_by_name("Close dialog").click()
+
+
 # ---------------------------------------------------------------------------
 # 1.2.1 feature, exercised on Windows
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("oracle_app", [OracleApp.BUTTON], indirect=True)
-def test_get_focused_element_on_a_live_window(oracle_app: JABDriver):
+def test_get_focused_element_on_a_live_window(test_app: JABDriver):
     """get_focused_element() must return an element or None, never raise."""
-    focused = oracle_app.get_focused_element()
+    focused = test_app.get_focused_element()
 
     if focused is not None:
         assert focused.role
-        assert focused.hwnd == oracle_app.hwnd
+        assert focused.hwnd == test_app.hwnd

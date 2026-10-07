@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import os
+import shutil
+import subprocess
 import sys
-from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -12,7 +13,7 @@ if TYPE_CHECKING:
     from pyjab.jabdriver import JABDriver
 
 # The GUI test modules import :mod:`pyjab.jabdriver` at module scope, which pulls
-# in pywin32, and they need a real JDK, real Swing applications and an
+# in pywin32, and they need a real JDK, a real Swing application and an
 # interactive desktop session.  They are therefore opt-in everywhere:
 #
 #     PYJAB_RUN_GUI_TESTS=1 pytest tests/
@@ -29,126 +30,112 @@ collect_ignore: list[str] = []
 if sys.platform != "win32" or os.environ.get("PYJAB_RUN_GUI_TESTS") != "1":
     collect_ignore += GUI_TEST_MODULES
 
-# Default destination for test files download
-ROOT_DIR = Path(__file__).resolve().parent
-TEST_FILES_DIR = Path(ROOT_DIR / "jnlps")
+# ---------------------------------------------------------------------------
+# The Swing application the GUI tests drive
+# ---------------------------------------------------------------------------
+#
+# These tests used to download 27 demo applets from docs.oracle.com and drive
+# those.  That made the suite depend on a third party staying online and on the
+# exact widget names inside somebody else's demos, and it needed an interactive
+# Java Web Start.  The application is now in this repository, in tests/java, and
+# is compiled on demand with the JDK's javac.
 
-# Base URLs for test JNLPs
-BASE_ORACLE_URL = "https://docs.oracle.com/javase"
-UI_SWING_BASE_URL = "/".join([BASE_ORACLE_URL, "tutorialJWS/samples/uiswing"])
+JAVA_SRC_DIR = Path(__file__).resolve().parent / "java"
+JAVA_CLASSES_DIR = JAVA_SRC_DIR / "classes"
 
-
-class TestFile(NamedTuple):
-    url: str
-    file: Path
-    window_title: str
-
-
-class OracleApp(Enum):
-    def __new__(cls, *args, **kwargs):
-        value = len(cls.__members__) + 1
-        obj = object.__new__(cls)
-        obj._value_ = value
-        return obj
-
-    def __init__(self, value):
-        super().__init__()
-        _jnlp_file_path = Path(TEST_FILES_DIR / f"{self._name_}.jnlp")
-        _zip_file_path = Path(TEST_FILES_DIR / f"{self._name_}.zip")
-
-        def extract_file_name(path: str):
-            # Get last string after / and then the first string before .
-            return path.split("/")[-1].split(".")[0]
-
-        def remove_digits(input_str: str):
-            return ''.join([i for i in input_str if not i.isdigit()])
-
-        self._value_ = TestFile(url=value,
-                                file=_jnlp_file_path if value.endswith(".jnlp") else _zip_file_path,
-                                window_title=remove_digits(extract_file_name(value)))
-
-    BUTTON = "/".join([UI_SWING_BASE_URL, "ButtonDemoProject/ButtonDemo.jnlp"])
-    CHECK_BOX = "/".join([UI_SWING_BASE_URL, "CheckBoxDemoProject/CheckBoxDemo.jnlp"])
-    COLOR_CHOOSER = "/".join([UI_SWING_BASE_URL, "ColorChooserDemoProject/ColorChooserDemo.jnlp"])
-    COMBO_BOX = "/".join([UI_SWING_BASE_URL, "ComboBoxDemoProject/ComboBoxDemo.jnlp"])
-    DIALOG = "/".join([UI_SWING_BASE_URL, "DialogDemoProject/DialogDemo.jnlp"])
-    # This needs to be looked at how to do properly as needs making into launchable project
-    # FILE_CHOOSER = "/".join(
-    #     [BASE_ORACLE_URL, "tutorial/uiswing/examples/zipfiles/components-FileChooserDemo2Project.zip"])
-    FRAME = "/".join([UI_SWING_BASE_URL, "FrameDemoProject/FrameDemo.jnlp"])
-    INTERNAL_FRAME = "/".join([UI_SWING_BASE_URL, "InternalFrameDemoProject/InternalFrameDemo.jnlp"])
-    LABEL = "/".join([UI_SWING_BASE_URL, "LabelDemoProject/LabelDemo.jnlp"])
-    LAYERED_PANE = "/".join([UI_SWING_BASE_URL, "LayeredPaneDemoProject/LayeredPaneDemo.jnlp"])
-    LIST = "/".join([UI_SWING_BASE_URL, "ListDemoProject/ListDemo.jnlp"])
-    MENU = "/".join([UI_SWING_BASE_URL, "MenuDemoProject/MenuDemo.jnlp"])
-    PASSWORD = "/".join([UI_SWING_BASE_URL, "PasswordDemoProject/PasswordDemo.jnlp"])
-    POPUP = "/".join([UI_SWING_BASE_URL, "PopupMenuDemoProject/PopupMenuDemo.jnlp"])
-    PROGRESS_BAR = "/".join([UI_SWING_BASE_URL, "ProgressBarDemoProject/ProgressBarDemo.jnlp"])
-    RADIO_BUTTON = "/".join([UI_SWING_BASE_URL, "RadioButtonDemoProject/RadioButtonDemo.jnlp"])
-    ROOT_LAYERED_PANE = "/".join([UI_SWING_BASE_URL, "RootLayeredPaneDemoProject/RootLayeredPaneDemo.jnlp"])
-    SCROLL = "/".join([UI_SWING_BASE_URL, "ScrollDemoProject/ScrollDemo.jnlp"])
-    SLIDER = "/".join([UI_SWING_BASE_URL, "SliderDemoProject/SliderDemo.jnlp"])
-    SLIDER_TWO = "/".join([UI_SWING_BASE_URL, "SliderDemo2Project/SliderDemo2.jnlp"])
-    SPINNER = "/".join([UI_SWING_BASE_URL, "SpinnerDemoProject/SpinnerDemo.jnlp"])
-    SPLIT_PANE = "/".join([UI_SWING_BASE_URL, "SplitPaneDemoProject/SplitPaneDemo.jnlp"])
-    STATUS_BAR = "/".join([UI_SWING_BASE_URL, "StatusBarDemoProject/StatusBarDemo.jnlp"])
-    TABLE = "/".join([UI_SWING_BASE_URL, "TableDemoProject/TableDemo.jnlp"])
-    TEXT_AREA = "/".join([UI_SWING_BASE_URL, "TextAreaDemoProject/TextAreaDemo.jnlp"])
-    TOOLBAR = "/".join([UI_SWING_BASE_URL, "ToolBarDemoProject/ToolBarDemo.jnlp"])
-    TREE = "/".join([UI_SWING_BASE_URL, "TreeDemoProject/TreeDemo.jnlp"])
-    TABLE_FTF_EDIT = "/".join([UI_SWING_BASE_URL, "TableFTFEditDemoProject/TableFTFEditDemo.jnlp"])
+TEST_APP_CLASS = "PyjabTestApp"
+TEST_APP_TITLE = "PyjabTestApp"
 
 
-def pytest_configure(config):
-    config.addinivalue_line(
-        "markers",
-        "gui: needs Windows, a real JDK and an interactive desktop session. "
-        "Deselect with '-m \"not gui\"'.",
+def find_java_tool(name: str) -> str:
+    """Locate ``javac`` or ``java``.
+
+    ``JAVA_HOME`` first, then the PATH.  Raises with something actionable rather
+    than letting a bare FileNotFoundError surface, because the usual cause is
+    "a JRE is installed, not a JDK", which looks identical from the outside.
+    """
+    java_home = os.environ.get("JAVA_HOME")
+    if java_home:
+        candidate = Path(java_home) / "bin" / (name + (".exe" if os.name == "nt" else ""))
+        if candidate.exists():
+            return str(candidate)
+
+    found = shutil.which(name)
+    if found:
+        return found
+
+    raise RuntimeError(
+        f"could not find '{name}'.\n"
+        "  The GUI tests need a JDK (not just a JRE) on the PATH or in JAVA_HOME.\n"
+        "  On Windows the Temurin or Oracle JDK installers both provide it.\n"
+        f"  JAVA_HOME is currently {java_home!r}."
     )
 
 
-@pytest.fixture(scope="module")
-def test_jnlp_files():
-    """Download the Oracle Swing demo JNLP files used by the GUI tests.
+def java_sources() -> list[Path]:
+    return sorted(JAVA_SRC_DIR.glob("*.java"))
 
-    Deliberately *not* autouse: it needs network access, and as an autouse
-    fixture in this file it would also run for the portable suite.  The GUI
-    fixtures that need the files depend on it instead, so running a single GUI
-    module on its own works.
+
+def needs_compiling() -> bool:
+    """True when any source is newer than the compiled class, or missing."""
+    compiled = JAVA_CLASSES_DIR / (TEST_APP_CLASS + ".class")
+    if not compiled.exists():
+        return True
+    newest_source = max(source.stat().st_mtime for source in java_sources())
+    return newest_source > compiled.stat().st_mtime
+
+
+@pytest.fixture(scope="session")
+def test_application_classes() -> Path:
+    """Compile tests/java/*.java and return the directory holding the classes."""
+    sources = java_sources()
+    if not sources:
+        pytest.fail(f"no Java sources found in {JAVA_SRC_DIR}")
+
+    if not needs_compiling():
+        return JAVA_CLASSES_DIR
+
+    javac = find_java_tool("javac")
+    JAVA_CLASSES_DIR.mkdir(parents=True, exist_ok=True)
+    result = subprocess.run(
+        [javac, "-d", str(JAVA_CLASSES_DIR)] + [str(source) for source in sources],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        pytest.fail(
+            "compiling the test application failed\n"
+            f"  command: {javac} -d {JAVA_CLASSES_DIR} {' '.join(s.name for s in sources)}\n"
+            f"  stdout:\n{result.stdout}\n"
+            f"  stderr:\n{result.stderr}"
+        )
+    return JAVA_CLASSES_DIR
+
+
+@pytest.fixture
+def test_app(test_application_classes: Path) -> "JABDriver":
+    """Launch the local Swing application and bind a JABDriver to it.
+
+    The application is started here rather than through ``JABDriver(file_path=)``
+    because that parameter takes a single executable path and cannot express
+    ``java -cp <dir> PyjabTestApp``.  Starting the process and binding to it by
+    title is also the arrangement the documentation recommends.
     """
-    import requests
-
-    TEST_FILES_DIR.mkdir(exist_ok=True)
-
-    existing_files = os.listdir(TEST_FILES_DIR)
-
-    for test_file in OracleApp:
-        target = test_file.value.file
-        if target.name in existing_files:
-            continue
-        response = requests.get(test_file.value.url, allow_redirects=True, timeout=60)
-        # Without this the HTML of a 404 page would be written to disk as though
-        # it were a .jnlp, and the "file exists" check above would then skip it
-        # forever, producing a confusing failure much further downstream.
-        response.raise_for_status()
-        with open(target, 'wb') as f:
-            f.write(response.content)
-
-
-@pytest.fixture
-def oracle_app(request, test_jnlp_files) -> JABDriver:
     from pyjab.jabdriver import JABDriver
 
-    app: TestFile = request.param.value
-    with JABDriver(file_path=app.file, title=app.window_title) as jab_driver:
-        yield jab_driver
-
-
-@pytest.fixture
-def java_control_app() -> JABDriver:
-    from pyjab.jabdriver import JABDriver
-
-    # Assumes installation of some jdk 1.8 - currently hardcoded
-    with JABDriver(file_path=Path(r"C:\Program Files\Java\jdk1.8.0_311\jre\bin\javacpl.exe"),
-                   title="Java Control Panel") as jabdriver:
-        yield jabdriver
+    java = find_java_tool("java")
+    process = subprocess.Popen(
+        [java, "-cp", str(test_application_classes), TEST_APP_CLASS],
+    )
+    try:
+        with JABDriver(title=TEST_APP_TITLE, timeout=60) as driver:
+            yield driver
+    finally:
+        # JABDriver.__exit__ stops the bound process; this covers the case where
+        # binding never succeeded and there is therefore no pid to stop.
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:  # pragma: no cover - defensive
+                process.kill()

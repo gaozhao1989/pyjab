@@ -56,7 +56,6 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0.1",
-    "requests>=2.27.1",
 ]
 
 [project.urls]

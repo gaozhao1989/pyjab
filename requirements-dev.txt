@@ -1,2 +1,1 @@
 pytest>=7.0.1
-requests>=2.27.1

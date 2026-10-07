@@ -8,7 +8,10 @@ include requirements.txt
 include requirements-dev.txt
 
 recursive-include tests *.py
-recursive-exclude tests jnlps
+# The Swing application the GUI tests drive. Its sources ship so the GUI suite
+# can be run from an sdist; the compiled classes do not.
+recursive-include tests *.java
+recursive-exclude tests/java classes
 
 # User-facing documentation. The maintainer notes that live alongside it
 # (issue triage, roadmap, reply drafts) are listed in .gitignore and must never

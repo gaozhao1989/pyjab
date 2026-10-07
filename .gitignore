@@ -16,9 +16,9 @@ wheels/
 .coverage
 htmlcov/
 
-# Downloaded by the GUI test fixtures (tests/conftest.py). 27 Oracle demo
-# applications, fetched on demand; never committed.
-tests/jnlps/
+# Compiled by the GUI test fixture (tests/conftest.py) from tests/java/*.java.
+# The sources are committed; the .class files are build output.
+tests/java/classes/
 
 # Editor / OS
 .vscode/

@@ -29,7 +29,7 @@ driver = JABDriver(title="My Application")
 | Argument | Meaning |
 |---|---|
 | `title` | Window title to bind to. Matched with `fnmatch`, so wildcards work. |
-| `file_path` | Optional. Launch this application first. `.jnlp` goes through `javaws`; anything else is executed directly. **Blocks until the process exits.** |
+| `file_path` | Optional. Launch this application first. `.jnlp` goes through `javaws`; anything else is executed directly. The process is **not** waited on, so pyjab can bind to the window it opens. Before 1.3.0 this blocked until the application exited, which made `file_path` unusable together with `title`. |
 | `bridge_dll` | Optional. Explicit path to `WindowsAccessBridge-XX.dll`. |
 | `hwnd` | Optional. Bind by window handle instead of title. |
 | `vmid` / `accessible_context` | Optional. Bind to an already-known accessibility context. |

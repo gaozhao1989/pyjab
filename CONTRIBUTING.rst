@@ -76,14 +76,31 @@ before opening a pull request.
 GUI suite -- Windows only
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-These drive real Java Swing applications, so they need Windows, a JDK, an
-interactive desktop session, and network access to download the Oracle demo
-applications. They are opt-in:
+These drive a real Java Swing application, so they need Windows, a JDK, and an
+interactive desktop session. They are opt-in:
 
 .. code-block:: console
 
    $ set PYJAB_RUN_GUI_TESTS=1
    $ pytest -v
+
+The application is ``tests/java/PyjabTestApp.java``. It is part of the
+repository and is compiled on demand by the ``test_app`` fixture, so there is
+nothing to download and nothing to install beyond a JDK. ``javac`` and ``java``
+are looked for in ``JAVA_HOME`` first and then on the ``PATH``.
+
+If you have a JRE but no JDK, the suite fails with a message saying so rather
+than with a bare ``FileNotFoundError``.
+
+To compile it by hand, or to check a change to it:
+
+.. code-block:: console
+
+   $ javac -Xlint:all -d tests/java/classes tests/java/PyjabTestApp.java
+
+The compiled classes are ignored by git; CI compiles the same file with a real
+JDK on Windows, which is the only automated check on it, because a CI runner has
+no desktop session to run the suite in.
 
 Every module in this suite is marked ``gui``, so once opted in you can narrow
 the run with ``-m "not gui"`` -- though with the opt-in above that is rarely
@@ -98,8 +115,10 @@ Individual modules, and what each one covers:
    * - Command
      - What it checks
    * - ``pytest tests/test_components.py -v``
-     - The main API surface against Oracle's Swing demos: buttons, check boxes,
-       combo boxes, dialogs, tables, trees and the rest.
+     - The main API surface against the local application: buttons, check boxes,
+       combo boxes, dialogs, menus, tables, trees, sliders, spinners and the
+       rest. Where an interaction has two paths -- the accessibility action and
+       simulated input -- both are covered.
    * - ``pytest tests/test_message_pump_gui.py -v``
      - The 1.3.0 message pump rewrite. The headline test is
        ``test_new_window_is_found_after_a_plain_click``: a dialog opened with

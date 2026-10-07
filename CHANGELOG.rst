@@ -7,13 +7,15 @@ This project adheres to `Semantic Versioning`_ and `Keep a Changelog`_.
 .. _Semantic Versioning: https://semver.org/
 .. _Keep a Changelog: https://keepachangelog.com/
 
-1.4.0 (unreleased)
+1.4.0 (2026-10-08)
 ------------------
 
 Makes element lookups walk the accessibility tree in an order that follows the
-locator, and adds methods for walking one level at a time.  The lookup change is
-the larger one: on a window with a few thousand nodes it turns a path lookup
-from thousands of cross-process calls into tens.
+locator, adds methods for walking one level at a time, and makes the GUI test
+suite runnable without downloading anything.
+
+The lookup change is the larger one: on a window with a few thousand nodes it
+turns a path lookup from thousands of cross-process calls into tens.
 
 Contributed by `shine-jayakumar`_ in #77.
 
@@ -74,6 +76,26 @@ walks.
 
 ``find_elements_by_xpath`` still walks with the old level-based traversal, so it
 does not benefit from the pruning yet. It is the next piece of this work.
+
+Testing
+~~~~~~~
+
+* **The GUI suite no longer downloads anything.** It used to fetch 27 demo
+  applets from ``docs.oracle.com`` and drive those, which made it depend on a
+  third party staying online and on the exact widget names inside somebody
+  else's demos. The application it drives is now in the repository, in
+  ``tests/java/PyjabTestApp.java``, and the ``test_app`` fixture compiles it on
+  demand with the JDK's ``javac`` (found in ``JAVA_HOME`` or on the ``PATH``).
+* The suite no longer needs Java Web Start, and ``requests`` is no longer a
+  development dependency.
+* ``test_bridge_dll.py`` and ``test_bug_fix.py`` no longer drive the Java Control
+  Panel at a hardcoded ``jdk1.8.0_311`` path, so they do not require a JDK 8
+  install. They drive the same local application as everything else.
+* CI compiles the application with ``-Xlint:all`` and fails on any warning, and
+  checks that the sdist carries the Java sources rather than the compiled
+  classes. A CI runner has no desktop session, so that is the only automated
+  check on the application; running the suite itself still needs a Windows
+  desktop.
 
 .. _shine-jayakumar: https://github.com/shine-jayakumar
 
