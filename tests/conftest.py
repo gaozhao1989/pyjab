@@ -1,12 +1,32 @@
+from __future__ import annotations
+
 import os
+import sys
 from enum import Enum
 from pathlib import Path
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
 import pytest
-import requests
 
-from pyjab.jabdriver import JABDriver
+if TYPE_CHECKING:
+    from pyjab.jabdriver import JABDriver
+
+# The GUI test modules import :mod:`pyjab.jabdriver` at module scope, which pulls
+# in pywin32, and they need a real JDK, real Swing applications and an
+# interactive desktop session.  They are therefore opt-in everywhere:
+#
+#     PYJAB_RUN_GUI_TESTS=1 pytest tests/
+#
+# Without that variable only the platform independent tests get collected.
+GUI_TEST_MODULES = [
+    "test_bridge_dll.py",
+    "test_bug_fix.py",
+    "test_components.py",
+]
+
+collect_ignore: list[str] = []
+if sys.platform != "win32" or os.environ.get("PYJAB_RUN_GUI_TESTS") != "1":
+    collect_ignore += GUI_TEST_MODULES
 
 # Default destination for test files download
 ROOT_DIR = Path(__file__).resolve().parent
@@ -78,8 +98,23 @@ class OracleApp(Enum):
     TABLE_FTF_EDIT = "/".join([UI_SWING_BASE_URL, "TableFTFEditDemoProject/TableFTFEditDemo.jnlp"])
 
 
-@pytest.fixture(scope="module", autouse=True)
-def get_test_jnlp_files():
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "gui: needs Windows, a real JDK and an interactive desktop session. "
+        "Deselect with '-m \"not gui\"'.",
+    )
+
+
+@pytest.fixture(scope="module")
+def test_jnlp_files():
+    """Download the Oracle Swing demo JNLP files used by the GUI tests.
+
+    Deliberately *not* autouse: it needs network access and is only relevant to
+    the GUI test modules, which request this fixture explicitly.
+    """
+    import requests
+
     TEST_FILES_DIR.mkdir(exist_ok=True)
 
     existing_files = os.listdir(TEST_FILES_DIR)
@@ -94,6 +129,8 @@ def get_test_jnlp_files():
 
 @pytest.fixture
 def oracle_app(request) -> JABDriver:
+    from pyjab.jabdriver import JABDriver
+
     app: TestFile = request.param.value
     with JABDriver(file_path=app.file, title=app.window_title) as jab_driver:
         yield jab_driver
@@ -101,6 +138,8 @@ def oracle_app(request) -> JABDriver:
 
 @pytest.fixture
 def java_control_app() -> JABDriver:
+    from pyjab.jabdriver import JABDriver
+
     # Assumes installation of some jdk 1.8 - currently hardcoded
     with JABDriver(file_path=Path(r"C:\Program Files\Java\jdk1.8.0_311\jre\bin\javacpl.exe"),
                    title="Java Control Panel") as jabdriver:

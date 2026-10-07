@@ -1,5 +1,19 @@
 from __future__ import annotations
 
+import sys
+
+# pyjab ships as a pure-python wheel, so pip installs it on Linux and macOS too.
+# There it used to fail later with a bare
+# "ModuleNotFoundError: No module named 'win32process'".  Fail early, before any
+# pywin32 import, with something actionable.
+if sys.platform != "win32":  # pragma: no cover - platform dependent
+    raise ImportError(
+        "pyjab drives the Windows Java Access Bridge and only runs on Windows.\n"
+        "  detected platform: {!r}\n"
+        "The package installs on every platform, but it can only run on "
+        "Windows with a JDK installed.".format(sys.platform)
+    )
+
 import os
 import signal
 from ctypes import byref
@@ -82,7 +96,10 @@ class JABDriver(object):
         os.kill(self.pid, signal.SIGTERM)
 
     def open_application(self):
-        cmd = " ".join(["javaws", str(self.file_path)]) if self.file_path.suffix == "jnlp" else str(self.file_path)
+        # NOTE: Path.suffix includes the leading dot, so this comparison used to
+        # be `== "jnlp"` and never matched -- the javaws branch was dead code and
+        # .jnlp files were executed directly instead of via Java Web Start.
+        cmd = " ".join(["javaws", str(self.file_path)]) if self.file_path.suffix == ".jnlp" else str(self.file_path)
         p = Popen(cmd, shell=True)
         p.wait()
         return p

@@ -1,2 +1,15 @@
 include LICENSE
 include README.rst
+include README_CN.rst
+include CHANGELOG.rst
+include CONTRIBUTING.rst
+include CONTRIBUTORS.txt
+include requirements.txt
+include requirements-dev.txt
+recursive-include tests *.py
+recursive-exclude tests jnlps
+recursive-include docs *.rst *.md
+recursive-exclude docs *.h *.c
+prune build
+prune dist
+global-exclude *.py[cod] __pycache__ *.egg-info .DS_Store

@@ -1,3 +1,13 @@
+# Runtime dependencies for pyjab.
+#
+# These are mirrored in pyproject.toml ([project].dependencies), which is the
+# authoritative source used when building the distribution.  This file exists
+# for convenience (`pip install -r requirements.txt`) and for tooling that reads
+# requirement files.
+#
+# NOTE: `pypiwin32` used to be listed here alongside `pywin32`.  `pypiwin32` is
+# a deprecated shim that pins `pywin32==223`, so having both made dependency
+# resolution fail for every released version.  Do not re-add it.
+
 Pillow>=8.3.2
-pypiwin32>=223
-pywin32>=302
+pywin32>=302; sys_platform == "win32"
