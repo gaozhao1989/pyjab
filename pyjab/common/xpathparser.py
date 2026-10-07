@@ -13,17 +13,51 @@ class XpathParser(object):
 
     @staticmethod
     def split_nodes(xpath: str) -> list:
+        """Split an xpath into its node path.
+
+        Slashes inside a quoted value are part of the value, not separators:
+        ``//panel[@name='a/b']`` is one node, not two. A path that contains no
+        node at all -- ``/`` -- is an error rather than an empty list, because
+        every caller treats an empty result as "no element found" and returns
+        ``None``, which then contradicts their declared return type.
+        """
         if not xpath.startswith("/"):
             raise XpathParserException("xpath should start with '/'")
-        nodes = xpath.split("/")
-        empty_count = nodes.count("")
-        if empty_count not in [1, 2]:
-            raise XpathParserException("incorrect '/' numbers")
-        return [node for node in nodes if node]
+
+        leading_slashes = len(xpath) - len(xpath.lstrip("/"))
+        if leading_slashes not in (1, 2):
+            raise XpathParserException(
+                f"incorrect '/' numbers: xpath '{xpath}' should start with "
+                "'/' or '//'"
+            )
+
+        nodes = []
+        current = []
+        quote = ""
+        for char in xpath:
+            if quote:
+                if char == quote:
+                    quote = ""
+                current.append(char)
+            elif char in "\"'":
+                quote = char
+                current.append(char)
+            elif char == "/":
+                if current:
+                    nodes.append("".join(current))
+                    current = []
+            else:
+                current.append(char)
+        if current:
+            nodes.append("".join(current))
+
+        if not nodes:
+            raise XpathParserException(f"xpath '{xpath}' does not contain a node")
+        return nodes
 
     @staticmethod
     def get_node_role(node: str) -> str:
-        pattern = re.compile("^[a-z ]+|^\*")
+        pattern = re.compile(r"^[a-z ]+|^\*")
         content = pattern.search(node)
         try:
             role = content.group()
@@ -38,7 +72,7 @@ class XpathParser(object):
 
     @staticmethod
     def get_node_attributes(node_conditions: str) -> list:
-        pattern = re.compile("([^\[\]]+)")
+        pattern = re.compile(r"([^\[\]]+)")
         conditions = pattern.findall(node_conditions)
         if len(conditions) == 0:
             return list()
@@ -47,7 +81,7 @@ class XpathParser(object):
                 f"extra node conditions found '{conditions}'"
             )
         condition = conditions[0]
-        pattern = re.compile("(@\w+?=\s*\w*\(?(\"[\s\S]*?\"|'[\s\S]*?')?\)?)")
+        pattern = re.compile(r"(@\w+?=\s*\w*\(?(\"[\s\S]*?\"|'[\s\S]*?')?\)?)")
         contents = pattern.findall(condition)
         if len(contents) < 1:
             raise XpathParserException(

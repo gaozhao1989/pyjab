@@ -44,12 +44,34 @@ Portable suite -- runs on any OS
    $ pytest
 
 A couple of seconds. This covers the parts of pyjab that have no Windows
-dependency: Java Access Bridge DLL discovery, and the message pump
-(``pywin32`` is stubbed out so it can be tested anywhere). The GUI modules are
-not collected unless you opt in.
+dependency. ``pywin32`` is stubbed out by ``tests/_win32stubs.py``, which
+installs a stand-in for each pywin32 module that is missing, so the logic in
+``jabelement``, ``jabdriver`` and ``win32utils`` can be exercised anywhere. The
+GUI modules are not collected unless you opt in.
 
 This is what CI runs on Linux, macOS and Windows, and it is what you should run
 before opening a pull request.
+
+.. list-table::
+   :header-rows: 1
+
+   * - Module
+     - What it covers
+   * - ``tests/test_bridge_dll_discovery.py``
+     - Locating ``WindowsAccessBridge-{32,64}.dll`` across the JDK 8 and JDK 11+
+       layouts, bitness selection and the diagnostics when nothing is found.
+   * - ``tests/test_message_pump.py``
+     - The message pump: that it runs, that it runs on every lookup, and that the
+       removed generator implementation does not come back.
+   * - ``tests/test_xpath_parser.py``
+     - The XPath subset: role and attribute parsing, and how a path is split.
+   * - ``tests/test_element_logic.py``
+     - Element logic that needs no live application: XPath traversal levels,
+       states matching, the wait helpers, empty text, and visible children.
+   * - ``tests/test_win32_helpers.py``
+     - The virtual key table and window geometry.
+   * - ``tests/test_jabdriver_launch.py``
+     - Process teardown and how the launch command line is built.
 
 GUI suite -- Windows only
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -94,7 +116,7 @@ Individual modules, and what each one covers:
 1.3.0 pump behaviour yourself.
 
 Verifying the pump on a specific machine
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 If you do not want to run pytest at all, there is a standalone script that
 reproduces `issue #56`_'s scenario using the Java Control Panel, and prints

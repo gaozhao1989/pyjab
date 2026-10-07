@@ -7,7 +7,74 @@ This project adheres to `Semantic Versioning`_ and `Keep a Changelog`_.
 .. _Semantic Versioning: https://semver.org/
 .. _Keep a Changelog: https://keepachangelog.com/
 
-1.3.0 (unreleased)
+1.3.1 (unreleased)
+------------------
+
+Fixes twelve defects found by reading the source.  None of them had been
+reported, and most are silent: they produce a wrong answer rather than an error.
+
+Two are worth singling out.  An empty text field could not be read at all --
+``text`` raised ``RuntimeError`` instead of returning ``""``, which also meant
+``clear()``, whose whole job is to wait for that empty state, could never
+succeed.  And the two wait helpers never re-read the value they were waiting on:
+they compared a value the caller had already evaluated, so the result could not
+change and the loop span until it timed out.
+
+Fixed
+~~~~~
+
+* **``find_element_by_xpath`` mis-resolved repeated node names.**  The level of
+  each node was decided with ``nodes.index(node)``, which returns 0 for every
+  occurrence of a repeated name -- so ``//panel/panel`` looked up the second
+  ``panel`` as a root-level node and degraded into a whole-tree search.  Now
+  uses the node's position.
+* **A ``/`` inside a quoted XPath value split the path.**  The path was split on
+  every ``/`` before it was parsed, so ``//panel[@name='a/b']`` became two nodes
+  and could never match.  Splitting is now quote-aware.
+* **``find_element_by_xpath("/")`` returned ``None``.**  An empty node path
+  produced silently no lookup, contradicting the declared return type.  It now
+  raises ``XpathParserException``.
+* **``find_element_by_states()`` could not match a string locator.**
+  ``set("enabled")`` is a set of characters, so the documented ``str`` form
+  never matched anything.  Comma-separated strings are now accepted.
+* **The wait helpers did not wait.**  ``_wait_for_value_to_be`` and
+  ``_wait_for_value_to_contain`` operated on an already-evaluated value, so they
+  could never observe a change, never slept, and spun the CPU until they timed
+  out.  They now take a callable and re-read it each poll.
+* **Reading an empty text field raised.**  With ``charCount`` of 0 the end
+  offset became -1, which Java Access Bridge rejects.  ``text`` now returns
+  ``""``; an element without the Accessible Text interface still returns
+  ``None``.
+* **``_set_window_position`` computed a negative size.**  The width and height
+  were derived from the *requested* position (``left - right``), which is
+  negative for any real window, so ``MoveWindow`` was asked to make the window a
+  negative number of pixels wide.  It now measures the existing edges.
+* **Typing a ``+`` raised ``KeyError``.**  ``_send_keys`` expands ``+`` into
+  ``("left_shift", "=")``, but ``=`` was missing from the virtual key table.
+* **The right shift key was unreachable.**  The table held ``"right_shift "``
+  with a trailing space, so it could never be looked up.
+* **``doAccessibleActions`` discarded its failure index.**  A bare ``jint()``
+  instance was passed where ``jint *failure`` is declared.  ctypes accepts that
+  and writes through the instance's own address, so the value was thrown away.
+  It is now passed with ``byref()`` and logged.
+* **Visible children were indexed with the wrong count.**  The number came from
+  ``getVisibleChildrenCount`` while the array came from ``getVisibleChildren``;
+  the two calls disagreeing read past the real contents.  Both now come from the
+  same call.
+* **``JABDriver.__exit__`` raised ``TypeError`` when nothing was bound.**  If
+  ``init_jab`` failed before resolving the window -- the usual case, since it is
+  what happens when the window never appears -- ``os.kill(None, ...)`` replaced
+  the real exception with a misleading one.
+* **``open_application`` could not launch a path containing spaces.**  The path
+  was joined into a shell string and run with ``shell=True``, so cmd.exe split
+  it; ``C:\Program Files\...\javacpl.exe`` was never started.  It now passes an
+  argv list.
+
+Also replaced seven non-raw string literals passed to ``re.compile``.  They
+emitted ``SyntaxWarning`` on Python 3.12+ and would become errors in future;
+the compiled patterns are unchanged.
+
+1.3.0 (2026-10-07)
 ------------------
 
 Rewrites the Windows message pump.

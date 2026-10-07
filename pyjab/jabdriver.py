@@ -94,6 +94,12 @@ class JABDriver(object):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        # self.pid stays None if init_jab() raised before it resolved the window
+        # handle -- for instance when the window never appeared, which is the
+        # most common failure. os.kill(None, ...) then raised TypeError and
+        # replaced the real exception with a misleading one.
+        if self.pid is None:
+            return
         os.kill(self.pid, signal.SIGTERM)
 
     def open_application(self):
@@ -113,8 +119,15 @@ class JABDriver(object):
         # NOTE: Path.suffix includes the leading dot, so this comparison used to
         # be `== "jnlp"` and never matched -- the javaws branch was dead code and
         # .jnlp files were executed directly instead of via Java Web Start.
-        cmd = " ".join(["javaws", str(self.file_path)]) if self.file_path.suffix == ".jnlp" else str(self.file_path)
-        return Popen(cmd, shell=True)
+        #
+        # An argv list, not a shell string: `" ".join(...)` with shell=True sent
+        # the path through cmd.exe, which splits on spaces, so a path such as
+        # "C:\Program Files\Java\...\javacpl.exe" was not launched at all. A list
+        # also means an '&' or '^' in a filename is just a character.
+        argv = (["javaws", str(self.file_path)]
+                if self.file_path.suffix == ".jnlp"
+                else [str(self.file_path)])
+        return Popen(argv)
 
     @property
     def title(self) -> str:

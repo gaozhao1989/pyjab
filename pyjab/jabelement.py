@@ -12,9 +12,10 @@ if sys.platform != "win32":  # pragma: no cover - platform dependent
         "Windows with a JDK installed.".format(sys.platform)
     )
 
-from time import time
+from time import monotonic, sleep
 
 from pyjab.common.logger import Logger
+from pyjab.config import ELEMENT_POLL_INTERVAL
 from pyjab.common.role import Role
 from pyjab.common.states import States
 from pyjab.common.textreader import TextReader
@@ -108,11 +109,11 @@ class JABElement(object):
         return self._acc_info().role_en_US
 
     @property
-    def states(self) -> str:
+    def states(self) -> list[str]:
         return self._acc_info().states.split(",")
 
     @property
-    def states_en_us(self) -> str:
+    def states_en_us(self) -> list[str]:
         return self._acc_info().states_en_US.split(",")
 
     @property
@@ -158,9 +159,18 @@ class JABElement(object):
         return False
 
     @property
-    def text(self) -> str:
+    def text(self) -> Optional[str]:
+        """The element's text, or None when it has no Accessible Text interface.
+
+        An element that *does* support it but holds no characters returns "".
+        It used to raise: charCount of 0 made chars_end -1, and JAB rejects a
+        range of (0, -1). That turned "the field is empty now" -- exactly what
+        ``clear()`` waits for -- into a RuntimeError.
+        """
         if self.accessible_text:
             txt_info = self._get_accessible_text_info()
+            if txt_info.charCount == 0:
+                return ""
             chars_start = 0
             chars_end = txt_info.charCount - 1
             chars_len = chars_end + 1 - chars_start
@@ -173,7 +183,7 @@ class JABElement(object):
             self.logger.warning("current JABElement does not support Accessible Text")
 
     @property
-    def table(self) -> dict:
+    def table(self) -> Optional[dict]:
         if self.role_en_us == Role.TABLE:
             info = self._get_accessible_table_info()
             tb = {
@@ -247,11 +257,12 @@ class JABElement(object):
         )
 
         if visible:
-            children_count = self._get_visible_children_count(
-                jabelement.accessible_context
-            )
+            # returnedChildrenCount describes the array we are about to index.
+            # This used to call _get_visible_children_count() first and use *its*
+            # answer to index this array, so two separate JAB calls had to agree
+            # or the loop ran off the end into an IndexError.
             info = self._get_visible_children(jabelement.accessible_context)
-            for index in range(children_count):
+            for index in range(info.returnedChildrenCount):
                 yield JABElement(
                     jabelement.bridge,
                     jabelement.hwnd,
@@ -621,8 +632,22 @@ class JABElement(object):
         if acc_acts_count == 1:
             act_todo.actions[0].name = acc_acts_info[0].name
         act_todo.actionsCount = 1
+        # 'failure' receives the index of an action that failed. A bare jint()
+        # instance used to be passed here: ctypes accepts that (it passes the
+        # instance's own address), so nothing raised -- but the value was written
+        # into a temporary and thrown away. Passing it properly costs nothing and
+        # makes it observable.
+        #
+        # doAccessibleActions is registered with errorcheck=True, so a refused
+        # call already raises RuntimeError; this is diagnostic only.
+        failure = jint()
         self.bridge.doAccessibleActions(
-            self.vmid, self.accessible_context, byref(act_todo), jint()
+            self.vmid, self.accessible_context, byref(act_todo), byref(failure)
+        )
+        self.logger.debug(
+            "doAccessibleActions action '%s' reported failure index %s",
+            action,
+            failure.value,
         )
 
     def click(self, simulate: bool = False) -> None:
@@ -684,7 +709,9 @@ class JABElement(object):
             self.send_text(value="", simulate=False)
         if not wait_for_text_update or self.role != Role.TEXT:
             return
-        self._wait_for_value_to_be(None, self.text, error_msg_function="clear text")
+        self._wait_for_value_to_be(
+            None, lambda: self.text, error_msg_function="clear text"
+        )
 
     def scroll(self, to_bottom: bool = True, hold: int = 2) -> None:
         """Scroll a scoll bar to top or to bottom.
@@ -770,8 +797,10 @@ class JABElement(object):
             "menu": self._select_from_menu,
         }[self.role_en_us](option=option, simulate=simulate)
         if wait_for_selection:
-            self._wait_for_value_to_contain([States.SELECTED, States.CHECKED],
-                                            self.find_element_by_name(option).states_en_us)
+            self._wait_for_value_to_contain(
+                [States.SELECTED, States.CHECKED],
+                lambda: self.find_element_by_name(option).states_en_us,
+            )
 
     def get_selected_element(self) -> JABElement:
         """Get selected JABElement from selection.
@@ -934,7 +963,11 @@ class JABElement(object):
                 )
         if not wait_for_text_update or self.role != Role.TEXT:
             return
-        self._wait_for_value_to_be(value, self.text, error_msg_function=f"update text attribute to '{value}'")
+        self._wait_for_value_to_be(
+            value,
+            lambda: self.text,
+            error_msg_function=f"update text attribute to '{value}'",
+        )
 
     def is_checked(self) -> bool:
         """Returns whether the JABElement is checked.
@@ -1075,7 +1108,7 @@ class JABElement(object):
         """
         if attr_val[0] in ["'", '"'] and attr_val[-1] in ["'", '"']:
             attr_val = attr_val[1:-1]
-        pattern = re.compile("^contains\([\"'](.*?)[\"']\)")
+        pattern = re.compile(r"^contains\([\"'](.*?)[\"']\)")
         if content := pattern.findall(attr_val):
             return content[0] in jabelement.name
         else:
@@ -1094,7 +1127,7 @@ class JABElement(object):
         """
         if attr_val[0] in ["'", '"'] and attr_val[-1] in ["'", '"']:
             attr_val = attr_val[1:-1]
-        pattern = re.compile("^contains\([\"'](.*?)[\"']\)")
+        pattern = re.compile(r"^contains\([\"'](.*?)[\"']\)")
         if content := pattern.findall(attr_val):
             return content[0] in jabelement.description
         else:
@@ -1113,7 +1146,7 @@ class JABElement(object):
         """
         if attr_val[0] in ["'", '"'] and attr_val[-1] in ["'", '"']:
             attr_val = attr_val[1:-1]
-        pattern = re.compile("^contains\([\"'](.*?)[\"']\)")
+        pattern = re.compile(r"^contains\([\"'](.*?)[\"']\)")
         if content := pattern.findall(attr_val):
             return content[0] in jabelement.role
         else:
@@ -1132,7 +1165,7 @@ class JABElement(object):
         """
         if attr_val[0] in ["'", '"'] and attr_val[-1] in ["'", '"']:
             attr_val = attr_val[1:-1]
-        pattern = re.compile("^contains\([\"'](.*?)[\"']\)")
+        pattern = re.compile(r"^contains\([\"'](.*?)[\"']\)")
         if content := pattern.findall(attr_val):
             return all(stat in jabelement.states_en_us for stat in content[0].split(","))
         else:
@@ -1301,8 +1334,12 @@ class JABElement(object):
         self.win32_utils.pump_messages()
         nodes = self.xpath_parser.split_nodes(value)
         jabelement = None
-        for node in nodes:
-            level = "root" if nodes.index(node) == 0 else "child"
+        for index, node in enumerate(nodes):
+            # index, not nodes.index(node): with a repeated node name such as
+            # '//panel/panel' the latter always returns 0, so the second node was
+            # looked up as a root-level node and the path silently degraded into
+            # a whole-tree search. find_elements_by_xpath already used enumerate.
+            level = "root" if index == 0 else "child"
             jabelement = self._get_element_by_node(
                 node=node, level=level, jabelement=jabelement, visible=visible
             )
@@ -1600,6 +1637,20 @@ class JABElement(object):
         return jabelements
 
     @staticmethod
+    def _states_as_set(value) -> set:
+        """Normalise a states locator to a set of state names.
+
+        ``find_element_by_states`` documents that it accepts a ``str`` as well as
+        a list, but ``set("enabled")`` is a set of *characters*, so a string
+        could never match anything. A comma-separated string is the natural
+        spelling -- it is what ``states`` and ``states_en_us`` hold before they
+        are split.
+        """
+        if isinstance(value, str):
+            value = [state.strip() for state in value.split(",") if state.strip()]
+        return set(value)
+
+    @staticmethod
     def _is_element_matched(jabelement: JABElement, by: str, value: Optional[str]):
         return any(
             [
@@ -1607,7 +1658,8 @@ class JABElement(object):
                 by == By.NAME and jabelement.name == value,
                 by == By.ROLE and jabelement.role == value,
                 by == By.DESCRIPTION and jabelement.description == value,
-                by == By.STATES and set(jabelement.states_en_us) == set(value),
+                by == By.STATES
+                and set(jabelement.states_en_us) == JABElement._states_as_set(value),
                 by == By.OBJECT_DEPTH
                 and jabelement.object_depth == int(value),
                 by == By.CHILDREN_COUNT
@@ -1734,39 +1786,52 @@ class JABElement(object):
         return info
 
     @staticmethod
-    def _wait_for_value_to_be(expected_value: Optional[str], actual_value, timeout: int = 5,
-                              error_msg_function: str = None):
-        start = time()
+    def _poll(actual_value):
+        """Read a polled value: call it if it is a callable, otherwise use it.
+
+        The wait helpers take a *callable* so that each iteration re-reads the
+        property under test. They previously took an already-evaluated value,
+        which meant the comparison result could never change -- the loop was a
+        CPU spin until it timed out, and could not have succeeded.
+        """
+        return actual_value() if callable(actual_value) else actual_value
+
+    @staticmethod
+    def _wait_for_value_to_be(expected_value, actual_value, timeout: int = 5,
+                              error_msg_function: str = None,
+                              poll_interval: float = ELEMENT_POLL_INTERVAL):
+        start = monotonic()
         while True:
+            current_value = JABElement._poll(actual_value)
             if (
                     expected_value
-                    and actual_value == expected_value
+                    and current_value == expected_value
                     or not expected_value
-                    and not actual_value
+                    and not current_value
             ):
                 return
-            current = time()
-            elapsed = round(current - start)
-            if elapsed >= timeout:
+            if monotonic() - start >= timeout:
                 if error_msg_function:
                     _error_msg = f"Failed to {error_msg_function} in '{timeout}' seconds"
                 else:
                     _error_msg = f"Failed to wait for expected value '{expected_value}' in '{timeout}' seconds"
                 raise TimeoutError(_error_msg)
+            sleep(poll_interval)
 
     @staticmethod
     def _wait_for_value_to_contain(expected_values: Union[str, list[str]], actual_values, timeout: int = 5,
-                                   error_msg_function: str = None):
-        start = time()
+                                   error_msg_function: str = None,
+                                   poll_interval: float = ELEMENT_POLL_INTERVAL):
+        start = monotonic()
         while True:
-            if any(v in expected_values for v in actual_values):
+            current_values = JABElement._poll(actual_values) or []
+            if any(v in expected_values for v in current_values):
                 return
-            current = time()
-            elapsed = round(current - start)
-            if elapsed >= timeout:
+            if monotonic() - start >= timeout:
                 if error_msg_function:
                     _error_msg = f"Failed to {error_msg_function} in '{timeout}' seconds"
                 else:
                     _expected_values = ", ".join(expected_values)
                     _error_msg = f"Failed to wait for expected values '{_expected_values}' in '{timeout}' seconds"
                 raise TimeoutError(_error_msg)
+            sleep(poll_interval)

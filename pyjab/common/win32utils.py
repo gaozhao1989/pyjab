@@ -121,7 +121,9 @@ class Win32Utils(object):
         "num_lock": 0x90,
         "scroll_lock": 0x91,
         "left_shift": 0xA0,
-        "right_shift ": 0xA1,
+        # Was "right_shift " with a trailing space, so looking up the key by its
+        # actual name raised KeyError.
+        "right_shift": 0xA1,
         "left_control": 0xA2,
         "right_control": 0xA3,
         "left_menu": 0xA4,
@@ -150,6 +152,11 @@ class Win32Utils(object):
         "play_key": 0xFA,
         "zoom_key": 0xFB,
         "clear_key": 0xFE,
+        # VK_OEM_PLUS is the '='/ '+' key: '=' is the unshifted character, '+'
+        # is shift plus it. Only '+' was in this table, so _send_keys()'s own
+        # entry for '+' -- which expands to ('left_shift', '=') -- raised
+        # KeyError, and typing a plus sign failed.
+        "=": 0xBB,
         "+": 0xBB,
         ",": 0xBC,
         "-": 0xBD,
@@ -273,8 +280,16 @@ class Win32Utils(object):
 
     @staticmethod
     def _set_window_position(hwnd: HWND, left: int, top: int) -> None:
-        _, _, right, bottom = win32gui.GetWindowRect(hwnd)
-        win32gui.MoveWindow(hwnd, left, top, left - right, top - bottom, True)
+        """Move the window to (left, top), keeping its current size."""
+        # The current position has to be kept, not discarded: the size is the
+        # distance between the *existing* edges. This previously computed
+        # left - right and top - bottom from the requested position, which is
+        # negative for any real window, so MoveWindow was asked for a negative
+        # width and height.
+        current_left, current_top, right, bottom = win32gui.GetWindowRect(hwnd)
+        win32gui.MoveWindow(
+            hwnd, left, top, right - current_left, bottom - current_top, True
+        )
 
     @staticmethod
     def _get_window_position(hwnd: HWND) -> tuple:
