@@ -38,5 +38,5 @@ Installing the test tooling:
 > pip install -e ".[dev]"
 ```
 
-That adds `pytest` and `requests`. `requests` is only used to download the Oracle
-Swing demo applications that the GUI test suite drives.
+That adds `pytest`. The GUI test suite drives a small Swing application that lives
+in `tests/java` and is compiled on demand, so nothing is downloaded to run it.

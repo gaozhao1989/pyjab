@@ -3,16 +3,19 @@ pyjab
 
 Python implementation for Java application UI automation with `Java Access Bridge`_.
 
-``pyjab`` is a Selenium-like library for driving **Java desktop applications**
-(Swing / AWT / JavaFX) on Windows.  It talks to the `Java Access Bridge`_ API to
-read the accessibility tree of a running Java application, so you can find
-elements, read their text, fill forms, click buttons and read tables -- without
-the target application exposing any API of its own.
+``pyjab`` drives **Java desktop applications** (Swing / AWT / JavaFX) on Windows.
+It talks to the `Java Access Bridge`_ API to read the accessibility tree of a
+running Java application, so you can find elements, read their text, fill forms,
+click buttons and read tables -- without the target application exposing any API
+of its own.
+
+The locator and element API is deliberately shaped like the web-automation API
+most people already know, so that there is nothing new to learn.
 
 * **Platform:** Windows only.
 * **Requires:** a JDK (or a standalone Java Access Bridge) and Java Access Bridge
   enabled in the target application.
-* **Locators:** Selenium-style ``find_element_by_*`` plus an XPath-like syntax.
+* **Locators:** familiar ``find_element_by_*`` locators plus an XPath-like syntax.
 * **License:** GPLv2 -- see `License and commercial use`_ below.
 
 .. contents::
@@ -33,6 +36,9 @@ This means:
 * it is *not* screen scraping or image matching -- it reads real accessibility
   metadata (roles, states, text, tables, selections);
 * it only sees what the application exposes through Java Access Bridge.
+
+pyjab does not bundle or redistribute any part of the JDK. It loads the Java
+Access Bridge DLL from the JDK you already have installed, and nothing else.
 
 Installation
 ------------
@@ -312,6 +318,10 @@ Support
 License and commercial use
 --------------------------
 
+Oracle, Java and Java Access Bridge are trademarks or registered trademarks of
+Oracle Corporation. pyjab is an independent project and is not affiliated with,
+endorsed by, or sponsored by Oracle.
+
 pyjab is licensed under `GPLv2`_.
 
 This is worth understanding before you depend on it: **GPLv2 is a copyleft
@@ -334,7 +344,7 @@ reproduction are the most valuable contribution.
 
 
 .. External references:
-.. _Java Access Bridge: https://docs.oracle.com/javase/accessbridge/2.0.2/toc.htm
+.. _Java Access Bridge: https://docs.oracle.com/en/java/javase/21/access/toc.htm
 .. _NVDA: https://github.com/nvaccess/nvda
 .. _PyPI: https://pypi.org/project/pyjab/
 .. _GitHub: https://github.com/gaozhao1989/pyjab

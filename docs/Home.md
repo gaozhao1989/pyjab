@@ -1,10 +1,11 @@
 # pyjab
 
 Python implementation for Java application UI automation with
-[Java Access Bridge](https://docs.oracle.com/javase/accessbridge/2.0.2/toc.htm).
+[Java Access Bridge](https://docs.oracle.com/en/java/javase/21/access/toc.htm).
 
 pyjab drives **Java desktop applications** (Swing / AWT / JavaFX) on Windows with
-a Selenium-like API. It reads the application's accessibility tree through Java
+an API shaped like the web-automation one you already know. It reads the
+application's accessibility tree through Java
 Access Bridge, so it can find controls, read their text, fill forms, click
 buttons and read tables **without the target application exposing any API of its
 own**.

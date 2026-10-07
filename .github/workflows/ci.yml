@@ -183,6 +183,33 @@ jobs:
           python tools/verify_test_app.py
 
   # ---------------------------------------------------------------------------
+  # Every runtime dependency has to stay permissively licensed. pyjab is GPLv2
+  # only because that is what it inherited, and it is on its way to a permissive
+  # licence -- a copyleft dependency added in the meantime would either block
+  # that or impose its terms on everyone who installs pyjab.
+  # ---------------------------------------------------------------------------
+  licences:
+    name: Dependency licences
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Installed rather than read from pyproject.toml: what matters is the
+      # licence of the distribution that would actually be installed, and that
+      # is what the metadata carries.
+      - name: Install pyjab and pip-licenses
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install . pip-licenses
+
+      - name: Check that every dependency is permissively licensed
+        run: python tools/check_dependency_licences.py
+
+  # ---------------------------------------------------------------------------
   # Build the distributions and validate the metadata, so a broken release is
   # caught on the PR rather than at tag time.
   # ---------------------------------------------------------------------------

@@ -3,6 +3,39 @@ Contributing
 
 Bug reports, documentation fixes and pull requests are all welcome.
 
+Licence of your contribution
+----------------------------
+
+pyjab is under GPLv2 today, and the maintainer intends to move it to a permissive
+licence once every part of it can be. That only works if contributions can travel
+with it, so a patch is accepted under two conditions.
+
+**1. Sign off your commits.** Use ``git commit -s``, which appends a line to the
+commit message:
+
+.. code-block:: text
+
+   Signed-off-by: Your Name <you@example.com>
+
+That is the `Developer Certificate of Origin`_. Signing it says you wrote the
+patch, or otherwise have the right to submit it, and that it may be distributed
+under the project's licence. It states provenance only -- **you keep your
+copyright.**
+
+**2. Grant a relicensing right.** By signing off you also agree that the
+maintainer may distribute your contribution under any OSI-approved licence,
+including one other than the licence in force when you sent it.
+
+The second condition is what keeps the first from being a trap. Without it, every
+future licence change would need separate permission from every past contributor,
+which is how a project ends up permanently stuck on whatever licence it happened
+to start with -- which is roughly where pyjab is now.
+
+If your employer owns your work, check that you have their permission before
+signing off. There is no CLA to sign and nothing to email.
+
+.. _Developer Certificate of Origin: https://developercertificate.org/
+
 Reporting a bug
 ---------------
 

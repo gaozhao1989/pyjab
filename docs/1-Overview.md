@@ -5,7 +5,7 @@ _Is pyjab the right tool for your problem?_
 ## What pyjab does
 
 pyjab automates **Java desktop applications on Windows** — Swing, AWT and
-JavaFX — through [Java Access Bridge](https://docs.oracle.com/javase/accessbridge/2.0.2/toc.htm),
+JavaFX — through [Java Access Bridge](https://docs.oracle.com/en/java/javase/21/access/toc.htm),
 the accessibility API the JDK exposes on Windows.
 
 Java Access Bridge is the same interface screen readers such as
@@ -58,7 +58,7 @@ how the application starts.
 * need to automate a Java desktop client that has no API — a back-office tool,
   an internal Swing application, a legacy fat client;
 * cannot change how that application is launched;
-* want a Selenium-like API you already know.
+* want an API shaped like the web-automation one you already know.
 
 **Probably not if you:**
 

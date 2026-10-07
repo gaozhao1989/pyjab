@@ -17,6 +17,13 @@ Python 3.12.4
 pyjab needs the Java Access Bridge DLL, which ships with the JDK (or a
 standalone JAB package). Any JDK works; CI tests against 8, 11, 17 and 21.
 
+> **Java Access Bridge licensing.** The one bundled with JDK 9 and later is
+> part of OpenJDK and is GPLv2 with the Classpath Exception, so using it from
+> another program is not a problem. The standalone **Java Access Bridge 2.0.2**
+> download, and the copy inside **JDK 8**, come under Oracle's own terms -- check
+> them yourself if that is the one you are relying on. pyjab does not bundle or
+> redistribute any part of either.
+
 Install one and make sure `JAVA_HOME` points at it:
 
 ```console

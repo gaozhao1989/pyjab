@@ -1,6 +1,5 @@
 include LICENSE
 include README.rst
-include README_CN.rst
 include CHANGELOG.rst
 include CONTRIBUTING.rst
 include CONTRIBUTORS.txt
