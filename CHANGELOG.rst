@@ -7,7 +7,7 @@ This project adheres to `Semantic Versioning`_ and `Keep a Changelog`_.
 .. _Semantic Versioning: https://semver.org/
 .. _Keep a Changelog: https://keepachangelog.com/
 
-1.3.1 (unreleased)
+1.3.1 (2026-10-07)
 ------------------
 
 Fixes twelve defects found by reading the source.  None of them had been
