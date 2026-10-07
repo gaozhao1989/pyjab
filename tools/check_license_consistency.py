@@ -23,8 +23,21 @@ from __future__ import annotations
 
 import re
 import sys
-import tomllib
 from pathlib import Path
+
+try:
+    import tomllib  # Python 3.11 and later
+except ModuleNotFoundError:  # pragma: no cover - depends on the interpreter
+    try:
+        # pyjab supports Python 3.9, which predates tomllib.  tomli is the same
+        # library under the name it had before it entered the standard library,
+        # and is in the dev extra for exactly this reason.
+        import tomli as tomllib
+    except ModuleNotFoundError:
+        sys.exit(
+            "reading pyproject.toml needs tomllib (Python 3.11+) or tomli.\n"
+            "  Install it with: pip install tomli"
+        )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 

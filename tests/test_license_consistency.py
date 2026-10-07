@@ -8,6 +8,7 @@ than none -- it would pass a mismatched pair, or fail a matching one.
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 import sys
 from pathlib import Path
 
@@ -154,3 +155,36 @@ def test_this_repository_is_self_consistent(capsys):
     """
     assert checker.main() == 0
     assert "PASSED" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------
+# Reading pyproject.toml on an interpreter that predates tomllib
+# ---------------------------------------------------------------------------
+
+def test_the_tomli_fallback_is_used_when_tomllib_is_absent():
+    """The bug that turned four CI jobs red, on Python 3.9 and 3.10 only.
+
+    ``tomllib`` entered the standard library in 3.11 and pyjab supports 3.9, so
+    the tool has to fall back to ``tomli`` -- the same library under the name it
+    had before.  Setting ``sys.modules['tomllib'] = None`` is what makes an
+    import of it fail, so this exercises the fallback without needing an old
+    interpreter.
+    """
+    pytest.importorskip("tomli", reason="the fallback's dependency is not installed")
+
+    program = (
+        "import sys\n"
+        "sys.modules['tomllib'] = None\n"
+        "sys.path.insert(0, 'tools')\n"
+        "import check_license_consistency as checker\n"
+        "print(checker.tomllib.__name__)\n"
+        "raise SystemExit(checker.main())\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", program],
+        cwd=REPO_ROOT, capture_output=True, text=True,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.splitlines()[0] == "tomli"
+    assert "PASSED" in result.stdout
