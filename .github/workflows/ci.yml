@@ -78,6 +78,16 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}
 
+      - name: The DLL must actually load
+        shell: pwsh
+        run: |
+          # Finding the path is not the same as loading it. This exercises
+          # ctypes.CDLL on the discovered file, which also proves that any
+          # dependent DLLs resolve from that directory.
+          python -c "from pyjab.common.service import Service; lib = Service().load_library(); print('loaded:', lib)"
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+
       - name: Run discovery tests
         run: |
           python -m pip install pytest
