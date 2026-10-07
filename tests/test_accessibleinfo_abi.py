@@ -1,55 +1,77 @@
-"""The JAB structures must keep the byte layout the DLL writes.
+"""The JAB structures must keep the byte layout the bridge DLL writes.
 
 Every field in ``pyjab/accessibleinfo.py`` is a position in a buffer that the
-bridge DLL fills in.  Get one wrong and the call writes past the end of the
-allocation, or pyjab reads one field's bytes as another's -- neither of which
+Windows bridge DLL fills in. Get one wrong and the call writes past the end of
+the allocation, or pyjab reads one field's bytes as another's -- neither of which
 raises anything.
 
-The numbers below are therefore frozen, not derived: they were captured from the
-structures as they stood before the file was rewritten for provenance reasons, so
-that the rewrite could be shown to have changed only comments and formatting.
-Sizes are the important part; the per-field offsets are what make a size
-mismatch diagnosable.
+The layout that matters is the **Windows** one, and two ctypes types are a
+different width there than on the POSIX platforms ctypes emulates: ``WCHAR`` is
+two bytes on Windows and four elsewhere, ``BOOL`` is a four-byte ``long`` rather
+than an eight-byte one.  Asserting sizes measured on macOS would therefore assert
+numbers that never apply where the DLL runs, which is how the first version of
+this test failed on Windows -- 31 assertions, all correct about the wrong
+platform.
+
+So the expected layout below is the Windows one, and the structure under test is
+translated into it before being measured (:func:`windows_layout`).  That
+translation is not taken on trust: it reproduces the sizes Windows reported for
+this file in CI, all ten that differ from the POSIX ones, exactly.
+
+The declared layout is checked too, and on every platform.  A field renamed,
+reordered, narrowed or shortened changes the declaration, and that check catches
+it wherever it runs.
 """
 
 from __future__ import annotations
 
 import ctypes
+from ctypes.wintypes import BOOL
+from ctypes.wintypes import WCHAR
 
 import pytest
 
 from pyjab import accessibleinfo
 
 
-#: name -> (size in bytes, alignment, ((field, offset), ...))
+#: The two types whose width differs between Windows and the POSIX platforms
+#: ctypes emulates.  ``WCHAR`` is ``c_wchar`` -- two bytes on Windows, four
+#: elsewhere; ``BOOL`` is ``c_long`` -- four bytes on Windows, eight elsewhere.
+WINDOWS_WIDTHS = {
+    WCHAR: ctypes.c_uint16,
+    BOOL: ctypes.c_int32,
+}
+
+#: name -> (size, alignment, ((field, declared type, offset), ...)) as Windows
+#: lays it out.
 EXPECTED_LAYOUT = {
-    "AccessBridgeVersionInfo": (4096, 4, (
+    "AccessBridgeVersionInfo": (2048, 2, (
         ("VMVersion", "c_wchar[256]", 0), ("bridgeJavaClassVersion",
-        "c_wchar[256]", 1024), ("bridgeJavaDLLVersion", "c_wchar[256]",
-        2048), ("bridgeWinDLLVersion", "c_wchar[256]", 3072)
+        "c_wchar[256]", 512), ("bridgeJavaDLLVersion", "c_wchar[256]",
+        1024), ("bridgeWinDLLVersion", "c_wchar[256]", 1536)
     )),
-    "AccessibleActionInfo": (1024, 4, (
+    "AccessibleActionInfo": (512, 2, (
         ("name", "c_wchar[256]", 0),
     )),
-    "AccessibleActions": (262148, 4, (
+    "AccessibleActions": (131076, 4, (
         ("actionsCount", "c_int", 0), ("actionInfo",
         "AccessibleActionInfo[256]", 4)
     )),
-    "AccessibleActionsToDo": (32772, 4, (
+    "AccessibleActionsToDo": (16388, 4, (
         ("actionsCount", "c_int", 0), ("actions",
         "AccessibleActionInfo[32]", 4)
     )),
-    "AccessibleContextInfo": (12352, 8, (
+    "AccessibleContextInfo": (6188, 4, (
         ("name", "c_wchar[1024]", 0), ("description", "c_wchar[1024]",
-        4096), ("role", "c_wchar[256]", 8192), ("role_en_US",
-        "c_wchar[256]", 9216), ("states", "c_wchar[256]", 10240),
-        ("states_en_US", "c_wchar[256]", 11264), ("indexInParent",
-        "c_int", 12288), ("childrenCount", "c_int", 12292), ("x",
-        "c_int", 12296), ("y", "c_int", 12300), ("width", "c_int",
-        12304), ("height", "c_int", 12308), ("accessibleComponent",
-        "c_long", 12312), ("accessibleAction", "c_long", 12320),
-        ("accessibleSelection", "c_long", 12328), ("accessibleText",
-        "c_long", 12336), ("accessibleValue", "c_long", 12344)
+        2048), ("role", "c_wchar[256]", 4096), ("role_en_US",
+        "c_wchar[256]", 4608), ("states", "c_wchar[256]", 5120),
+        ("states_en_US", "c_wchar[256]", 5632), ("indexInParent",
+        "c_int", 6144), ("childrenCount", "c_int", 6148), ("x",
+        "c_int", 6152), ("y", "c_int", 6156), ("width", "c_int",
+        6160), ("height", "c_int", 6164), ("accessibleComponent",
+        "c_long", 6168), ("accessibleAction", "c_long", 6172),
+        ("accessibleSelection", "c_long", 6176), ("accessibleText",
+        "c_long", 6180), ("accessibleValue", "c_long", 6184)
     )),
     "AccessibleKeyBindingInfo": (8, 4, (
         ("character", "c_wchar", 0), ("modifiers", "c_int", 4)
@@ -58,11 +80,11 @@ EXPECTED_LAYOUT = {
         ("keyBindingsCount", "c_int", 0), ("keyBindingInfo",
         "AccessibleKeyBindingInfo[50]", 4)
     )),
-    "AccessibleRelationInfo": (1232, 8, (
-        ("key", "c_wchar[256]", 0), ("targetCount", "c_int", 1024),
-        ("targets", "JOBJECT64[25]", 1032)
+    "AccessibleRelationInfo": (720, 8, (
+        ("key", "c_wchar[256]", 0), ("targetCount", "c_int", 512),
+        ("targets", "JOBJECT64[25]", 520)
     )),
-    "AccessibleRelationSetInfo": (6168, 8, (
+    "AccessibleRelationSetInfo": (3608, 8, (
         ("relationCount", "c_int", 0), ("relations",
         "AccessibleRelationInfo[5]", 8)
     )),
@@ -78,32 +100,32 @@ EXPECTED_LAYOUT = {
         ("accessibleContext", "JOBJECT64", 24), ("accessibleTable",
         "JOBJECT64", 32)
     )),
-    "AccessibleTextAttributesInfo": (7256, 8, (
-        ("bold", "c_long", 0), ("italic", "c_long", 8), ("underline",
-        "c_long", 16), ("strikethrough", "c_long", 24), ("superscript",
-        "c_long", 32), ("subscript", "c_long", 40), ("backgroundColor",
-        "c_wchar[256]", 48), ("foregroundColor", "c_wchar[256]", 1072),
-        ("fontFamily", "c_wchar[256]", 2096), ("fontSize", "c_int",
-        3120), ("alignment", "c_int", 3124), ("bidiLevel", "c_int",
-        3128), ("firstLineIndent", "c_float", 3132), ("LeftIndent",
-        "c_float", 3136), ("rightIndent", "c_float", 3140),
-        ("lineSpacing", "c_float", 3144), ("spaceAbove", "c_float",
-        3148), ("spaceBelow", "c_float", 3152), ("fullAttributesString",
-        "c_wchar[1024]", 3156)
+    "AccessibleTextAttributesInfo": (3644, 4, (
+        ("bold", "c_long", 0), ("italic", "c_long", 4), ("underline",
+        "c_long", 8), ("strikethrough", "c_long", 12), ("superscript",
+        "c_long", 16), ("subscript", "c_long", 20),
+        ("backgroundColor", "c_wchar[256]", 24), ("foregroundColor",
+        "c_wchar[256]", 536), ("fontFamily", "c_wchar[256]", 1048),
+        ("fontSize", "c_int", 1560), ("alignment", "c_int", 1564),
+        ("bidiLevel", "c_int", 1568), ("firstLineIndent", "c_float",
+        1572), ("LeftIndent", "c_float", 1576), ("rightIndent",
+        "c_float", 1580), ("lineSpacing", "c_float", 1584),
+        ("spaceAbove", "c_float", 1588), ("spaceBelow", "c_float",
+        1592), ("fullAttributesString", "c_wchar[1024]", 1596)
     )),
     "AccessibleTextInfo": (12, 4, (
         ("charCount", "c_int", 0), ("caretIndex", "c_int", 4),
         ("indexAtPoint", "c_int", 8)
     )),
-    "AccessibleTextItemsInfo": (5124, 4, (
-        ("letter", "c_wchar", 0), ("word", "c_wchar[256]", 4),
-        ("sentence", "c_wchar[1024]", 1028)
+    "AccessibleTextItemsInfo": (2562, 2, (
+        ("letter", "c_wchar", 0), ("word", "c_wchar[256]", 2),
+        ("sentence", "c_wchar[1024]", 514)
     )),
     "AccessibleTextRectInfo": (16, 4, (
         ("x", "c_int", 0), ("y", "c_int", 4), ("width", "c_int", 8),
         ("height", "c_int", 12)
     )),
-    "AccessibleTextSelectionInfo": (4104, 4, (
+    "AccessibleTextSelectionInfo": (2056, 4, (
         ("selectionStartIndex", "c_int", 0), ("selectionEndIndex",
         "c_int", 4), ("selectedText", "c_wchar[1024]", 8)
     )),
@@ -114,19 +136,40 @@ EXPECTED_LAYOUT = {
 }
 
 
-def describe_type(ctype) -> str:
-    """A stable name for a ctypes type, arrays included.
+def _translate(ctype):
+    """The same type as Windows would size it."""
+    if ctype in WINDOWS_WIDTHS:
+        return WINDOWS_WIDTHS[ctype]
+    if isinstance(ctype, type) and issubclass(ctype, ctypes.Array):
+        return _translate(ctype._type_) * ctype._length_
+    if isinstance(ctype, type) and issubclass(ctype, ctypes.Structure):
+        return windows_layout(ctype)
+    return ctype
 
-    ``c_int * 1024`` has no ``__name__`` worth printing, so arrays are described
-    by their element type and length, and everything else by its name.
-    """
+
+_translated: dict = {}
+
+
+def windows_layout(structure):
+    """``structure`` re-declared with Windows widths, so it can be measured here."""
+    name = structure.__name__
+    if name in _translated:
+        return _translated[name]
+    _translated[name] = None  # a self-referential structure would recurse forever
+    fields = [(field, _translate(ctype)) for field, ctype in structure._fields_]
+    _translated[name] = type("Win" + name, (ctypes.Structure,), {"_fields_": fields})
+    return _translated[name]
+
+
+def describe_type(ctype) -> str:
+    """A stable name for a declared ctypes type, arrays included."""
     if isinstance(ctype, type) and issubclass(ctype, ctypes.Array):
         return "{}[{}]".format(describe_type(ctype._type_), ctype._length_)
     return getattr(ctype, "__name__", str(ctype))
 
 
 def structures():
-    """Every Structure this module defines, by name."""
+    """Every Structure the module defines, by name."""
     found = {}
     for name in dir(accessibleinfo):
         obj = getattr(accessibleinfo, name)
@@ -141,47 +184,54 @@ def test_the_expected_layout_covers_every_structure():
     assert set(structures()) == set(EXPECTED_LAYOUT)
 
 
+def test_the_windows_translation_matches_what_windows_reported():
+    """The sizes the first version of this test got wrong, when run on Windows.
+
+    These ten are the structures whose size differs from the POSIX one, as
+    reported by the Windows CI job.  Pinning them here means the translation
+    above cannot quietly drift into describing a layout Windows does not use.
+    """
+    reported = {
+        "AccessBridgeVersionInfo": 2048,
+        "AccessibleActionInfo": 512,
+        "AccessibleActions": 131076,
+        "AccessibleActionsToDo": 16388,
+        "AccessibleContextInfo": 6188,
+        "AccessibleRelationInfo": 720,
+        "AccessibleRelationSetInfo": 3608,
+        "AccessibleTextAttributesInfo": 3644,
+        "AccessibleTextItemsInfo": 2562,
+        "AccessibleTextSelectionInfo": 2056,
+    }
+
+    for name, size in reported.items():
+        assert ctypes.sizeof(windows_layout(structures()[name])) == size, name
+
+
 @pytest.mark.parametrize("name", sorted(EXPECTED_LAYOUT))
-def test_size_is_unchanged(name):
-    size, _, _ = EXPECTED_LAYOUT[name]
+def test_the_declared_layout_is_unchanged(name):
+    """Field names, declared types and order -- the same on every platform.
 
-    assert ctypes.sizeof(structures()[name]) == size
-
-
-@pytest.mark.parametrize("name", sorted(EXPECTED_LAYOUT))
-def test_alignment_is_unchanged(name):
-    _, alignment, _ = EXPECTED_LAYOUT[name]
-
-    assert ctypes.alignment(structures()[name]) == alignment
-
-
-@pytest.mark.parametrize("name", sorted(EXPECTED_LAYOUT))
-def test_field_types_and_offsets_are_unchanged(name):
-    """Types matter as much as offsets, and offsets alone do not catch them.
-
-    Changing a field from ``c_int`` to ``c_short`` can leave the structure the
-    same size and every offset where it was -- tail padding absorbs it -- so a
-    wrong type would look correct and then truncate the value it read.  The
-    declared type is compared for that reason.
-
-    Read through ``_fields_`` rather than through the class attributes: the
-    attributes are ``ctypes`` descriptors whose internals are not a documented
-    interface, and ``_fields_`` is the declaration itself.
+    This is the check that catches an edit, and it is why the byte-level numbers
+    below are the smaller half of the story: narrowing a field or reordering two
+    of them shows up here even where the resulting size happens to be unchanged.
     """
     _, _, fields = EXPECTED_LAYOUT[name]
     structure = structures()[name]
 
-    actual = tuple(
-        (field_name, describe_type(field_type), getattr(structure, field_name).offset)
-        for field_name, field_type in structure._fields_
-    )
+    declared = [(field, describe_type(ctype)) for field, ctype in structure._fields_]
 
-    assert actual == tuple((f, t, o) for f, t, o in fields)
+    assert declared == [(f, t) for f, t, _ in fields]
 
 
 @pytest.mark.parametrize("name", sorted(EXPECTED_LAYOUT))
-def test_field_order_is_unchanged(name):
-    """Offsets could match while the declared order differed, which ctypes allows."""
-    _, _, fields = EXPECTED_LAYOUT[name]
+def test_the_windows_byte_layout_is_unchanged(name):
+    """Size, alignment and every offset, as Windows lays the structure out."""
+    size, alignment, fields = EXPECTED_LAYOUT[name]
+    structure = windows_layout(structures()[name])
 
-    assert [f[0] for f in structures()[name]._fields_] == [f for f, _, _ in fields]
+    assert ctypes.sizeof(structure) == size
+    assert ctypes.alignment(structure) == alignment
+    assert [(f, getattr(structure, f).offset) for f, _, _ in fields] == [
+        (f, o) for f, _, o in fields
+    ]
