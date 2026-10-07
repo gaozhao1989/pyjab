@@ -23,12 +23,16 @@ jobs:
         # The cross-platform sweep covers the middle of the supported range.
         os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ["3.9", "3.12"]
-        # requires-python is ">=3.8" and the classifiers claim 3.8 through
-        # 3.13, so the rest of the declared range is covered here on Linux
-        # rather than left untested. 3.8 needs the older runner image.
+        # The rest of the range the classifiers claim (3.10 through 3.13) is
+        # covered here on Linux rather than left untested.
+        #
+        # 3.8 is NOT tested, and the reason is worth recording: pyproject.toml's
+        # build-system requires setuptools>=77 for PEP 639 licence expressions,
+        # and setuptools stopped supporting 3.8 after 75.3.4. So `pip install
+        # pyjab` works on 3.8 (the wheel needs no build backend) but building
+        # from the sdist cannot work there. requires-python still says ">=3.8",
+        # which is therefore only true for wheel installs.
         include:
-          - os: ubuntu-22.04
-            python-version: "3.8"
           - os: ubuntu-latest
             python-version: "3.10"
           - os: ubuntu-latest
