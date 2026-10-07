@@ -7,6 +7,26 @@ This project adheres to `Semantic Versioning`_ and `Keep a Changelog`_.
 .. _Semantic Versioning: https://semver.org/
 .. _Keep a Changelog: https://keepachangelog.com/
 
+1.4.1 (2026-10-08)
+------------------
+
+A test-only release.  The wheel is functionally identical to 1.4.0; what changed
+is the GUI suite that ships inside the sdist.
+
+* **The GUI test JVM is now started with a fixed locale**, and the colour
+  chooser's page-tab assertions match on a substring rather than a whole name.
+  Swing builds some component labels from resource bundles: a colour chooser's
+  tabs read ``HSV`` / ``HSL`` / ``RGB`` in English but ``HSV(H)`` / ``HSL(L)`` /
+  ``RGB(G)`` plus a localised ``Swatches`` under a Chinese locale.  Two tests
+  therefore passed or failed depending on the language of the machine running
+  them, which is not something anyone should have to debug.
+
+Also included, from the 1.4.0 line, for anyone reading this as the first release
+they install: element lookups walk the accessibility tree in the order the
+locator implies, the path prunes the walk and the search backtracks, and the GUI
+suite drives a Swing application that lives in the repository instead of
+downloading Oracle's demo applets.
+
 1.4.0 (2026-10-08)
 ------------------
 
