@@ -79,10 +79,15 @@ _PROGRAM_ROOTS = (
     os.path.expanduser(r"~\AppData\Local\Programs"),
 )
 
-#: The path to the user's .accessibility.properties file, used
-#: to enable JAB.
+#: Where the JDK looks for the switch that turns Java Access Bridge on.  A
+#: per-user file, so it decides the answer for every Java program this account
+#: starts, not only for pyjab.
 A11Y_PROPS_PATH = os.path.expanduser(r"~\.accessibility.properties")
-#: The content of ".accessibility.properties" when JAB is enabled.
+
+#: What that file has to contain for the bridge to attach.  Both lines are read
+#: by the JDK: the first names the assistive technology to load, the second is
+#: the companion setting documented alongside it.  Neither value is pyjab's to
+#: choose -- they are the interface, and the JDK is what gives them meaning.
 A11Y_PROPS_CONTENT = (
     "assistive_technologies=com.sun.java.accessibility.AccessBridge\n"
     "screen_magnifier_present=true\n"

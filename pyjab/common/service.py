@@ -18,25 +18,44 @@ class Service(object):
         self.init_bridge()
 
     def enable_bridge(self) -> None:
-        with open(A11Y_PROPS_PATH, "wt") as fp:
-            try:
-                self.logger.debug("enable bridge")
+        """Write the file that makes the JDK load Java Access Bridge.
+
+        The whole operation is guarded, not only the write inside it.  Opening
+        the file is the step that actually fails -- a roaming or locked-down home
+        directory is the usual reason -- and an unguarded ``open`` there means
+        the error handler below it can never run and ``JABDriver()`` raises from
+        its constructor instead.
+        """
+        try:
+            with open(A11Y_PROPS_PATH, "wt") as fp:
                 fp.write(A11Y_PROPS_CONTENT)
-            except (OSError, IOError):
-                self.logger.error("enable bridge failed")
+        except OSError as exc:
+            self.logger.error("could not enable Java Access Bridge: %s", exc)
+        else:
+            self.logger.debug("Java Access Bridge enabled in %s", A11Y_PROPS_PATH)
 
     def is_bridge_enabled(self) -> bool:
-        if not Path(A11Y_PROPS_PATH).is_file():
+        """Whether the properties file already says exactly what we would write.
+
+        Compared in full rather than by looking for the class name inside it.  A
+        file that merely mentions ``AccessBridge`` may also configure other
+        assistive technologies, and rewriting it would silently take those away.
+
+        Anything that prevents reading the file counts as "not enabled", so that
+        the attempt to write it is what reports the problem.
+        """
+        try:
+            with open(A11Y_PROPS_PATH, "rt") as fp:
+                current = fp.read()
+        except FileNotFoundError:
             return False
-        with open(A11Y_PROPS_PATH, "rt") as fp:
-            try:
-                data = fp.read()
-            except (OSError, IOError):
-                self.logger.error("bridge is not enabled")
-                return False
-        is_enabled = data == A11Y_PROPS_CONTENT
-        self.logger.debug("is bridge enabled => '{}'".format(is_enabled))
-        return is_enabled
+        except OSError as exc:
+            self.logger.error("could not read %s: %s", A11Y_PROPS_PATH, exc)
+            return False
+
+        enabled = current == A11Y_PROPS_CONTENT
+        self.logger.debug("Java Access Bridge already enabled: %s", enabled)
+        return enabled
 
     def init_bridge(self) -> None:
         self.logger.debug("init bridge")
