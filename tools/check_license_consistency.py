@@ -116,6 +116,17 @@ LICENCE_CLAIM = re.compile(
 )
 
 
+def as_display_path(path: Path) -> str:
+    """A path relative to the project root, always with forward slashes.
+
+    ``Path.relative_to`` yields backslashes on Windows, so without this the same
+    finding is reported as ``docs/1-Overview.md`` here and ``docs\\1-Overview.md``
+    there. Output that changes with the platform is harder to search, harder to
+    match in a test, and different for no reason.
+    """
+    return path.relative_to(REPO_ROOT).as_posix()
+
+
 def places_that_state_the_licence(root: Path) -> list:
     """Every published file that claims a licence, in a stable order."""
     found = []
@@ -182,7 +193,7 @@ def main() -> int:
 
     print("licence files:")
     for path in files:
-        print(f"  {path.relative_to(REPO_ROOT)}")
+        print(f"  {as_display_path(path)}")
 
     # The main licence file is the one that identifies the project's terms.
     primary = files[0]
@@ -190,7 +201,7 @@ def main() -> int:
     detected = identify(text)
     declared = declared_in_pyproject(pyproject)
 
-    print(f"\n{primary.relative_to(REPO_ROOT)} reads as: {detected or 'UNRECOGNISED'}")
+    print(f"\n{as_display_path(primary)} reads as: {detected or 'UNRECOGNISED'}")
     print(f"pyproject.toml declares:  {declared or '(nothing)'}")
 
     problems = []
@@ -213,7 +224,7 @@ def main() -> int:
     # check looked only at README.rst -- leaving docs/1-Overview.md and
     # docs/Home.md, which both say it in as many words, entirely unguarded.
     for path in places_that_state_the_licence(REPO_ROOT):
-        relative = path.relative_to(REPO_ROOT)
+        relative = as_display_path(path)
         for number, stated in stated_licences(path.read_text(encoding="utf-8")):
             if detected is None:
                 break
@@ -224,7 +235,7 @@ def main() -> int:
                     f"{detected!r}. Expected one of: {', '.join(names)}."
                 )
             else:
-                print(f"{str(relative) + ':' + str(number):<28} agrees: {stated}")
+                print(f"{relative + ':' + str(number):<28} agrees: {stated}")
 
     # CONTRIBUTING explains the relicensing, so it is expected to name licences
     # other than the current one.  Reported rather than enforced.
