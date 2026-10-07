@@ -231,3 +231,26 @@ def test_nothing_to_check_is_not_a_failure(tmp_path):
 
     assert result.returncode == 0
     assert "nothing to check" in result.stdout
+
+
+def test_an_unresolvable_range_says_what_to_do_about_it(tmp_path):
+    """The message a contributor sees, not a bare git error.
+
+    A pull request from a fork keeps its commits in the fork, and every outside
+    contribution pyjab has received arrived that way.  If the fetch of
+    ``pull/<number>/head`` is skipped, the range will not resolve, and the person
+    reading the output is the person whose pull request is being checked -- so it
+    has to say what happened and where to look.
+    """
+    repo = make_repo(tmp_path, [("only", True)])
+
+    result = run_check(repo, "--range", "deadbeef..HEAD")
+
+    assert result.returncode == 1
+    assert "could not resolve the range" in result.stdout
+    assert "fork" in result.stdout
+    assert "pull/<number>/head" in result.stdout
+    # The git complaint is kept, labelled, because it is what makes the failure
+    # diagnosable -- but it is no longer the whole of the output.
+    assert "git said:" in result.stdout
+    assert result.stdout.index("could not resolve") < result.stdout.index("git said:")
