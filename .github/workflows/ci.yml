@@ -29,13 +29,13 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install test tooling
+      - name: Install the package and its test tooling
         run: |
           python -m pip install --upgrade pip
-          # Pillow is a real runtime dependency; pyjab.jabelement imports it at
-          # module scope, and the message pump tests import jabelement with
-          # pywin32 stubbed out.
-          python -m pip install pytest Pillow
+          # Install from pyproject.toml rather than listing packages here, so the
+          # test environment cannot drift from what the package declares. This
+          # is also what pull requests are checked against.
+          python -m pip install ".[dev]"
 
       - name: Run portable test suite
         run: python -m pytest tests/ -v

@@ -73,7 +73,11 @@ jobs:
 
       - name: Run the portable test suite
         run: |
-          python -m pip install pytest
+          # Install from pyproject.toml, exactly as ci.yml does. Listing the
+          # test dependencies by hand here is what let ci.yml and release.yml
+          # drift, and a release then failed at this step for a missing Pillow
+          # after the tag had already been pushed.
+          python -m pip install ".[dev]"
           python -m pytest tests/ -v
 
       - uses: actions/upload-artifact@v4
