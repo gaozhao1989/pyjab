@@ -5,12 +5,32 @@ from pyjab.common.singleton import singleton
 
 @singleton
 class ActorScheduler:
-    """Message queue for run generator func as thread.
+    """Cooperative generator scheduler. **Deprecated and no longer used.**
+
+    .. deprecated:: 1.3.0
+       pyjab used to run the Windows message pump through this class, by
+       registering a generator and advancing it one step per call.  That design
+       was broken in three ways and has been replaced by the plain, blocking-free
+       :meth:`pyjab.common.win32utils.Win32Utils.pump_messages`:
+
+       * ``run()`` popped one entry and sent one value, so the pump advanced a
+         single step per call and no state survived between calls;
+       * when a discarded pump generator was garbage collected its ``finally``
+         clause set the shared stop event, which made every second pump call a
+         no-op;
+       * the pump only ran while waiting for the first window, so nothing was
+         serviced during element lookups.
+
+       The class is kept only so that existing imports do not break.  Do not use
+       it for new code.
+
+    Note that it is **not** a thread pool: ``run()`` calls ``actor.send()``
+    synchronously in the calling thread and never creates a thread.
 
     Sample:
 
         sched = ActorScheduler()
-        sched.new_actor("jab", win32utils.setup_msg_pump())
+        sched.new_actor("jab", some_generator())
         sched.run()
     """
 

@@ -1296,6 +1296,9 @@ class JABElement(object):
         Returns:
             JABElement: The JABElement find by locator
         """
+        # Reachable directly by callers, so it needs its own pump even though
+        # find_element() also routes through here.
+        self.win32_utils.pump_messages()
         nodes = self.xpath_parser.split_nodes(value)
         jabelement = None
         for node in nodes:
@@ -1320,6 +1323,11 @@ class JABElement(object):
         Returns:
             JABElement: The element find by locator
         """
+        # Every find_element_by_* delegates here, so pumping once at this entry
+        # covers the whole lookup API. Without it, pyjab never serviced COM
+        # after the first window was found, which is why a window or dialog
+        # that opened later was invisible (issues #56, #74).
+        self.win32_utils.pump_messages()
         if by not in [
             By.NAME,
             By.DESCRIPTION,
@@ -1510,6 +1518,8 @@ class JABElement(object):
         Returns:
             list[JABElement]: List of JABElement find by locator
         """
+        # See find_elements(): reachable directly by callers.
+        self.win32_utils.pump_messages()
 
         def generate_node(_nodes: list[str]) -> Generator:
             for index, _node in enumerate(_nodes):
@@ -1561,6 +1571,9 @@ class JABElement(object):
         Returns:
             list: List of JABElement find by locator
         """
+        # See find_element(): this is the other choke point every
+        # find_elements_by_* funnels through.
+        self.win32_utils.pump_messages()
         if by not in [
             By.NAME,
             By.DESCRIPTION,

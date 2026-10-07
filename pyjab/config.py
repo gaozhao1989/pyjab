@@ -38,6 +38,16 @@ MAX_ACTIONS_TO_DO = 32
 MAX_VISIBLE_CHILDREN = 256
 TIMEOUT = 30
 
+#: Seconds to sleep between attempts while waiting for a Java window to appear.
+#: The message queue is pumped once per iteration, so this also bounds how
+#: often COM accessibility events get serviced while waiting.
+WINDOW_POLL_INTERVAL = 0.05
+
+#: Seconds to sleep between attempts while waiting for an element to appear.
+#: Element lookups walk the accessibility tree, so polling hard in a loop burns
+#: CPU for no benefit; see issues #29 and #33.
+ELEMENT_POLL_INTERVAL = 0.1
+
 # set JAB dll
 WAB_DLL = "WindowsAccessBridge-{}.dll"
 

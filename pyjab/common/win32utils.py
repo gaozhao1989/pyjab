@@ -1,13 +1,12 @@
 import fnmatch
 import time
 from ctypes.wintypes import HWND
-from typing import Dict, Generator, List, Optional
+from typing import Dict, List, Optional
 import pythoncom
 import win32api
 import win32clipboard
 import win32com.client
 import win32con
-import win32event
 import win32gui
 from pyjab.common.logger import Logger
 from pyjab.common.singleton import singleton
@@ -16,8 +15,6 @@ from pyjab.config import TIMEOUT
 
 @singleton
 class Win32Utils(object):
-    stop_event = win32event.CreateEvent(None, 0, 0, None)
-    other_event = win32event.CreateEvent(None, 0, 0, None)
     virtual_key_code = {
         "backspace": 0x08,
         "tab": 0x09,
@@ -169,51 +166,40 @@ class Win32Utils(object):
     def __init__(self) -> None:
         self.logger = Logger("pyjab")
 
-    def setup_msg_pump(self) -> Generator:
-        waitables = self.stop_event, self.other_event
-        self.logger.debug("setup message pumpup")
-        while True:
-            rc = win32event.MsgWaitForMultipleObjects(
-                waitables,
-                0,  # Wait for all = false, so it waits for anyone
-                200,  # Timeout, ms (or win32event.INFINITE)
-                win32event.QS_ALLEVENTS,  # Accepts all input
-            )
-            if rc == win32event.WAIT_OBJECT_0:
-                self.logger.debug(
-                    "first event listed, the StopEvent, was triggered, must exit"
-                )
-                break
-            elif rc == win32event.WAIT_OBJECT_0 + 1:
-                # Our second event listed, "OtherEvent", was set. Do whatever needs
-                # to be done -- you can wait on as many kernel-waitable objects as
-                # needed (events, locks, processes, threads, notifications, and so on).
-                self.logger.debug("second event listed was set")
-            elif rc == win32event.WAIT_OBJECT_0 + len(waitables):
-                # A windows message is waiting - take care of it. (Don't ask me
-                # why a WAIT_OBJECT_MSG isn't defined < WAIT_OBJECT_0...!).
-                # This message-serving MUST be done for COM, DDE, and other
-                # Windowsy things to work properly!
-                self.logger.debug("windows message is waiting")
-                if pythoncom.PumpWaitingMessages():
-                    self.logger.debug("received a wm_quit message")
-                    break
-            elif rc == win32event.WAIT_TIMEOUT:
-                # Our timeout has elapsed.
-                # Do some work here (e.g, poll something you can't thread)
-                # or just feel good to be alive.
-                self.logger.debug("timeout")
-            else:
-                raise RuntimeError("unexpected win32wait return value")
+    def pump_messages(self) -> bool:
+        """Service every Windows/COM message currently queued for this thread.
 
-            # call functions here, if txtt doesn't take too long. It will
-            # be executed at least every 200ms -- possibly a lot more often,
-            # depending on the number of Windows messages received.
-            try:
-                yield
-            finally:
-                self.logger.debug("teardown message pumpup")
-                win32event.SetEvent(self.stop_event)
+        The Java Access Bridge is COM based, and COM callbacks -- including the
+        accessibility events that announce newly opened windows and dialogs --
+        are delivered to the thread that called ``Windows_run()``.  That thread
+        must therefore service its message queue, or those events never arrive
+        and pyjab cannot see a window that opens later.
+
+        This is deliberately a plain, non-blocking call rather than the
+        generator driven by :class:`~pyjab.common.actorscheduler.ActorScheduler`
+        that it replaces:
+
+        * the old pump only ran while pyjab was waiting for the *first* window,
+          so nothing was serviced once element lookups started;
+        * it blocked for up to 200ms per invocation, even when idle;
+        * every call built a fresh generator that was discarded immediately, so
+          no pump state survived between calls, and each discarded generator
+          signalled the shared stop event -- which made every second call a
+          no-op.
+
+        Call it as often as convenient; with an empty queue it is very cheap.
+
+        Returns:
+            bool: True if a WM_QUIT was seen, otherwise False.
+        """
+        try:
+            return bool(pythoncom.PumpWaitingMessages())
+        except pythoncom.com_error:
+            # No COM message queue on this thread -- COM was never initialised
+            # here, which happens when the caller is not the thread that ran
+            # Windows_run().  Nothing to service; not an error.
+            self.logger.debug("no COM message queue on this thread, nothing to pump")
+            return False
 
     @staticmethod
     def enum_windows() -> Dict[HWND, str]:
