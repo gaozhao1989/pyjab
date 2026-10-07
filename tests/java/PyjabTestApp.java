@@ -33,6 +33,8 @@ import java.awt.GridBagLayout;
 import java.awt.Insets;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.MouseEvent;
+import java.awt.event.MouseAdapter;
 
 import javax.accessibility.Accessible;
 import javax.accessibility.AccessibleContext;
@@ -523,6 +525,34 @@ public class PyjabTestApp {
             }
         });
 
+        // A button that renames itself when it is double-clicked, so the suite can
+        // tell a real double click from two unrelated single clicks: only the
+        // name change proves Windows saw one.
+        final JButton doubleClickTarget = new JButton("Double-click me");
+        doubleClickTarget.setName("Double-click me");
+        doubleClickTarget.addMouseListener(new MouseAdapter() {
+            public void mouseClicked(MouseEvent event) {
+                if (event.getClickCount() == 2) {
+                    doubleClickTarget.setText("Double-clicked");
+                    doubleClickTarget.setName("Double-clicked");
+                    doubleClickTarget.getAccessibleContext()
+                            .setAccessibleName("Double-clicked");
+                }
+            }
+        });
+
+        // A label with a component popup menu: Swing shows it for the platform's
+        // popup trigger, which is the right mouse button, so a context_click()
+        // that lands on the label makes a popup menu appear and nothing else does.
+        final JLabel contextTarget = new JLabel("Right-click me");
+        contextTarget.setName("Right-click me");
+        final JPopupMenu contextMenu = new JPopupMenu();
+        contextMenu.setName("Context menu");
+        JMenuItem contextItem = new JMenuItem("Context item");
+        contextItem.setName("Context item");
+        contextMenu.add(contextItem);
+        contextTarget.setComponentPopupMenu(contextMenu);
+
         addRow(column, disableButton);
         addRow(column, middleButton);
         addRow(column, enableButton);
@@ -530,6 +560,8 @@ public class PyjabTestApp {
         addRow(column, showAlertButton);
         addRow(column, showColorChooserButton);
         addRow(column, showPopupButton);
+        addRow(column, doubleClickTarget);
+        addRow(column, contextTarget);
 
         // Supports the "label" lookup.
         JLabel aLabel = new JLabel("A Label");

@@ -202,29 +202,23 @@ aware, or use the default `simulate=False` and avoid coordinates entirely.
 
 ## Double-click and right-click
 
-There is no `click(double=True)` or context-click API yet.
+Both have their own methods now:
 
 ```python
-# Double-click: two calls, close together.
-element.click()
-element.click()
+element.double_click()
+element.context_click()      # right button, e.g. to open a context menu
 ```
 
-That is unreliable if the two clicks straddle the system double-click interval.
-For a real double-click you need valid bounds and the window in the foreground:
+They always move the mouse, because Java Access Bridge exposes no accessibility
+action for either — so unlike `click()` there is no non-simulated form, and the
+element has to report usable bounds. A table cell reports `-1` for those and
+raises `JABException` saying so, rather than moving the cursor into the corner of
+the display.
 
-```python
-import win32api, win32con
-
-bounds = element.bounds
-if bounds["width"] > 0 and bounds["height"] > 0:
-    x = bounds["x"] + bounds["width"] // 2
-    y = bounds["y"] + bounds["height"] // 2
-    win32api.SetCursorPos((x, y))
-    for _ in range(2):
-        win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0, 0)
-        win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0)
-```
+`double_click()` asks Windows for the configured double-click interval and puts
+the two clicks inside it, which is what the older two-`click()` workaround got
+wrong: those calls were only a double-click if they happened to land close
+together.
 
 ---
 

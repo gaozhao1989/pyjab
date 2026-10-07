@@ -19,6 +19,7 @@ application the ``test_app`` fixture is still using.
 
 import pytest
 
+from pyjab.common.by import By
 from pyjab.common.logger import Logger
 from pyjab.common.role import Role
 from pyjab.common.states import States
@@ -122,6 +123,30 @@ class TestComponents(object):
 
         enable.click(simulate=True)
         assert middle.is_enabled(), "the enable button did not re-enable it"
+
+    def test_double_click(self, test_app: JABDriver):
+        """The button renames itself only when Windows reports a double click.
+
+        That is what makes this a test of double_click() rather than of two
+        clicks: the listener looks at MouseEvent.getClickCount(), so two
+        unrelated single clicks leave the name alone.
+        """
+        target = test_app.find_element_by_name("Double-click me")
+        target.double_click()
+
+        assert test_app.wait_until_element_exist(
+            By.NAME, "Double-clicked", timeout=5
+        )
+
+    def test_context_click(self, test_app: JABDriver):
+        """Right-clicking the label is what makes its popup menu appear."""
+        test_app.find_element_by_name("Right-click me").context_click()
+
+        popup_menu = test_app.wait_until_element_exist(
+            By.ROLE, Role.POPUP_MENU, timeout=5
+        )
+        assert popup_menu
+        self.logger.info(popup_menu.get_element_information())
 
     def test_checkbox(self, test_app: JABDriver):
         assert test_app.find_element_by_role(Role.CHECK_BOX)

@@ -44,6 +44,8 @@ REQUIRED = [
     ("Show alert", "push button"),
     ("Show color chooser", "push button"),
     ("Show popup", "push button"),
+    ("Double-click me", "push button"),
+    ("Right-click me", "label"),
     ("Toolbar Button", "push button"),
     ("Chin", "check box"),
     ("Hair", "check box"),

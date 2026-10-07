@@ -441,3 +441,71 @@ def test_is_expanded_reports_the_state():
     assert not element_reporting_states("enabled,collapsed").is_expanded()
     assert not element_reporting_states("enabled").is_expanded()
 
+# ---------------------------------------------------------------------------
+# Mouse clicks: where they land, and what they refuse to do
+# ---------------------------------------------------------------------------
+
+def element_with_bounds(x, y, width, height):
+    """A JABElement reporting the given bounds; bounds is a read-only property."""
+    element = make_element()
+    element._acc_info = lambda: types.SimpleNamespace(
+        x=x, y=y, width=width, height=height, states_en_US="enabled"
+    )
+    return element
+
+
+@pytest.mark.parametrize("x, y, width, height", [
+    # What JAB reports for anything it does not place on screen, table cells
+    # above all. Using these moves the cursor to the corner of the display.
+    (-1, -1, -1, -1),
+    (10, 10, 0, 40),
+    (10, 10, 40, 0),
+    (None, 10, 40, 40),
+    (10, 10, None, 40),
+])
+def test_a_click_refuses_impossible_bounds(x, y, width, height):
+    """Regression: only zero was rejected, not -1.
+
+    ``click(simulate=True)`` on a table cell computed a point from -1 and moved
+    the cursor there rather than saying the element cannot be clicked.
+    """
+    element = element_with_bounds(x, y, width, height)
+
+    with pytest.raises(JABException) as excinfo:
+        element._click_point()
+
+    assert "no usable bounds" in str(excinfo.value)
+
+
+def test_a_click_targets_the_centre_of_the_element():
+    element = element_with_bounds(100, 200, 50, 40)
+
+    assert element._click_point() == (125, 220)
+
+
+def test_double_click_moves_the_mouse_twice_at_one_place():
+    element = element_with_bounds(0, 0, 10, 10)
+
+    with patch.object(Win32UtilsClass, "_set_window_foreground"):
+        with patch.object(Win32UtilsClass, "_double_click_mouse") as double:
+            element.double_click()
+
+    double.assert_called_once_with(x=5, y=5)
+
+
+def test_context_click_uses_the_right_button():
+    element = element_with_bounds(0, 0, 10, 10)
+
+    with patch.object(Win32UtilsClass, "_set_window_foreground"):
+        with patch.object(Win32UtilsClass, "_click_mouse") as click:
+            element.context_click()
+
+    assert click.call_args.kwargs["button"] == "right"
+
+
+def test_double_click_needs_bounds_like_any_other_mouse_click():
+    element = element_with_bounds(-1, -1, -1, -1)
+
+    with patch.object(Win32UtilsClass, "_set_window_foreground"):
+        with pytest.raises(JABException):
+            element.double_click()

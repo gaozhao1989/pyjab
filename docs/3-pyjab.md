@@ -177,15 +177,22 @@ element.is_editable
 ```python
 element.click()
 element.click(simulate=True)       # see below
+element.double_click()             # mouse only
+element.context_click()            # mouse only: opens the context menu
 element.send_text("hello")
 element.clear()
 element.select("Option A")         # combo boxes, lists, tabs
-element.expand()
+element.expand()                   # a no-op if it is already expanded
 element.scroll(to_bottom=True)
 element.slide(to_bottom=True)
 element.spin("3")                  # spinners
 element.get_selected_element()
 ```
+
+`double_click()` and `context_click()` always move the mouse: Java Access Bridge
+exposes no accessibility action for either, so unlike `click()` they have no
+non-simulated form and they need the element to report usable bounds. Both leave
+the window in the foreground first.
 
 ### Searching inside an element
 
@@ -293,8 +300,6 @@ These are tracked, and are the honest answer to "why is this slow / missing":
   accessibility tree from the root and each node costs a cross-process call. A
   window with a large table can take tens of seconds for a failed lookup.
   Narrowing the search root with an element-level `find_element_*` helps.
-* **No double-click or right-click API yet.** Two quick `click()` calls, or
-  `win32api.mouse_event`, are the workarounds.
 * **DPI scaling.** On a display at 125% or 150%, `simulate=True` can miss
   because logical and physical coordinates differ.
 * **XPath coverage** is the subset listed above.

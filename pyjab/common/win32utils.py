@@ -307,6 +307,23 @@ class Win32Utils(object):
         win32api.mouse_event(mouse_up_act, x, y, 0, 0)
 
     @staticmethod
+    def _double_click_mouse(x: int, y: int) -> None:
+        """Two clicks at the same place, close enough to count as one double click.
+
+        The gap has to fall inside the system's double-click interval, which is
+        configurable and therefore not a constant.  Asking Windows for it is
+        cheaper than guessing, and half of it is safely inside the window whether
+        the setting is 200ms or 900ms.
+        """
+        gap = win32api.GetDoubleClickTime() / 2000.0
+        win32api.SetCursorPos((x, y))
+        win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, x, y, 0, 0)
+        win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, x, y, 0, 0)
+        time.sleep(gap)
+        win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, x, y, 0, 0)
+        win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, x, y, 0, 0)
+
+    @staticmethod
     def _get_clipboard() -> str:
         win32clipboard.OpenClipboard()
         data = win32clipboard.GetClipboardData(win32con.CF_UNICODETEXT)

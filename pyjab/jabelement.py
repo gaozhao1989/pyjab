@@ -737,17 +737,72 @@ class JABElement(object):
         """
         if simulate:
             self.win32_utils._set_window_foreground(hwnd=self.hwnd)
-            x = self.bounds.get("x")
-            y = self.bounds.get("y")
-            width = self.bounds.get("width")
-            height = self.bounds.get("height")
-            if width == 0 or height == 0:
-                raise ValueError("element width or height is 0")
-            position_x = round(x + width / 2)
-            position_y = round(y + height / 2)
+            position_x, position_y = self._click_point()
             self.win32_utils._click_mouse(x=position_x, y=position_y)
         else:
             self._do_accessible_action(action="click")
+
+    def double_click(self) -> None:
+        """Double-click this JABElement with the mouse.
+
+        Note:
+            There is no accessibility action for a double click, so unlike
+            :meth:`click` this always moves the mouse and therefore needs usable
+            bounds.  It does nothing for a table cell, which reports bounds of -1.
+
+            See :meth:`context_click` for the right button, and
+            :mod:`docs/6-Troubleshooting` for the recipe this replaces: two
+            ``click()`` calls, which only work if they happen to land inside the
+            system's double-click interval.
+
+        Example:
+            ``element.double_click()``
+        """
+        self.win32_utils._set_window_foreground(hwnd=self.hwnd)
+        position_x, position_y = self._click_point()
+        self.win32_utils._double_click_mouse(x=position_x, y=position_y)
+
+    def context_click(self) -> None:
+        """Right-click this JABElement, to open its context menu.
+
+        As with :meth:`double_click` there is no accessibility action for this,
+        so it moves the mouse and needs usable bounds.
+
+        Example:
+            ``element.context_click()``
+        """
+        self.win32_utils._set_window_foreground(hwnd=self.hwnd)
+        position_x, position_y = self._click_point()
+        self.win32_utils._click_mouse(x=position_x, y=position_y, button="right")
+
+    def _click_point(self) -> tuple:
+        """The screen position to move the mouse to in order to click this element.
+
+        Returns:
+            tuple: ``(x, y)``, the element's centre.
+
+        Raises:
+            JABException: when the element reports no usable bounds.  Anything
+                JAB does not actually place on screen -- a table cell, most
+                often -- reports ``-1`` for x, y, width and height, and using
+                those values moves the cursor to the corner of the display
+                instead of failing.  Only the accessibility action works for such
+                an element.
+        """
+        bounds = self.bounds
+        x, y = bounds.get("x"), bounds.get("y")
+        width, height = bounds.get("width"), bounds.get("height")
+
+        if None in (x, y, width, height) or width <= 0 or height <= 0:
+            raise JABException(
+                "JABElement reports no usable bounds "
+                f"(x={x}, y={y}, width={width}, height={height}), so it cannot be "
+                "clicked with the mouse. Table cells and anything else JAB does "
+                "not place on screen report -1 here; use the accessibility action "
+                "instead (simulate=False for click())."
+            )
+
+        return round(x + width / 2), round(y + height / 2)
 
     def clear(self, simulate: bool = False, wait_for_text_update: bool = True) -> None:
         """Clear existing text from JABElement.
