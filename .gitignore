@@ -24,3 +24,16 @@ Thumbs.db
 
 # Scratch files
 temp*
+
+# Internal working documents.
+#
+# These are maintainer notes -- issue triage, the delivery roadmap and the
+# per-issue reply drafts -- not part of the published project documentation.
+# They live in the working tree so they are to hand while working, but they are
+# not versioned. The user-facing documentation that *is* versioned lives in
+# docs/ and is mirrored to the GitHub wiki; see docs/README.md.
+/docs/TRIAGE.md
+/docs/ROADMAP.md
+/docs/PYJAB_MCP_PLAN.md
+/docs/ISSUE_REPLIES.md
+/docs/replies/

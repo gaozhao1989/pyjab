@@ -6,10 +6,21 @@ include CONTRIBUTING.rst
 include CONTRIBUTORS.txt
 include requirements.txt
 include requirements-dev.txt
+
 recursive-include tests *.py
 recursive-exclude tests jnlps
-recursive-include docs *.rst *.md
-recursive-exclude docs *.h *.c
+
+# User-facing documentation. The maintainer notes that live alongside it
+# (issue triage, roadmap, reply drafts) are listed in .gitignore and must never
+# reach a distribution, so exclude them explicitly rather than relying on the
+# glob alone.
+recursive-include docs *.md
+exclude docs/TRIAGE.md
+exclude docs/ROADMAP.md
+exclude docs/PYJAB_MCP_PLAN.md
+exclude docs/ISSUE_REPLIES.md
+prune docs/replies
+
 prune build
 prune dist
 global-exclude *.py[cod] __pycache__ *.egg-info .DS_Store
