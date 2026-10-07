@@ -278,6 +278,20 @@ class JABElement(object):
                     jabelement.bridge, jabelement.hwnd, jabelement.vmid, child_acc
                 )
 
+    def get_children(
+        self, by: By = None, value: Optional[str] = None
+    ) -> list[JABElement]:
+        """Get immediate children elements under a parent"""
+        elements = list(self._generate_childs_from_element())
+        if by:
+            elements = [
+                element for element in elements
+                if self._is_element_matched(
+                    jabelement=element, by=by, value=value
+                )
+            ]
+        return elements
+
     # JAB apis
     def release_jabelement(self, jabelement: JABElement = None) -> None:
         """Release the memory used by the Java object object,
@@ -1386,6 +1400,54 @@ class JABElement(object):
             f"jab element not found by '{by}' with locator '{value}'"
         )
 
+    def find_elements_by_name_pattern(
+        self, pattern: str, visible: bool = False, ignorecase: bool = False
+    ) -> list[JABElement]:
+        """Find list of child JABElement by name pattern
+
+        Args:
+            pattern (str): A regex pattern.
+            visible (bool, optional): The switch for find only visible child jab elements or not.
+            Defaults to False to find all child elements.
+
+        Returns:
+            list[JABElement]: List of JABElement found by locator
+        """
+        jabelements = []
+        re_flag = re.IGNORECASE if ignorecase else 0
+        for jabelement in self._generate_all_childs(visible=visible):
+            if re.search(pattern, jabelement.name, flags=re_flag):
+                jabelements.append(jabelement)
+                continue
+            self.release_jabelement(jabelement)
+        if not jabelements:
+            raise JABException(
+                f"no JABElement found by 'NAME' with pattern '{pattern}'"
+            )
+        return jabelements
+    
+    def find_element_by_name_pattern(
+        self, pattern: str, visible: bool = False, ignorecase: bool = False
+    ) -> JABElement:
+        """Find JABElement by name pattern
+
+        Args:
+            pattern (str): A regex pattern.
+            visible (bool, optional): The switch for find only visible child jab elements or not.
+            Defaults to False to find all child elements.
+
+        Returns:
+            JABElement: JABElement found by locator
+        """
+        re_flag = re.IGNORECASE if ignorecase else 0
+        for jabelement in self._generate_all_childs(visible=visible):
+            if re.search(pattern, jabelement.name, flags=re_flag):
+                return jabelement
+            self.release_jabelement(jabelement)
+        raise JABException(
+            f"no JABElement found by 'NAME' with pattern '{pattern}'"
+        )
+    
     def find_elements_by_name(
             self, value: str, visible: bool = False
     ) -> list[JABElement]:
