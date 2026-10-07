@@ -1,0 +1,80 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyjab"
+dynamic = ["version"]
+description = "Python implementation for Java application UI automation with Java Access Bridge"
+readme = "README.rst"
+requires-python = ">=3.8"
+license = "GPL-2.0-only"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Gary Gao", email = "gaozhao89@qq.com" },
+]
+keywords = [
+    "java",
+    "accessibility",
+    "access-bridge",
+    "automation",
+    "selenium",
+    "ui-automation",
+    "windows",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    # NOTE: the "License ::" classifier is intentionally absent.  PEP 639 makes
+    # the SPDX `license` expression authoritative, and setuptools rejects a
+    # build that carries both.  See [project].license above.
+    # pyjab drives the Windows Java Access Bridge and imports pywin32, so it is
+    # Windows only.  The wheel stays pure-python for historical reasons, which
+    # means pip will happily install it on other platforms; pyjab.jabdriver
+    # raises a clear error at import time in that case.
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Java Libraries",
+    "Topic :: Software Development :: Testing",
+    "Topic :: Utilities",
+]
+
+# pywin32 is only available (and only needed) on Windows.  The environment
+# marker keeps `pip install pyjab` from attempting to resolve pywin32 on other
+# platforms, which was a source of confusing resolver errors.
+dependencies = [
+    "Pillow>=8.3.2",
+    "pywin32>=302; sys_platform == 'win32'",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.1",
+    "requests>=2.27.1",
+]
+
+[project.urls]
+Homepage = "https://github.com/gaozhao1989/pyjab"
+Repository = "https://github.com/gaozhao1989/pyjab"
+Issues = "https://github.com/gaozhao1989/pyjab/issues"
+Changelog = "https://github.com/gaozhao1989/pyjab/blob/master/CHANGELOG.rst"
+
+[tool.setuptools.dynamic]
+version = { attr = "pyjab.__version__" }
+
+# Be explicit.  Stale build/ and dist/ directories can contain a copy of the
+# package (build/lib/pyjab/...), and a bare find_packages() would happily pick
+# those up and ship duplicated modules.
+[tool.setuptools.packages.find]
+include = ["pyjab*"]
+exclude = ["build*", "dist*", "docs*", "tests*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

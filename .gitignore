@@ -1,3 +1,26 @@
-.vscode
+# Byte-compiled / cached
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Build artefacts
+build/
+dist/
+*.egg-info/
+.eggs/
+wheels/
+
+# Test / tooling caches
+.pytest_cache/
+.tox/
+.coverage
+htmlcov/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Scratch files
 temp*
-__pycache__
