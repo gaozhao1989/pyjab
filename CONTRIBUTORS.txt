@@ -1,2 +1,21 @@
-Gary Gao
+pyjab is maintained by Gary Gao.
+
+Contributions, in the order they arrived:
+
 Jason Allen
+    Wildcard matching for window titles, the role attribute matching fix, the
+    bridge-check guard, a general clean-up, and the test suite that preceded the
+    one in tests/ -- most of which is still in the code.
+    Consent to relicense: by email, 2026-10-08.
+
+Shine Jayakumar
+    get_children(), find_elements_by_name_pattern() and
+    find_element_by_name_pattern().
+
+Chih-Yu
+    get_focused_element().
+
+Where a contribution has been written again from its behaviour rather than kept
+as it was, the original author is still credited above and the feature is still
+theirs; the rewrite changes the wording of the code, not who thought of it.  The
+reason for each rewrite is in the commit that made it.
