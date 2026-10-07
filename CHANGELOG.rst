@@ -7,7 +7,73 @@ This project adheres to `Semantic Versioning`_ and `Keep a Changelog`_.
 .. _Semantic Versioning: https://semver.org/
 .. _Keep a Changelog: https://keepachangelog.com/
 
-1.2.1 (unreleased)
+1.3.0 (unreleased)
+------------------
+
+Rewrites the Windows message pump.
+
+pyjab drives Java Access Bridge, which is COM based.  Accessibility events --
+including the ones that announce a window or dialog opened *after* the first
+one -- are delivered through COM to the thread that called ``Windows_run()``.
+That thread has to service its message queue, or pyjab never learns that the
+window exists.
+
+The old implementation was a generator advanced one step at a time by
+``ActorScheduler``, and it was only driven while waiting for the very first
+window.  Once element lookups began, nothing was serviced at all, and a dialog
+that opened during a wait was invisible.  This release replaces it with a
+plain, non-blocking call that is made on every lookup and on every poll.
+
+Fixed
+~~~~~
+
+* **The message queue was never serviced once element lookups started.**  A
+  window or dialog that opened after the first window was bound could not be
+  seen.  The queue is now pumped at the start of every element lookup and on
+  every iteration of both wait loops.
+* **Every second pump invocation did nothing.**  Each call built a fresh pump
+  generator that was discarded immediately; when it was garbage collected its
+  ``finally`` clause set the shared stop event, so the next call saw a
+  signalled event and returned without pumping anything.
+* **The pump blocked for up to 200ms per invocation**, including while waiting
+  for the first window and while constructing every ``JABDriver``.
+* **``wait_until_element_exist()`` was a busy loop with no sleep at all.**
+  It re-walked the entire accessibility tree as fast as the CPU allowed, which
+  is the behaviour reported in issues #29 and #33.  It now backs off between
+  attempts, pumps the queue each iteration, and accepts a ``poll_interval``.
+* Two kernel event handles were created once per process and never closed.
+  They are no longer created at all.
+
+Changed
+~~~~~~~
+
+* ``Win32Utils.setup_msg_pump()`` (a generator) is replaced by
+  ``Win32Utils.pump_messages()``, a non-blocking call that returns ``True`` if
+  a ``WM_QUIT`` was seen.
+* ``pyjab.common.actorscheduler.ActorScheduler`` is deprecated and no longer
+  used.  It is kept only so that existing imports keep working.
+* ``JABDriver.wait_until_element_exist()`` gained a ``poll_interval`` argument.
+* New settings in ``pyjab.config``: ``WINDOW_POLL_INTERVAL`` (0.05s) and
+  ``ELEMENT_POLL_INTERVAL`` (0.1s).
+
+Added
+~~~~~
+
+* ``tests/test_message_pump.py`` -- covers the pump itself, guards against the
+  generator pump and ``ActorScheduler`` being reintroduced, and asserts that
+  every lookup entry point pumps the queue before touching the tree.  It runs
+  on Linux and macOS by stubbing pywin32, rather than being skipped.
+
+Note on verification
+~~~~~~~~~~~~~~~~~~~~
+
+CI has no interactive desktop session, so the pump cannot be exercised against
+a live Java application.  The tests above cover the logic and the wiring; the
+end-to-end behaviour of a window opening mid-script still needs a manual check
+on Windows.  See ``docs/TRIAGE.md`` section 3.9 for the analysis behind this
+change.
+
+1.2.1 (2026-10-07)
 ------------------
 
 Released so that ``get_focused_element()``, contributed by `Chih-Yu (y252328)`_

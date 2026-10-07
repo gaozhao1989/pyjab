@@ -22,20 +22,21 @@ from ctypes import c_long
 from ctypes.wintypes import HWND
 from pathlib import Path
 from subprocess import Popen
-from time import time
+from time import sleep, time
 from typing import Any, Dict, Tuple, Optional
 
 import win32process
 from PIL import ImageGrab
 from pyjab.accessibleinfo import AccessBridgeVersionInfo
-from pyjab.common.actorscheduler import ActorScheduler
 from pyjab.common.by import By
 from pyjab.common.exceptions import JABException
 from pyjab.common.logger import Logger
 from pyjab.common.service import Service
 from pyjab.common.win32utils import Win32Utils
 from pyjab.common.types import JOBJECT64
+from pyjab.config import ELEMENT_POLL_INTERVAL
 from pyjab.config import TIMEOUT
+from pyjab.config import WINDOW_POLL_INTERVAL
 from pyjab.jabelement import JABElement
 from pyjab.jabfixedfunc import JABFixedFunc
 
@@ -160,11 +161,13 @@ class JABDriver(object):
     def root_element(self, root_element: JABElement) -> None:
         self._root_element = root_element
 
-    def _run_actor_sched(self) -> None:
-        # invoke generator in message queue
-        sched = ActorScheduler()
-        sched.new_actor("pyjab", self.win32utils.setup_msg_pump())
-        sched.run()
+    def _pump_messages(self) -> None:
+        """Service pending Windows/COM messages on this thread.
+
+        Cheap and non-blocking. See :meth:`Win32Utils.pump_messages` for why
+        this is required and why it must happen on the JAB-owning thread.
+        """
+        self.win32utils.pump_messages()
 
     def init_jab(self) -> None:
         # enum window and find hwnd
@@ -172,8 +175,9 @@ class JABDriver(object):
         # load AccessBridge dll file
         self.bridge = self.serv.load_library(self._bridge_dll)
         self.bridge.Windows_run()
-        # setup message queue for actor scheduler
-        self._run_actor_sched()
+        # Service the message queue once Windows_run() has armed the bridge:
+        # accessibility events are delivered through COM on this thread.
+        self._pump_messages()
         # wait java window by title and get hwnd if not specific hwnd and vmid
         if not (self.hwnd or (self.vmid and self.accessible_context)):
             self.hwnd = self.wait_java_window_by_title(
@@ -288,6 +292,10 @@ class JABDriver(object):
         """
         start = time()
         while True:
+            # Pump first: a window that opens asynchronously is announced
+            # through a COM event on this thread, so the queue has to be
+            # serviced before enumeration can see it.
+            self._pump_messages()
             if hwnd := self.get_java_window_hwnd(title=title):
                 return hwnd
             log_out = f"no java window found by title '{title}'"
@@ -300,7 +308,10 @@ class JABDriver(object):
                 raise TimeoutError(
                     f"no java window found by title '{title}' in '{timeout}'seconds"
                 )
-            self._run_actor_sched()
+            # Do not spin: the previous implementation called a 200ms blocking
+            # pump here, then re-enumerated. Sleep briefly instead so the poll
+            # interval is explicit and the pump stays non-blocking.
+            sleep(WINDOW_POLL_INTERVAL)
 
     # jab driver functions: similar with webdriver
     def find_element_by_name(self, value: str, visible: bool = False) -> JABElement:
@@ -551,18 +562,33 @@ class JABDriver(object):
         self.win32utils._set_window_minimize(hwnd=self.root_element.hwnd)
 
     def wait_until_element_exist(
-            self, by: str = By.NAME, value: Any = None, timeout: int = TIMEOUT
+            self,
+            by: str = By.NAME,
+            value: Any = None,
+            timeout: int = TIMEOUT,
+            poll_interval: float = ELEMENT_POLL_INTERVAL,
     ) -> JABElement:
+        """Wait until an element matching the locator exists, and return it.
+
+        Args:
+            by: Locator strategy, see :class:`~pyjab.common.by.By`.
+            value: Locator value.
+            timeout: Give up after this many seconds. Defaults to ``TIMEOUT``.
+            poll_interval: Seconds to sleep between attempts. Defaults to
+                ``ELEMENT_POLL_INTERVAL``.
+
+        Raises:
+            JABException: The element was not found within ``timeout`` seconds.
+
+        Note:
+            The message queue is pumped on every iteration. Previously this
+            method was a tight loop with no sleep at all, which both burned CPU
+            re-walking the accessibility tree (issue #29) and never serviced
+            COM, so a dialog that opened while waiting was invisible to pyjab.
+        """
         start = time()
         while True:
-            current = time()
-            elapsed = round(current - start)
-            remain = round(timeout - elapsed)
-            self.logger.debug(f"elapsed => {elapsed}, remain => {remain}")
-            if elapsed >= timeout:
-                raise JABException(
-                    f"JABElement with locator '{by}' '{value}' does not found in {timeout} seconds"
-                )
+            self._pump_messages()
             try:
                 return self.find_element(by=by, value=value)
             except JABException:
@@ -570,6 +596,14 @@ class JABDriver(object):
                 if self.latest_log != log_out:
                     self.logger.warning(log_out)
                     self.latest_log = log_out
+
+            elapsed = time() - start
+            if elapsed >= timeout:
+                raise JABException(
+                    f"JABElement with locator '{by}' '{value}' does not found in {timeout} seconds"
+                )
+            self.logger.debug(f"elapsed => {elapsed:.1f}, remain => {timeout - elapsed:.1f}")
+            sleep(poll_interval)
 
     def get_screenshot_as_file(self, filename):
         """
