@@ -5,7 +5,7 @@ __author__ = "Gary Gao"
 __email__ = "gaozhao89@qq.com"
 __license__ = "GPLv2"
 __url__ = "https://github.com/gaozhao1989/pyjab"
-__version__ = "1.4.2"
+__version__ = "1.4.3"
 
 # NOTE: no platform guard here on purpose.  pyjab.config and pyjab.common.service
 # are platform independent and are unit tested on every OS, so `import pyjab`

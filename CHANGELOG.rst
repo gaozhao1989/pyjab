@@ -7,6 +7,40 @@ This project adheres to `Semantic Versioning`_ and `Keep a Changelog`_.
 .. _Semantic Versioning: https://semver.org/
 .. _Keep a Changelog: https://keepachangelog.com/
 
+1.4.3 (2026-10-08)
+------------------
+
+Fixed
+~~~~~
+
+* **``expand()`` collapsed an element that was already expanded.**  It sent the
+  accessibility action ``toggleexpand`` unconditionally, and clicked *twice*
+  when asked to simulate; both do the opposite of what the name promises once
+  the element is open.  A ``JTree`` shows its root expanded by default, so
+  expanding a node in order to reach its children closed it instead and the
+  children became invisible.  Expanding something already expanded is now a
+  no-op, and ``simulate=True`` sends one click rather than two that cancel out.
+* **``is_expanded()`` did not exist.**  The class had ``is_checked``,
+  ``is_enabled``, ``is_visible`` and ``is_selected``, but no way to ask the
+  question ``expand()`` acts on.
+
+Changed
+~~~~~~~
+
+* **The GUI suite starts the test application once per run**, rather than once
+  per test.  Starting a JVM and waiting for its window was most of the runtime of
+  a suite that is otherwise seconds of work.  Each test still gets its own
+  driver, and the application disposes any open dialog before showing a new one,
+  so a test cannot be confused by what an earlier one left behind.
+* ``test_push_button``, ``test_checkbox`` and ``test_radio_button`` assert on the
+  change they make rather than on the state they start in, so any of them can be
+  run on its own.
+
+Also ships ``tools/`` in the sdist.  ``CONTRIBUTING.rst``, ``docs/5`` and
+``docs/6`` all tell the reader to run a script from there, and the directory had
+never been included -- nor had the repository those files would otherwise be read
+from.
+
 1.4.2 (2026-10-08)
 ------------------
 
