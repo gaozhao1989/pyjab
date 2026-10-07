@@ -1,0 +1,163 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # The portable test suite.  It covers DLL discovery and touches nothing
+  # Windows specific, so it is worth running on every OS and several Python
+  # versions -- it is fast and it catches platform assumptions early.
+  # ---------------------------------------------------------------------------
+  tests:
+    name: tests (${{ matrix.os }}, py${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install test tooling
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest
+
+      - name: Run portable test suite
+        run: python -m pytest tests/ -v
+
+  # ---------------------------------------------------------------------------
+  # Verify DLL discovery against many real JDK layouts.  This is the regression
+  # test for the "WindowsAccessBridge dll not found on JDK 11+" bug: JDK 8 uses
+  # %JAVA_HOME%\jre\bin, JDK 11+ uses %JAVA_HOME%\bin.
+  #
+  # Note this job deliberately does NOT install pywin32.  pyjab.config has no
+  # Windows-only imports, so discovery can be exercised on its own.
+  # ---------------------------------------------------------------------------
+  jab-dll-discovery:
+    name: JAB DLL discovery (JDK ${{ matrix.java }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ["8", "11", "17", "21"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+
+      - name: Report where the DLL actually is
+        shell: pwsh
+        run: |
+          Write-Host "JAVA_HOME = $env:JAVA_HOME"
+          Get-ChildItem -Path $env:JAVA_HOME -Recurse -Filter "WindowsAccessBridge-*.dll" `
+            -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName
+
+      - name: Discovery must resolve the DLL
+        shell: pwsh
+        run: |
+          python -c "from pyjab.config import find_bridge_dll; p = find_bridge_dll(); print('found:', p); assert p is not None, 'pyjab did not find the JAB DLL'"
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+
+      - name: Run discovery tests
+        run: |
+          python -m pip install pytest
+          python -m pytest tests/test_bridge_dll_discovery.py -v
+
+  # ---------------------------------------------------------------------------
+  # The real import path on Windows: pywin32 present, pyjab.jabdriver importable.
+  # ---------------------------------------------------------------------------
+  windows-import-smoke:
+    name: Windows import smoke test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install the package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ".[dev]"
+
+      - name: Import pyjab and pyjab.jabdriver
+        run: |
+          python -c "import pyjab; print('pyjab', pyjab.__version__)"
+          python -c "import pyjab.jabdriver; print('pyjab.jabdriver OK')"
+          python -c "from pyjab.config import find_bridge_dll; print('DLL:', find_bridge_dll())"
+
+  # ---------------------------------------------------------------------------
+  # Build the distributions and validate the metadata, so a broken release is
+  # caught on the PR rather than at tag time.
+  # ---------------------------------------------------------------------------
+  package:
+    name: build distribution
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build sdist and wheel
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build
+
+      - name: Check metadata
+        run: python -m twine check dist/*
+
+      - name: Fail if a stale package copy was packaged
+        run: |
+          python - <<'PY'
+          import glob
+          import sys
+          import zipfile
+
+          wheels = glob.glob("dist/*.whl")
+          if len(wheels) != 1:
+              print(f"::error::expected exactly one wheel, found {wheels}")
+              sys.exit(1)
+
+          names = zipfile.ZipFile(wheels[0]).namelist()
+          # A stale build/lib/ or dist/ copy inside the wheel means
+          # tool.setuptools.packages.find is picking up artefacts.
+          bad = [n for n in names if n.startswith(("build/", "dist/")) or "egg-info" in n]
+          if bad:
+              print(f"::error::wheel contains stale entries: {bad}")
+              sys.exit(1)
+
+          print(f"{wheels[0]} is clean ({len(names)} entries)")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
