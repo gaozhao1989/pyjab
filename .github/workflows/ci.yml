@@ -209,6 +209,13 @@ jobs:
       - name: Check that every dependency is permissively licensed
         run: python tools/check_dependency_licences.py
 
+      # The other half of the same question: what pyjab says its own licence is,
+      # against the text it actually ships. Changing licence means editing
+      # LICENSE, pyproject.toml, the README and the docs, and nothing about
+      # editing one of them reminds you about the others.
+      - name: Check that the declared licence matches the shipped one
+        run: python tools/check_license_consistency.py
+
   # ---------------------------------------------------------------------------
   # Build the distributions and validate the metadata, so a broken release is
   # caught on the PR rather than at tag time.
