@@ -10,10 +10,17 @@ The pump used to be a generator advanced one step at a time by
 ``ActorScheduler``, and only while pyjab was waiting for the first window.  It
 has been replaced by ``Win32Utils.pump_messages()``.
 
-``pyjab.common.win32utils`` imports pywin32 at module scope, so these tests
-install minimal stand-ins when pywin32 is not available.  On Windows the real
-modules are used and the pump genuinely runs, so the tests stay meaningful on
-every platform rather than being skipped.
+Portability
+-----------
+``pyjab.common.win32utils`` imports pywin32 at module scope, so on Linux and
+macOS this module installs stand-ins for the pywin32 modules in order to be able
+to import it at all.  On Windows the real modules are present and are used.
+
+The pump function itself is *always* replaced with a double, by patching the
+module attribute rather than ``sys.modules``, so the assertions behave the same
+whether or not pywin32 is installed.  Without that these tests would pass in a
+bare pytest-only environment and fail on a real Windows checkout -- which is
+exactly what happened the first time they ran with pywin32 present.
 """
 
 import contextlib
@@ -28,7 +35,7 @@ import pyjab
 
 
 # ---------------------------------------------------------------------------
-# pywin32 stand-ins
+# pywin32 stand-ins, for platforms that do not have pywin32
 # ---------------------------------------------------------------------------
 
 class _PermissiveModule(types.ModuleType):
@@ -51,7 +58,7 @@ def _install_stub(name: str, **attributes) -> types.ModuleType:
 
 
 def _ensure_win32_available() -> None:
-    """Install stubs only for modules that cannot be imported for real."""
+    """Install stand-ins only for pywin32 modules that are genuinely missing."""
     try:
         import pythoncom  # noqa: F401
         return
@@ -77,12 +84,12 @@ _ensure_win32_available()
 
 
 def _import_jabelement():
-    """Import :mod:`pyjab.jabelement` with pywin32 stubbed out.
+    """Import :mod:`pyjab.jabelement`, working around its platform guard.
 
-    ``jabelement`` refuses to import off Windows, so ``sys.platform`` is
-    briefly reported as Windows.  ``PIL.ImageGrab`` is imported first, under
-    the real platform, so that faking ``sys.platform`` cannot push PIL down a
-    Windows-only import path.
+    ``jabelement`` refuses to import off Windows, so ``sys.platform`` is briefly
+    reported as Windows.  ``PIL.ImageGrab`` is imported first, under the real
+    platform, so that faking ``sys.platform`` cannot push PIL down a Windows-only
+    import path.  On Windows itself this is all a no-op.
     """
     import PIL.ImageGrab  # noqa: F401  (deliberately imported first)
 
@@ -105,31 +112,33 @@ JABElement = _import_jabelement()
 # attribute checks must go through it.
 Win32UtilsClass = Win32Utils.__wrapped__
 
+#: The module object whose ``pythoncom`` reference the pump actually calls.
+WIN32UTILS_MODULE = sys.modules["pyjab.common.win32utils"]
+
 
 @pytest.fixture
-def pump():
-    """The function the module under test actually calls."""
-    import pythoncom
+def pump(monkeypatch):
+    """Replace the ``pythoncom`` the pump uses, and return its pump function.
 
-    return pythoncom.PumpWaitingMessages
+    Patching the module attribute rather than ``sys.modules`` keeps this working
+    on Windows, where the real pywin32 is installed and must not be shadowed for
+    the rest of the session.
+    """
+    class ComError(Exception):
+        """Stand-in for pythoncom.com_error."""
+
+    fake = types.SimpleNamespace(
+        PumpWaitingMessages=MagicMock(return_value=False),
+        com_error=ComError,
+    )
+    monkeypatch.setattr(WIN32UTILS_MODULE, "pythoncom", fake)
+    return fake.PumpWaitingMessages
 
 
 @pytest.fixture
 def win32utils():
     # Bypass the @singleton cache so each test gets a fresh instance.
     return Win32UtilsClass()
-
-
-@pytest.fixture(autouse=True)
-def reset_pump(pump):
-    """Keep the shared mock clean between tests."""
-    pump.reset_mock()
-    pump.side_effect = None
-    pump.return_value = False
-    yield
-    pump.reset_mock()
-    pump.side_effect = None
-    pump.return_value = False
 
 
 # ---------------------------------------------------------------------------
@@ -151,9 +160,7 @@ def test_pump_messages_reports_wm_quit(win32utils, pump):
 
 def test_pump_messages_swallows_com_error(win32utils, pump):
     """A thread without a COM queue must not blow up the caller."""
-    import pythoncom
-
-    pump.side_effect = pythoncom.com_error("no COM queue on this thread")
+    pump.side_effect = WIN32UTILS_MODULE.pythoncom.com_error("no COM queue here")
 
     assert win32utils.pump_messages() is False
 
