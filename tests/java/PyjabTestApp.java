@@ -353,6 +353,26 @@ public class PyjabTestApp {
     }
 
     /** A one-line row: a label on the left, the component filling the rest. */
+    /**
+     * The one auxiliary dialog that may be open, if any.
+     *
+     * The suite used to be given a fresh JVM per test, so a dialog left open by
+     * one test disappeared with the process. Now that one application serves the
+     * whole run, a leftover dialog would still be there when the next test
+     * looks one up by title -- and could be matched instead of the one it just
+     * opened. Showing a dialog disposes whatever was open before, so at most one
+     * exists at a time and a lookup by title is unambiguous.
+     */
+    private static JDialog currentDialog = null;
+
+    private static void showDialog(JDialog dialog) {
+        if (currentDialog != null && currentDialog.isDisplayable()) {
+            currentDialog.dispose();
+        }
+        currentDialog = dialog;
+        dialog.setVisible(true);
+    }
+
     private static JPanel buildLabeledRow(String labelText, JComponent component, int height) {
         JPanel row = new JPanel(new BorderLayout(6, 0));
         // The label's accessible name comes from its text, so the text must not
@@ -429,7 +449,7 @@ public class PyjabTestApp {
                 dialog.setContentPane(panel);
                 dialog.setSize(300, 150);
                 dialog.setLocationRelativeTo(frame);
-                dialog.setVisible(true);
+                showDialog(dialog);
             }
         });
 
@@ -458,7 +478,7 @@ public class PyjabTestApp {
                 dialog.setContentPane(alertPane);
                 dialog.setSize(320, 160);
                 dialog.setLocationRelativeTo(frame);
-                dialog.setVisible(true);
+                showDialog(dialog);
             }
         });
 
@@ -479,7 +499,7 @@ public class PyjabTestApp {
                 dialog.setContentPane(panel);
                 dialog.setSize(600, 400);
                 dialog.setLocationRelativeTo(frame);
-                dialog.setVisible(true);
+                showDialog(dialog);
             }
         });
 

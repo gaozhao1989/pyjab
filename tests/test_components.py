@@ -107,18 +107,21 @@ class TestComponents(object):
     # ---------------------------------------------------------------- buttons
 
     def test_push_button(self, test_app: JABDriver):
-        """One button controls another's enabled state, both ways."""
+        """One button controls another's enabled state, both ways.
+
+        The assertion is on the change rather than on the state it starts in,
+        because one application now serves every test and a test that only makes
+        sense against a pristine window cannot be re-run on its own.
+        """
         disable = test_app.find_element_by_name("Disable middle button")
         middle = test_app.find_element_by_name("Middle button")
         enable = test_app.find_element_by_name("Enable middle button")
 
-        assert middle.is_enabled()
-
         disable.click()
-        assert not middle.is_enabled()
+        assert not middle.is_enabled(), "the disable button did not disable it"
 
         enable.click(simulate=True)
-        assert middle.is_enabled()
+        assert middle.is_enabled(), "the enable button did not re-enable it"
 
     def test_checkbox(self, test_app: JABDriver):
         assert test_app.find_element_by_role(Role.CHECK_BOX)
@@ -126,23 +129,23 @@ class TestComponents(object):
         chin = test_app.find_element_by_name("Chin")
         hair = test_app.find_element_by_name("Hair")
 
-        assert not chin.is_checked()
+        was_checked = chin.is_checked()
         chin.click()
-        assert chin.is_checked()
+        assert chin.is_checked() != was_checked, "clicking did not toggle it"
+        chin.click(simulate=True)
+        assert chin.is_checked() == was_checked, "clicking again did not toggle back"
 
+        was_checked = hair.is_checked()
         hair.click(simulate=True)
-        assert hair.is_checked()
+        assert hair.is_checked() != was_checked
 
     def test_radio_button(self, test_app: JABDriver):
         cat = test_app.find_element_by_name("Cat")
         dog = test_app.find_element_by_name("Dog")
 
-        assert cat.is_checked()
-        assert not dog.is_checked()
-
         dog.click()
         assert dog.is_checked()
-        assert not cat.is_checked()
+        assert not cat.is_checked(), "selecting one did not clear the other"
 
         cat.click(simulate=True)
         assert cat.is_checked()
@@ -256,7 +259,12 @@ class TestComponents(object):
         assert tree
         self.logger.info(tree.get_element_information())
 
-        tree.find_element_by_name("Child one").expand()
+        # expand() is idempotent: the tree may already be showing its rows, and
+        # it used to send a toggle, which collapsed the node it was called on and
+        # hid the very children the next line looks for.
+        node = tree.find_element_by_name("Child one")
+        node.expand()
+        assert node.is_expanded()
         assert tree.find_element_by_name("Child one leaf A")
 
     # ---------------------------------------------------------------- ranges

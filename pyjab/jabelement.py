@@ -990,10 +990,25 @@ class JABElement(object):
         self._do_accessible_action(action=action)
 
     def expand(self, simulate: bool = False) -> None:
+        """Expand this JABElement, if it is not already expanded.
+
+        Note:
+            This used to send the accessibility action ``toggleexpand``
+            unconditionally, and to click **twice** when asked to simulate.  Both
+            do the opposite of what the name promises once the element is already
+            expanded: the action collapses it, and two clicks cancel each other
+            out.  Expanding an already-expanded node therefore left it collapsed
+            and hid the children the call was made for.
+
+            ``simulate=True`` sends a single click now.  Whether that expands
+            anything depends on the click landing on the expand handle rather
+            than the row, which is why the accessibility action is the default.
+        """
         if "expandable" not in self.states_en_us:
             raise JABException("JABElement does not support 'expand'")
+        if States.EXPANDED in self.states_en_us:
+            return
         if simulate:
-            self.click(simulate=True)
             self.click(simulate=True)
             return
         self._do_accessible_action("toggleexpand")
@@ -1054,6 +1069,15 @@ class JABElement(object):
     def is_showing(self) -> bool:
         """Returns whether the JABElement is showing."""
         return States.SHOWING in self.states_en_us
+
+    def is_expanded(self) -> bool:
+        """Returns whether the JABElement is expanded.
+
+        The companion to :meth:`expand`, and to :meth:`is_checked`,
+        :meth:`is_enabled` and :meth:`is_visible`.  A tree node, a combo box or
+        any other element that can be opened reports ``expanded`` while it is.
+        """
+        return States.EXPANDED in self.states_en_us
 
     def is_selected(self) -> bool:
         """Returns whether the JABElement is selected."""

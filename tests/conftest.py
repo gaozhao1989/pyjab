@@ -129,24 +129,24 @@ def test_application_classes() -> Path:
     return JAVA_CLASSES_DIR
 
 
-@pytest.fixture
-def test_app(test_application_classes: Path) -> "JABDriver":
-    """Launch the local Swing application and bind a JABDriver to it.
+@pytest.fixture(scope="session")
+def test_application(test_application_classes: Path) -> str:
+    """Launch the test application once for the whole GUI run.
+
+    It used to be launched per test, and starting a JVM and waiting for its
+    window dominates a run that is otherwise a few seconds of work.  One
+    application now serves every test; the fixture yields its window title.
 
     The application is started here rather than through ``JABDriver(file_path=)``
     because that parameter takes a single executable path and cannot express
     ``java -cp <dir> PyjabTestApp``.  Starting the process and binding to it by
     title is also the arrangement the documentation recommends.
 
-    Every run gets its own window title.  Binding by a fixed title means that a
-    window left behind by an earlier run -- one whose JVM outlived its test,
-    which happens whenever binding itself failed and there was therefore no pid
-    to stop -- can be matched instead of the new one.  The tests then inspect a
-    window whose buttons are already in whatever state the previous test left
-    them, and fail intermittently with no obvious cause.
+    The title is unique per run.  Binding by a fixed title means a window left
+    behind by an earlier run can be matched instead of this one, and the tests
+    then inspect a window whose buttons are already in whatever state the
+    previous run left them.
     """
-    from pyjab.jabdriver import JABDriver
-
     java = find_java_tool("java")
     title = "{}-{}".format(TEST_APP_TITLE, next(_TITLE_COUNTER))
     process = subprocess.Popen(
@@ -154,14 +154,28 @@ def test_app(test_application_classes: Path) -> "JABDriver":
         + ["-cp", str(test_application_classes), TEST_APP_CLASS, "--title=" + title],
     )
     try:
-        with JABDriver(title=title, timeout=60) as driver:
-            yield driver
+        yield title
     finally:
-        # JABDriver.__exit__ stops the bound process; this covers the case where
-        # binding never succeeded and there is therefore no pid to stop.
         if process.poll() is None:
             process.terminate()
             try:
                 process.wait(timeout=10)
             except subprocess.TimeoutExpired:  # pragma: no cover - defensive
                 process.kill()
+
+
+@pytest.fixture
+def test_app(test_application: str) -> "JABDriver":
+    """Bind a driver to the application the session started.
+
+    A fresh driver per test, but *not* a fresh JVM.  Deliberately not a context
+    manager: ``JABDriver.__exit__`` stops the bound process by pid, which would
+    kill the application every later test is still using.  The session fixture
+    owns the process and stops it once, at the end.
+
+    Naming a pyjab test after this fixture is what keeps it in the GUI layer --
+    every test that uses it needs the application, and therefore needs a JDK.
+    """
+    from pyjab.jabdriver import JABDriver
+
+    return JABDriver(title=test_application, timeout=60)

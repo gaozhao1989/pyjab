@@ -8,6 +8,7 @@ Every test in this module is a regression guard for a defect that was found by
 reading the source and had no issue tracking it.
 """
 
+import types
 from ctypes import byref, c_int
 from unittest.mock import MagicMock, patch
 
@@ -390,4 +391,53 @@ def test_find_element_by_name_pattern_raises_when_nothing_matches():
     with generator, release:
         with pytest.raises(JABException):
             element.find_element_by_name_pattern("^Save")
+
+
+# ---------------------------------------------------------------------------
+# expand() expands, and says so
+# ---------------------------------------------------------------------------
+
+def element_reporting_states(states: str):
+    """A JABElement whose accessibility states are whatever we say they are."""
+    element = make_element()
+    element._acc_info = lambda: types.SimpleNamespace(states_en_US=states)
+    return element
+
+
+def test_expanding_an_expanded_element_does_nothing():
+    """Regression: expand() sent 'toggleexpand' unconditionally.
+
+    So calling it on a node that was already open **collapsed** it, and the
+    children the call was made for disappeared.  A tree that starts expanded --
+    which is the default for a JTree -- could not be walked at all.
+    """
+    element = element_reporting_states("enabled,expandable,expanded")
+
+    with patch.object(JABElement, "_do_accessible_action") as action:
+        element.expand()
+
+    action.assert_not_called()
+    assert element.is_expanded()
+
+
+def test_expanding_a_collapsed_element_sends_the_action():
+    element = element_reporting_states("enabled,expandable,collapsed")
+
+    with patch.object(JABElement, "_do_accessible_action") as action:
+        element.expand()
+
+    assert action.call_args.args[0] == "toggleexpand"
+
+
+def test_expanding_something_that_cannot_expand_raises():
+    element = element_reporting_states("enabled")
+
+    with pytest.raises(JABException):
+        element.expand()
+
+
+def test_is_expanded_reports_the_state():
+    assert element_reporting_states("enabled,expanded").is_expanded()
+    assert not element_reporting_states("enabled,collapsed").is_expanded()
+    assert not element_reporting_states("enabled").is_expanded()
 
