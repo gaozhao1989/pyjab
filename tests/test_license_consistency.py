@@ -143,6 +143,53 @@ def test_several_licences_can_be_mentioned_at_once():
 
 
 # ---------------------------------------------------------------------------
+# Finding the places that state a licence
+# ---------------------------------------------------------------------------
+
+def test_both_shapes_of_a_licence_statement_are_found():
+    text = (
+        "pyjab is licensed under **GPLv2**.\n"
+        "* **Licence:** GPLv2. See elsewhere.\n"
+        "* **License:** GPLv2 -- see below.\n"
+        "pyjab is licensed under `GPLv2`_.\n"
+    )
+
+    assert [stated for _, stated in checker.stated_licences(text)] == [
+        "**GPLv2**", "GPLv2", "GPLv2 -- see below", "`GPLv2`_",
+    ]
+
+
+def test_a_mention_of_a_different_programs_licence_is_not_a_claim():
+    """The case that makes a narrow rule necessary.
+
+    docs/2 explains which licence the Java Access Bridge bundled with the JDK
+    comes under. That sentence contains "GPLv2" and is about Oracle's code, not
+    pyjab's -- a rule that reacted to any licence name would report that page as
+    stale the moment pyjab changed licence, which is a confident wrong answer.
+    """
+    text = (
+        "> **Java Access Bridge licensing.** The one bundled with JDK 9 and later\n"
+        "> is part of OpenJDK and is GPLv2 with the Classpath Exception, so using\n"
+        "> it from another program is not a problem. pyjab does not bundle or\n"
+        "> redistribute any part of either.\n"
+    )
+
+    assert checker.stated_licences(text) == []
+
+
+def test_the_internal_notes_are_not_scanned_as_documentation():
+    """They are gitignored, so a checkout has them and a tarball does not."""
+    assert "TRIAGE.md" in checker.INTERNAL_NOTES
+    assert "CONSENT_REQUESTS.md" in checker.INTERNAL_NOTES
+
+    names = {path.name for path in checker.places_that_state_the_licence(REPO_ROOT)}
+
+    assert "README.rst" in names
+    assert "1-Overview.md" in names
+    assert not (names & checker.INTERNAL_NOTES)
+
+
+# ---------------------------------------------------------------------------
 # The repository as it stands
 # ---------------------------------------------------------------------------
 
@@ -158,33 +205,97 @@ def test_this_repository_is_self_consistent(capsys):
 
 
 # ---------------------------------------------------------------------------
-# Reading pyproject.toml on an interpreter that predates tomllib
+# The failure it exists for
 # ---------------------------------------------------------------------------
 
-def test_the_tomli_fallback_is_used_when_tomllib_is_absent():
-    """The bug that turned four CI jobs red, on Python 3.9 and 3.10 only.
+MIT_TEXT = """MIT License
 
-    ``tomllib`` entered the standard library in 3.11 and pyjab supports 3.9, so
-    the tool has to fall back to ``tomli`` -- the same library under the name it
-    had before.  Setting ``sys.modules['tomllib'] = None`` is what makes an
-    import of it fail, so this exercises the fallback without needing an old
-    interpreter.
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
+"""
+
+GPL_TEXT = """GNU GENERAL PUBLIC LICENSE
+Version 2, June 1991
+
+Copyright (C) 1989, 1991 Free Software Foundation, Inc.
+"""
+
+
+def build_tree(root, licence_text, spdx, docs):
+    """A project tree just large enough for the check, with no git involved."""
+    (root / "docs").mkdir(parents=True, exist_ok=True)
+    (root / "LICENSE").write_text(licence_text, encoding="utf-8")
+    (root / "pyproject.toml").write_text(
+        f'[project]\nname = "probe"\nlicense = "{spdx}"\n'
+        f'license-files = ["LICENSE"]\n',
+        encoding="utf-8",
+    )
+    (root / "README.rst").write_text(docs["README.rst"], encoding="utf-8")
+    for name, text in docs.items():
+        if name != "README.rst":
+            (root / "docs" / name).write_text(text, encoding="utf-8")
+    return root
+
+
+def test_a_half_done_relicensing_is_caught(tmp_path, monkeypatch, capsys):
+    """The failure this whole check exists for.
+
+    LICENSE and pyproject.toml moved to MIT and the documentation did not. The
+    earlier version of this test looked only at README.rst, so docs/1-Overview.md
+    and docs/Home.md -- which state the licence in as many words -- were not
+    guarded at all.
     """
-    pytest.importorskip("tomli", reason="the fallback's dependency is not installed")
+    root = build_tree(tmp_path, MIT_TEXT, "MIT", {
+        "README.rst": "* **License:** GPLv2 -- see below.\n",
+        "1-Overview.md": "pyjab is licensed under **GPLv2**.\n",
+        "Home.md": "* **Licence:** GPLv2. See 1-Overview.\n",
+        "2-Getting-Started.md": "The JDK's bridge is GPLv2 with the Classpath "
+                                "Exception.\n",
+    })
+    monkeypatch.setattr(checker, "REPO_ROOT", root)
 
-    program = (
-        "import sys\n"
-        "sys.modules['tomllib'] = None\n"
-        "sys.path.insert(0, 'tools')\n"
-        "import check_license_consistency as checker\n"
-        "print(checker.tomllib.__name__)\n"
-        "raise SystemExit(checker.main())\n"
-    )
-    result = subprocess.run(
-        [sys.executable, "-c", program],
-        cwd=REPO_ROOT, capture_output=True, text=True,
-    )
+    assert checker.main() == 1
 
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert result.stdout.splitlines()[0] == "tomli"
-    assert "PASSED" in result.stdout
+    out = capsys.readouterr().out
+    assert "README.rst:1" in out
+    assert "docs/1-Overview.md" in out
+    assert "docs/Home.md" in out
+    # The page that talks about the JDK's code must not be dragged in.
+    assert "2-Getting-Started" not in out
+
+
+def test_a_complete_relicensing_passes(tmp_path, monkeypatch, capsys):
+    root = build_tree(tmp_path, MIT_TEXT, "MIT", {
+        "README.rst": "* **License:** MIT -- see below.\n",
+        "1-Overview.md": "pyjab is licensed under **MIT**.\n",
+        "Home.md": "* **Licence:** MIT.\n",
+        "2-Getting-Started.md": "The JDK's bridge is GPLv2 with the Classpath "
+                                "Exception.\n",
+    })
+    monkeypatch.setattr(checker, "REPO_ROOT", root)
+
+    assert checker.main() == 0
+    assert "PASSED" in capsys.readouterr().out
+
+
+def test_an_unrecognised_licence_text_fails_rather_than_passing_silently(
+        tmp_path, monkeypatch, capsys):
+    root = build_tree(tmp_path, "A licence nobody has heard of.\n", "MIT", {
+        "README.rst": "* **License:** MIT.\n",
+    })
+    monkeypatch.setattr(checker, "REPO_ROOT", root)
+
+    assert checker.main() == 1
+    assert "UNRECOGNISED" in capsys.readouterr().out
+
+
+def test_the_metadata_disagreeing_with_the_text_is_caught(tmp_path, monkeypatch, capsys):
+    root = build_tree(tmp_path, GPL_TEXT, "MIT", {
+        "README.rst": "* **License:** GPLv2.\n",
+    })
+    monkeypatch.setattr(checker, "REPO_ROOT", root)
+
+    assert checker.main() == 1
+    assert "GPL-2.0-only" in capsys.readouterr().out

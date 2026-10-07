@@ -94,6 +94,49 @@ def names_the_licence(text: str, names) -> list:
     return found
 
 
+#: Files in docs/ that are maintainer notes rather than published documentation.
+#: They are listed in .gitignore and excluded from the sdist, so a checkout has
+#: them but a tarball does not -- which is why they are named here rather than
+#: discovered from git.
+INTERNAL_NOTES = frozenset({
+    "TRIAGE.md", "ROADMAP.md", "PYJAB_MCP_PLAN.md", "ISSUE_REPLIES.md",
+    "CONSENT_REQUESTS.md",
+})
+
+#: The two shapes a statement of *pyjab's* licence takes: the sentence, and the
+#: metadata bullet.  Deliberately narrow, and it has to be.  docs/2 discusses the
+#: licence of the Java Access Bridge that ships inside the JDK -- "is GPLv2 with
+#: the Classpath Exception", about Oracle's code rather than pyjab's -- and a rule
+#: that reacted to any mention of a licence would report that page as stale the
+#: moment pyjab changed licence, which is the wrong answer delivered confidently.
+LICENCE_CLAIM = re.compile(
+    r"(?:pyjab\s+is\s+licen[cs]ed\s+under|\*\*Licen[cs]e:\*\*)"
+    r"\s*(?P<stated>[^\n.]+)",
+    re.IGNORECASE,
+)
+
+
+def places_that_state_the_licence(root: Path) -> list:
+    """Every published file that claims a licence, in a stable order."""
+    found = []
+    readme = root / "README.rst"
+    if readme.is_file():
+        found.append(readme)
+    for path in sorted((root / "docs").glob("*.md")):
+        if path.name not in INTERNAL_NOTES:
+            found.append(path)
+    return found
+
+
+def stated_licences(text: str) -> list:
+    """The licence named by each claim in ``text``, with its line number."""
+    claims = []
+    for number, line in enumerate(text.splitlines(), start=1):
+        for match in LICENCE_CLAIM.finditer(line):
+            claims.append((number, match.group("stated").strip()))
+    return claims
+
+
 def identify(text: str) -> str | None:
     """The SPDX id of the licence whose wording this is, or None."""
     for spdx, phrases in KNOWN_LICENCES:
@@ -126,15 +169,6 @@ def licence_paths(pyproject: Path, root: Path) -> list:
         # The globs are relative to the project root and may match several files.
         found.extend(sorted(root.glob(pattern)))
     return found
-
-
-def readme_mentions(readme: Path) -> str:
-    """The README's licence bullet, for the prose check."""
-    text = readme.read_text(encoding="utf-8")
-    for line in text.splitlines():
-        if re.search(r"\*\*Licen[cs]e:\*\*", line) or line.strip().startswith("Licen"):
-            return line.strip()
-    return ""
 
 
 def main() -> int:
@@ -174,37 +208,42 @@ def main() -> int:
             "what package managers and licence scanners read."
         )
 
-    readme = REPO_ROOT / "README.rst"
-    if readme.is_file():
-        mention = readme_mentions(readme)
-        if detected and mention:
+    # Every published file that states the licence, not just the README.  The
+    # relicensing commit has to touch all of them, and the first version of this
+    # check looked only at README.rst -- leaving docs/1-Overview.md and
+    # docs/Home.md, which both say it in as many words, entirely unguarded.
+    for path in places_that_state_the_licence(REPO_ROOT):
+        relative = path.relative_to(REPO_ROOT)
+        for number, stated in stated_licences(path.read_text(encoding="utf-8")):
+            if detected is None:
+                break
             names = PROSE_NAMES.get(detected, ())
-            if names and not names_the_licence(mention, names):
+            if names and not names_the_licence(stated, names):
                 problems.append(
-                    f"README says {mention!r}, which does not name {detected!r}. "
-                    f"Expected one of: {', '.join(names)}."
+                    f"{relative}:{number} states {stated!r}, which does not name "
+                    f"{detected!r}. Expected one of: {', '.join(names)}."
                 )
             else:
-                print(f"README bullet agrees:     {mention}")
+                print(f"{str(relative) + ':' + str(number):<28} agrees: {stated}")
 
-    # Anything else that names the old licence in a place users read.
-    for name in ("CONTRIBUTING.rst",):
-        path = REPO_ROOT / name
-        if path.is_file() and detected:
-            names = PROSE_NAMES.get(detected, ())
-            body = path.read_text(encoding="utf-8")
-            stale = [
-                other for other, other_names in PROSE_NAMES.items()
-                if other != detected
-                and names_the_licence(body, other_names)
-                and detected.replace("-only", "") not in other
-            ]
-            if stale:
-                print(
-                    f"\n  note: {name} also mentions {', '.join(sorted(stale))}. "
-                    "That may be deliberate -- it explains the relicensing -- but "
-                    "check it reads as history rather than as the current licence."
-                )
+    # CONTRIBUTING explains the relicensing, so it is expected to name licences
+    # other than the current one.  Reported rather than enforced.
+    contributing = REPO_ROOT / "CONTRIBUTING.rst"
+    if contributing.is_file() and detected:
+        body = contributing.read_text(encoding="utf-8")
+        stale = [
+            other for other, other_names in PROSE_NAMES.items()
+            if other != detected
+            and names_the_licence(body, other_names)
+            and detected.replace("-only", "") not in other
+        ]
+        if stale:
+            print(
+                f"\n  note: CONTRIBUTING.rst also mentions "
+                f"{', '.join(sorted(stale))} -- expected, since it explains the "
+                "relicensing. Check it reads as history rather than as the "
+                "current licence."
+            )
 
     if problems:
         print("\nFAILED")
