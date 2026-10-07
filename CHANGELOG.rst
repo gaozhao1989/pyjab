@@ -7,7 +7,37 @@ This project adheres to `Semantic Versioning`_ and `Keep a Changelog`_.
 .. _Semantic Versioning: https://semver.org/
 .. _Keep a Changelog: https://keepachangelog.com/
 
-1.2.0 (unreleased)
+1.2.1 (unreleased)
+------------------
+
+Released so that ``get_focused_element()``, contributed by `Chih-Yu (y252328)`_
+and merged to ``master`` in November 2022, finally reaches users.  It was
+present in the repository for three and a half years but never made it into a
+published release, because ``master`` was never released again after 1.1.7.
+
+.. _Chih-Yu (y252328): https://github.com/y252328
+
+Added
+~~~~~
+
+* ``JABDriver.get_focused_element()`` -- returns the currently focused
+  ``JABElement`` in the bound window, or ``None`` when nothing is focused.
+
+  .. code-block:: python
+
+     element = driver.get_focused_element()
+     if element is not None:
+         print(element.name, element.role)
+
+Fixed
+~~~~~
+
+* ``get_focused_element()`` passed the raw ``c_long`` vmID to ``JABElement``
+  instead of ``vmid.value``, which is what every other code path in pyjab uses
+  (``_get_accessible_context_from_hwnd`` returns ``vmid.value``).  It also now
+  uses a plain falsy check on the ``BOOL`` result rather than ``result == 0``.
+
+1.2.0 (2026-10-07)
 ------------------
 
 The first release since 1.1.7 (2022-05-23).  Focused on making the package

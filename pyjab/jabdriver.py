@@ -652,23 +652,26 @@ class JABDriver(object):
         return self.win32utils._get_window_position(hwnd=self.root_element.hwnd)
 
     def get_focused_element(self) -> Optional[JABElement]:
-        """
-        Gets the focused element of the current window.
+        """Gets the focused element of the current window.
 
         Returns:
-            JABElement: JABElement of focused element if found, otherwise return None.
+            Optional[JABElement]: the focused JABElement, or None when the
+            window reports no focused component.
         """
         vmid = c_long()
         accessible_context = JOBJECT64()
         result = self.bridge.getAccessibleContextWithFocus(
             self.hwnd, byref(vmid), byref(accessible_context)
         )
-        if result == 0 or accessible_context.value == 0:
+        if not result or not accessible_context.value:
             return None
 
         return JABElement(
             bridge=self.bridge,
             hwnd=self.hwnd,
-            vmid=vmid,
-            accessible_context=accessible_context
+            # NOTE: vmid is carried as a plain int everywhere else in pyjab
+            # (see _get_accessible_context_from_hwnd, which returns vmid.value).
+            # Passing the raw c_long here was inconsistent with that.
+            vmid=vmid.value,
+            accessible_context=accessible_context,
         )
