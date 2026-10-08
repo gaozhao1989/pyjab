@@ -14,11 +14,13 @@ The behaviour being pinned down:
 * a locator starting with ``.`` is relative to the element it is issued from.
 """
 
+import logging
 from unittest.mock import patch
 
 import pytest
 
 from _fakejab import JABElement, bind, node, panel, table
+from pyjab.common.exceptions import JABException
 from pyjab.common.types import JOBJECT64
 from pyjab.common.win32utils import Win32Utils
 
@@ -237,3 +239,78 @@ def test_a_successful_search_releases_everything_but_the_match():
 
     assert found.name == "Target"
     assert bridge.calls["releaseJavaObject"] > 0
+
+
+# ---------------------------------------------------------------------------
+# The tree is not guaranteed to be one
+# ---------------------------------------------------------------------------
+
+def make_a_cycle(depth=6):
+    """A bound element whose tree loops back on itself.
+
+    Java Access Bridge will report a parent among a node's descendants when the
+    application's accessibility implementation is wrong or mid-update.  The walk
+    is recursive and every step is a fresh cross-process call that succeeds, so
+    following that is a hang rather than an error -- which is what a lookup on a
+    real colour chooser panel did.
+
+    The cycle is added *after* bind(), because the fake indexes the tree
+    recursively when it is built and would loop there instead.
+    """
+    leaf = node("label", name="deep")
+    root = node("panel", leaf, name="root")
+    element, bridge = bind(root)
+    # The leaf now has the root as a child, so walking down never terminates.
+    leaf.children.append(root)
+    root.parent = leaf
+    return element, bridge
+
+
+def test_a_cyclic_tree_does_not_hang_a_name_lookup():
+    """It returns, and says why, instead of walking forever.
+
+    Before the ceiling this ended in ``RecursionError`` from inside a frame the
+    caller never wrote, after seconds of cross-process calls.  A cyclic tree that
+    loops *within* one subtree rather than straight down would not even get that
+    far -- each step is a call that succeeds, so it simply keeps going.  The
+    ceiling makes both cases an ordinary "not found" with a warning.
+    """
+    element, _ = make_a_cycle()
+
+    with pytest.raises(JABException):
+        element.find_element_by_name("not in this tree")
+
+
+def test_a_cyclic_tree_does_not_hang_an_xpath_lookup():
+    element, _ = make_a_cycle()
+
+    # Not a role the tree contains, so the walk has to exhaust it -- which is
+    # where an unbounded one never comes back.
+    with pytest.raises(JABException):
+        element.find_element_by_xpath("//push button")
+
+
+def test_the_cycle_is_reported_rather_than_silently_swallowed(caplog):
+    """A depth stop is a warning, not a quiet miss.
+
+    If it were silent, a genuinely too-deep tree would look like a locator
+    problem and be debugged as one.
+    """
+    element, _ = make_a_cycle()
+
+    with caplog.at_level(logging.WARNING, logger="pyjab"):
+        with pytest.raises(JABException):
+            element.find_element_by_name("not in this tree")
+
+    assert any("MAX_SEARCH_DEPTH" in record.message or
+               "MAX_SEARCH_DEPTH" in str(record.args)
+               for record in caplog.records), caplog.text
+
+
+def test_a_normal_tree_is_not_affected_by_the_ceiling():
+    """The ceiling must be far past anything real: 100 against a depth of 3."""
+    root = node("panel", node("panel", node("label", name="target"),
+                              name="inner"), name="outer")
+    element, _ = bind(root)
+
+    assert element.find_element_by_name("target").name == "target"

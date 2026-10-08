@@ -36,6 +36,17 @@ MAX_RELATIONS = 5
 MAX_ACTION_INFO = 256
 MAX_ACTIONS_TO_DO = 32
 MAX_VISIBLE_CHILDREN = 256
+
+#: How deep a lookup will walk before giving up.
+#:
+#: The accessibility tree is not guaranteed to be a tree.  Java Access Bridge will
+#: report a parent among a node's descendants if the application's accessibility
+#: implementation is wrong or mid-update, and a recursive walk with no ceiling
+#: follows that forever -- which is a hang, not an exception, because every step is
+#: a fresh cross-process call that succeeds.  A real Swing hierarchy is well under
+#: twenty deep (``AccessibleContextInfo.objectDepth`` says how deep), so a hundred
+#: is far past anything legitimate and still bounded.
+MAX_SEARCH_DEPTH = 100
 TIMEOUT = 30
 
 #: Seconds to sleep between attempts while waiting for a Java window to appear.

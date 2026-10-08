@@ -16,6 +16,7 @@ from time import monotonic, sleep
 
 from pyjab.common.logger import Logger
 from pyjab.config import ELEMENT_POLL_INTERVAL
+from pyjab.config import MAX_SEARCH_DEPTH
 from pyjab.common.role import Role
 from pyjab.common.states import States
 from pyjab.common.textreader import TextReader
@@ -243,6 +244,7 @@ class JABElement(object):
             root: JABElement,
             predicate,
             visible: bool = False,
+            depth: int = 0,
     ) -> Optional[JABElement]:
         """Return the first element below *root* that satisfies *predicate*.
 
@@ -262,12 +264,26 @@ class JABElement(object):
         generator had not produced yet simply never come into existence, because
         abandoning it is what stops the walk.
         """
+        if depth >= MAX_SEARCH_DEPTH:
+            # Not a failure: a lookup that has gone this deep is looking at a tree
+            # that is not a tree.  Returning None lets the caller raise its usual
+            # "not found", which is a better report than a hang and a better one
+            # than a RecursionError from inside pyjab.
+            self.logger.warning(
+                "lookup stopped at depth %s without a match; the accessibility "
+                "tree at this point is deeper than MAX_SEARCH_DEPTH (%s), or it "
+                "contains a cycle",
+                depth,
+                MAX_SEARCH_DEPTH,
+            )
+            return None
         for child in self._generate_childs_from_element(
                 jabelement=root, visible=visible
         ):
             if predicate(child):
                 return child
-            found = self._search_element(child, predicate, visible=visible)
+            found = self._search_element(child, predicate, visible=visible,
+                                         depth=depth + 1)
             self.release_jabelement(child)
             if found is not None:
                 return found
@@ -1782,6 +1798,7 @@ class JABElement(object):
             parent: JABElement,
             visible: bool,
             examined: list,
+            depth: int = 0,
     ) -> Optional[JABElement]:
         """First element matching ``nodes[index:]`` under *parent*, or None.
 
@@ -1806,6 +1823,18 @@ class JABElement(object):
         every reference is released, and releasing them together at the end is
         what makes that true.
         """
+        if depth >= MAX_SEARCH_DEPTH:
+            # See MAX_SEARCH_DEPTH: the tree is not guaranteed to be one, and an
+            # unbounded walk of a cyclic one is a hang rather than an error.
+            self.logger.warning(
+                "xpath lookup stopped at depth %s without a match; the "
+                "accessibility tree at this point is deeper than MAX_SEARCH_DEPTH "
+                "(%s), or it contains a cycle",
+                depth,
+                MAX_SEARCH_DEPTH,
+            )
+            return None
+
         info = self.xpath_parser.get_node_information(nodes[index])
         last = index == len(nodes) - 1
         role = info.get("role")
@@ -1826,7 +1855,7 @@ class JABElement(object):
                     if last:
                         return child
                     found = self._search_path(
-                        nodes, index + 1, child, visible, examined
+                        nodes, index + 1, child, visible, examined, depth + 1
                     )
                     if found is not None:
                         examined.append(child)
@@ -1840,11 +1869,13 @@ class JABElement(object):
             if matches(child):
                 if last:
                     return child
-                found = self._search_path(nodes, 1, child, visible, examined)
+                found = self._search_path(nodes, 1, child, visible, examined,
+                                          depth + 1)
                 if found is not None:
                     examined.append(child)
                     return found
-            found = self._search_path(nodes, 0, child, visible, examined)
+            found = self._search_path(nodes, 0, child, visible, examined,
+                                      depth + 1)
             if found is not None:
                 examined.append(child)
                 return found
