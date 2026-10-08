@@ -141,8 +141,8 @@ array on a table with many rows. Bound the loop by the size of what you actually
 received, and scroll the row into view before reading it:
 
 ```python
-children = table._get_visible_children()
-count = len(children.children)      # do NOT assume row_count * column_count
+children = table.get_visible_children()
+count = len(children)               # do NOT assume row_count * column_count
 ```
 
 Rows that are scrolled out of view are not in the accessibility tree. Reaching

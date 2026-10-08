@@ -53,6 +53,11 @@ DOCUMENTED_VARIABLES = {
     "form_textfield": "JABElement",
     "from_textfield": "JABElement",
     "app": "JABDriver",
+    # `table` and `cell` are JABElements in the examples.  Leaving them out is not
+    # neutral: the whole Tables section went unchecked, so it passed while naming
+    # methods that did not exist, which is the failure this tool exists to catch.
+    "table": "JABElement",
+    "cell": "JABElement",
 }
 
 #: Names that are deliberately absent from the code, with the reason.  A

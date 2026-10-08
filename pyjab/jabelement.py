@@ -369,13 +369,29 @@ class JABElement(object):
         accessible_context = accessible_context or self.accessible_context
         self.bridge.requestFocus(self.vmid, accessible_context)
 
+    def _get_accessible_selection_from_context_index(
+            self, index: int, accessible_context: JOBJECT64 = None
+    ) -> JOBJECT64:
+        """The accessible context of the ``index``-th selected child.
+
+        JAB returns a reference it keeps, so the caller owns one release -- see
+        :meth:`release_jabelement`.
+        """
+        accessible_context = accessible_context or self.accessible_context
+        return self.bridge.getAccessibleSelectionFromContext(
+            self.vmid, accessible_context, index
+        )
+
     def _get_accessible_selection_from_context(
             self, accessible_context: JOBJECT64 = None
     ) -> JOBJECT64:
-        accessible_context = accessible_context or self.accessible_context
-        return self.bridge.getAccessibleSelectionFromContext(
-            self.vmid, accessible_context, 0
-        )
+        """The first selected child.
+
+        Kept because several callers use it; this is the ``index=0`` case of
+        :meth:`_get_accessible_selection_from_context_index`, which has the note
+        about releasing what it returns.
+        """
+        return self._get_accessible_selection_from_context_index(0, accessible_context)
 
     def _add_accessible_selection_from_context(
             self, index: int, accessible_context: JOBJECT64 = None
@@ -639,6 +655,128 @@ class JABElement(object):
                 self.int_func_err_msg.format("getAccessibleTableCellInfo")
             )
         return info
+
+    # --- AccessibleTable selection ---------------------------------------
+    #
+    # A table is not like a list.  JAB has no call that selects a row, a column or
+    # a cell: the only way in is the table's own AccessibleSelection, and the index
+    # it wants is the one getAccessibleTableIndex maps (row, column) onto.  Adding
+    # that index to the selection selects the cell; reading the selection back
+    # gives the cell objects, which -- unlike the ones get_cell returns for many
+    # tables -- are the ones the application will actually respond to.  That is the
+    # difference between the "Cells" and "Select Cells" properties in #57 and #61.
+
+    def _get_accessible_table_row_selections(
+            self, accessible_context: JOBJECT64 = None
+    ) -> list:
+        """The row indices this table reports as selected.
+
+        Returns:
+            list: zero-based row indices, empty when the table reports none.
+
+        Raises:
+            JABException: getAccessibleTableRowSelections error.
+        """
+        accessible_context = accessible_context or self.accessible_context
+        count = self._get_accessible_table_row_selection_count(accessible_context)
+        if count <= 0:
+            return []
+        selections = (jint * count)()
+        result = self.bridge.getAccessibleTableRowSelections(
+            self.vmid, accessible_context, count, selections
+        )
+        if not result:
+            raise JABException(
+                self.int_func_err_msg.format("getAccessibleTableRowSelections")
+            )
+        return list(selections)
+
+    def _get_accessible_table_column_selections(
+            self, accessible_context: JOBJECT64 = None
+    ) -> list:
+        """The column indices this table reports as selected.
+
+        Returns:
+            list: zero-based column indices, empty when the table reports none.
+
+        Raises:
+            JABException: getAccessibleTableColumnSelections error.
+        """
+        accessible_context = accessible_context or self.accessible_context
+        count = self._get_accessible_table_column_selection_count(accessible_context)
+        if count <= 0:
+            return []
+        selections = (jint * count)()
+        result = self.bridge.getAccessibleTableColumnSelections(
+            self.vmid, accessible_context, count, selections
+        )
+        if not result:
+            raise JABException(
+                self.int_func_err_msg.format("getAccessibleTableColumnSelections")
+            )
+        return list(selections)
+
+    def _is_accessible_table_row_selected(
+            self, row: int, accessible_context: JOBJECT64 = None
+    ) -> bool:
+        """Whether one row is selected.
+
+        No errorcheck on the binding, so a False here is the bridge's answer rather
+        than a swallowed exception -- see the comment beside it in
+        ``pyjab/jabfixedfunc.py``.
+        """
+        accessible_context = accessible_context or self.accessible_context
+        return bool(
+            self.bridge.isAccessibleTableRowSelected(
+                self.vmid, accessible_context, row
+            )
+        )
+
+    def _is_accessible_table_column_selected(
+            self, column: int, accessible_context: JOBJECT64 = None
+    ) -> bool:
+        """Whether one column is selected."""
+        accessible_context = accessible_context or self.accessible_context
+        return bool(
+            self.bridge.isAccessibleTableColumnSelected(
+                self.vmid, accessible_context, column
+            )
+        )
+
+    def _get_accessible_selection_count_from_context(
+            self, accessible_context: JOBJECT64 = None
+    ) -> int:
+        """How many children the accessible selection holds.
+
+        Zero is the ordinary answer for a freshly-opened list or table.
+        """
+        accessible_context = accessible_context or self.accessible_context
+        return self.bridge.getAccessibleSelectionCountFromContext(
+            self.vmid, accessible_context
+        )
+
+    def _get_accessible_table_index(
+            self, row: int, column: int, accessible_context: JOBJECT64 = None
+    ) -> int:
+        """The selection index of the cell at (row, column).
+
+        This is the number ``addAccessibleSelectionFromContext`` wants; it is not
+        the same as the row-major position, which is why it is asked for rather
+        than computed.
+        """
+        accessible_context = accessible_context or self.accessible_context
+        return self.bridge.getAccessibleTableIndex(
+            self.vmid, accessible_context, row, column
+        )
+
+    def _select_accessible_table_index(
+            self, index: int, accessible_context: JOBJECT64 = None
+    ) -> None:
+        """Add one selection index to the table's selection."""
+        accessible_context = accessible_context or self.accessible_context
+        self.bridge.addAccessibleSelectionFromContext(
+            self.vmid, accessible_context, index
+        )
 
     def _get_visible_children_count(self, accessible_context: JOBJECT64 = None) -> int:
         """Returns the number of visible children of a component. Returns -1 on error.
@@ -911,35 +1049,39 @@ class JABElement(object):
             option (str): Item selection from selector.
             simulate (bool, optional): Simulate user input action by mouse event. Defaults to False.
             wait_for_selection (bool, optional): Waits for selection equal to the option value. Defaults to True.
+
+        Raises:
+            JABException: this element is not one of the four supported roles.  A
+                table is told so by name, and pointed at the methods that do apply
+                to it, rather than raising KeyError('table') (#57).
         """
-        _ = {
+        handlers = {
             "combo box": self._select_from_combobox,
             "page tab list": self._select_from_page_tab_list,
             "list": self._select_from_list,
             "menu": self._select_from_menu,
-        }[self.role_en_us](option=option, simulate=simulate)
+        }
+        if self.role_en_us not in handlers:
+            if self.role_en_us == Role.TABLE:
+                # A table has no named options: what you select is a position.
+                # This used to be KeyError('table'), which said what went wrong
+                # but not what to do about it.
+                raise JABException(
+                    "select() does not apply to a table -- a table is selected by "
+                    "position, not by name. Use select_cell(row, column), "
+                    "select_row(row), select_column(column) or select_all(), then "
+                    "read the result back with get_selected_elements()."
+                )
+            raise JABException(
+                f"select() does not support a '{self.role_en_us}'; it works on a "
+                "combo box, page tab list, list or menu"
+            )
+        handlers[self.role_en_us](option=option, simulate=simulate)
         if wait_for_selection:
             self._wait_for_value_to_contain(
                 [States.SELECTED, States.CHECKED],
                 lambda: self.find_element_by_name(option).states_en_us,
             )
-
-    def get_selected_element(self) -> JABElement:
-        """Get selected JABElement from selection.
-        Support get selection from combo box, list and page tab list.
-
-        Returns:
-            JABElement: The selected JABElement
-        """
-        selected_acc = self._get_accessible_selection_from_context(
-            self.accessible_context
-        )
-        return JABElement(
-            bridge=self.bridge,
-            hwnd=self.hwnd,
-            vmid=self.vmid,
-            accessible_context=selected_acc,
-        )
 
     def _add_selection_from_accessible_context(
             self, parent: JABElement, option: str
@@ -2013,6 +2155,229 @@ class JABElement(object):
             info = self._get_visible_children()
             accessible_context = info.children[index]
         return JABElement(self.bridge, self.hwnd, self.vmid, accessible_context)
+
+    # --- AccessibleTable selection, public -------------------------------
+    #
+    # Why these exist rather than a single `select(name)`: what you select in a
+    # table is a position, not a name.  And why they are worth having at all:
+    # get_cell() returns the cell from the table's own cell list, which many Java
+    # tables report with bounds of -1 -- so the element is real but cannot be
+    # clicked.  The cells reached through the selection are the ones the
+    # application responds to (#57, #61).
+
+    def _require_table(self, action: str) -> None:
+        """Refuse table-only calls on anything else, by name."""
+        if self.role_en_us != Role.TABLE:
+            raise JABException(
+                f"{action}() needs a table; this element is a "
+                f"'{self.role_en_us}'"
+            )
+
+    @property
+    def selected_rows(self) -> list:
+        """Zero-based indices of the selected rows. Empty when none are."""
+        self._require_table("selected_rows")
+        return self._get_accessible_table_row_selections()
+
+    @property
+    def selected_columns(self) -> list:
+        """Zero-based indices of the selected columns. Empty when none are."""
+        self._require_table("selected_columns")
+        return self._get_accessible_table_column_selections()
+
+    @property
+    def selected_row_count(self) -> int:
+        """How many rows the table reports as selected."""
+        self._require_table("selected_row_count")
+        return self._get_accessible_table_row_selection_count()
+
+    @property
+    def selected_column_count(self) -> int:
+        """How many columns the table reports as selected."""
+        self._require_table("selected_column_count")
+        return self._get_accessible_table_column_selection_count()
+
+    def is_row_selected(self, row: int) -> bool:
+        """Whether one row is selected, without reading the whole selection.
+
+        Args:
+            row (int): zero-based row index.
+        """
+        self._require_table("is_row_selected")
+        return self._is_accessible_table_row_selected(row)
+
+    def is_column_selected(self, column: int) -> bool:
+        """Whether one column is selected.
+
+        Args:
+            column (int): zero-based column index.
+        """
+        self._require_table("is_column_selected")
+        return self._is_accessible_table_column_selected(column)
+
+    def get_selected_elements(self) -> list:
+        """Every selected child, as a list of :class:`JABElement`.
+
+        The table's selection holds the cells the application is actually
+        presenting as selected -- the "Select Cells" the issues asked for.  For a
+        list or a combo box this is the selected item(s), so it is not table-only.
+
+        Returns:
+            list: :class:`JABElement` objects.  **Release each one** with
+            :meth:`release_jabelement` when finished, as with any object JAB hands
+            out -- see the note there.
+
+        Note:
+            An empty list means nothing is selected, which is the ordinary state
+            of a freshly-opened component rather than an error.
+        """
+        count = self._get_accessible_selection_count_from_context()
+        elements = []
+        for index in range(count):
+            accessible_context = self._get_accessible_selection_from_context_index(
+                index
+            )
+            if not accessible_context:
+                # JAB handed back nothing for this slot; skip rather than build an
+                # element around a null handle, which would fail later and
+                # somewhere else.
+                continue
+            elements.append(
+                JABElement(
+                    bridge=self.bridge,
+                    hwnd=self.hwnd,
+                    vmid=self.vmid,
+                    accessible_context=accessible_context,
+                )
+            )
+        return elements
+
+    def get_selected_element(self) -> JABElement:
+        """The first selected child, as a :class:`JABElement`.
+
+        Kept for compatibility.  Prefer :meth:`get_selected_elements`, which can
+        tell "nothing is selected" apart from "the first selected thing" -- this
+        one returns an element wrapping a null handle when the selection is empty.
+
+        Returns:
+            JABElement: the first selected element.
+        """
+        selected_acc = self._get_accessible_selection_from_context(
+            self.accessible_context
+        )
+        return JABElement(
+            bridge=self.bridge,
+            hwnd=self.hwnd,
+            vmid=self.vmid,
+            accessible_context=selected_acc,
+        )
+
+    def select_cell(self, row: int, column: int, clear: bool = True) -> None:
+        """Select the cell at (row, column).
+
+        The cell is reached through the table's accessible selection, which is the
+        only route JAB offers and the one the application reacts to.  If you need
+        the resulting element rather than the selection, follow this with
+        :meth:`get_selected_elements`.
+
+        Args:
+            row (int): zero-based row index.
+            column (int): zero-based column index.
+            clear (bool, optional): clear the existing selection first, so this
+                cell ends up the only one selected. Defaults to True; pass False
+                to extend a multi-selection.
+
+        Raises:
+            JABException: not a table, or the index could not be resolved.
+        """
+        self._require_table("select_cell")
+        if clear:
+            self._clear_accessible_selection_from_context(self.accessible_context)
+        index = self._get_accessible_table_index(row, column)
+        if index < 0:
+            raise JABException(
+                f"table has no cell at row {row}, column {column}"
+            )
+        self._select_accessible_table_index(index)
+
+    def select_row(self, row: int, clear: bool = True) -> None:
+        """Select every cell in one row.
+
+        There is no JAB call that selects a row: the row is selected by adding
+        each of its cells to the table's selection.  Whether the application then
+        reports the *row* as selected is up to its implementation -- check
+        :attr:`selected_rows` afterwards rather than assuming.
+
+        Args:
+            row (int): zero-based row index.
+            clear (bool, optional): clear the existing selection first. Defaults
+                to True.
+        """
+        self._require_table("select_row")
+        if clear:
+            self._clear_accessible_selection_from_context(self.accessible_context)
+        for column in range(self._get_accessible_table_info().columnCount):
+            index = self._get_accessible_table_index(row, column)
+            if index >= 0:
+                self._select_accessible_table_index(index)
+
+    def select_column(self, column: int, clear: bool = True) -> None:
+        """Select every cell in one column. See :meth:`select_row`."""
+        self._require_table("select_column")
+        if clear:
+            self._clear_accessible_selection_from_context(self.accessible_context)
+        for row in range(self._get_accessible_table_info().rowCount):
+            index = self._get_accessible_table_index(row, column)
+            if index >= 0:
+                self._select_accessible_table_index(index)
+
+    def clear_selection(self) -> None:
+        """Clear the table's selection."""
+        self._require_table("clear_selection")
+        self._clear_accessible_selection_from_context(self.accessible_context)
+
+    def select_all(self) -> None:
+        """Ask the table to select everything it can."""
+        self._require_table("select_all")
+        self.bridge.selectAllAccessibleSelectionFromContext(
+            self.vmid, self.accessible_context
+        )
+
+    def get_visible_children(self) -> list:
+        """The children currently on screen, as :class:`JABElement` objects.
+
+        A large table only has the rows that are visible in the accessibility
+        tree: the rest have no handles to read.  That is why the count here is
+        ``getVisibleChildren``'s own answer and not ``row_count * column_count``
+        -- indexing past what actually came back is what crashes the target
+        application, which is the report in #59.
+
+        Returns:
+            list: :class:`JABElement` objects.  **Release each one** with
+            :meth:`release_jabelement` when finished, as with any object JAB hands
+            out.
+
+        Note:
+            This is the supported form of what the troubleshooting page used to
+            reach for as ``table._get_visible_children()``, which is private and
+            can change without notice.
+        """
+        info = self._get_visible_children()
+        count = info.returnedChildrenCount
+        children = []
+        for index in range(count):
+            handle = info.children[index]
+            if not handle:
+                continue
+            children.append(
+                JABElement(
+                    bridge=self.bridge,
+                    hwnd=self.hwnd,
+                    vmid=self.vmid,
+                    accessible_context=handle,
+                )
+            )
+        return children
 
     def get_element_information(self) -> dict:
         """Get dict information of current JABElement.
