@@ -6,7 +6,17 @@ Jason Allen
     Wildcard matching for window titles, the role attribute matching fix, the
     bridge-check guard, a general clean-up, and the test suite that preceded the
     one in tests/ -- most of which is still in the code.
-    Consent to relicense given by email, 2026-10-08.
+    Consent to relicense, given by email on 2026-10-08.  Verbatim:
+
+        But I, of course, give any permissions necessary for my code to used
+        in any way needed.
+
+        I, Jason Allen, agree that my contributions to pyjab may be
+        distributed under any OSI-approved licence, including licences other
+        than GPLv2.
+
+    There is no link to give for an email; the message itself is held by the
+    maintainer.
 
 Shine Jayakumar
     get_children(), find_elements_by_name_pattern() and
