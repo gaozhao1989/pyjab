@@ -15,8 +15,7 @@ docs/
 ├── 4-Support-Packages.md        the libraries pyjab depends on
 ├── 5-About-this-documentation.md
 ├── 6-Troubleshooting.md         the problems people actually hit
-├── 7-Changelog.md               points at CHANGELOG.rst
-└── reference/                   historical reference material
+└── 7-Changelog.md               points at CHANGELOG.rst
 ```
 
 ## Publishing to the wiki

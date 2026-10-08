@@ -74,6 +74,20 @@ Changed
 * ``get_focused_element()`` has been written again from its behaviour.  The
   method is still Chih-Yu's, and ``CONTRIBUTORS.txt`` says so.
 
+Removed
+~~~~~~~
+
+* **``docs/reference/`` -- two ``.bak`` files that quoted Oracle's headers.**
+  ``apicallbacks.py.bak`` reproduced twenty-two ``typedef`` declarations from
+  ``AccessBridgeCallbacks.h`` and eleven lines of its prose, and
+  ``jabcontext.py.bak`` was eighteen hundred lines of a ``JABContext`` class that
+  no longer exists anywhere in pyjab.  Nothing imported either, neither was in the
+  sdist or the wheel, and the reason they were kept -- "historical reference" --
+  is what the git history is for.  Between them they were the only files in the
+  repository that were not pyjab's own, LICENSE aside, and shipping one project's
+  header text inside another's source is not a thing to leave lying in a folder
+  called ``docs/``.
+
 Added
 ~~~~~
 
