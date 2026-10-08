@@ -189,6 +189,8 @@ element.spin("3")                  # spinners
 element.get_selected_element()     # the first selected child
 element.get_selected_elements()    # all of them
 element.get_visible_children()     # what is actually on screen
+element.bounds_within(other)       # geometry, not the `visible` state
+element.scroll_into_view()         # best effort; returns whether it worked
 ```
 
 `double_click()` and `context_click()` always move the mouse: Java Access Bridge
@@ -309,15 +311,34 @@ Each one carries a Java object reference, so **release it when you have finished
 as with any object pyjab hands out. An empty list means nothing is selected, which
 is the ordinary state of a table you have just opened.
 
-### Limitations
+### Rows scrolled out of view
 
-**Rows scrolled out of view are not readable.** They are not in the accessibility
-tree, and trying to reach them can destabilise the target application. Scroll the
-table so the row is visible, then query again.
+They are not in the accessibility tree, so there is nothing to read and trying to
+reach them anyway can destabilise the application (#59). Two tools:
 
-**`select()` does not apply to a table.** It takes a name, and a table is selected
-by position, so calling it on a table raises `JABException` saying so. Use the
-methods above.
+```python
+children = table.get_visible_children()   # only what is on screen
+row = table.get_cell(row=40, column=0)
+
+print(row.bounds_within(table))           # inside the table's rectangle?
+if not row.bounds_within(table):
+    row.scroll_into_view()                # best effort; returns whether it worked
+```
+
+`get_visible_children()` takes its count from the bridge's own
+`returnedChildrenCount`, so it cannot run past what came back.
+
+`scroll_into_view()` is **best effort and says so**: Java Access Bridge exposes no
+scroll position, so there is no offset to compute and jump to. It nudges the
+vertical scroll bar one step at a time and re-reads the rectangle, stopping when
+the element comes inside, when the rectangle stops changing (the bar is at its
+end), or after `max_steps`. It returns whether it succeeded, and `False` also
+means "there is no scrollable ancestor" — a control that does not scroll is
+simply not this problem. It needs valid bounds on both the element and its
+scrollable ancestor; a table whose cells report `-1` cannot be scrolled this way,
+and the accessibility action path is the only option — see
+[Selecting](#selecting).
+
 
 ## Windows and screenshots
 
