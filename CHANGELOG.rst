@@ -61,6 +61,26 @@ Added
 Fixed
 ~~~~~
 
+* **A hanging Java Access Bridge call no longer hangs the suite silently.**
+  ``faulthandler_timeout`` is set in ``pyproject.toml``, so a test that stops
+  making progress prints every thread's stack -- naming the pyjab call that never
+  returned -- and gives up.  It is built into pytest, so it needs no dependency.
+  This exists because a hang in the GUI suite is the one failure mode nothing
+  covers: CI cannot run that suite, and the machine that can had no way to say
+  where it stopped.  The colour chooser tests are where it was first needed.
+* **A cyclic accessibility tree no longer walks forever.**  ``_search_element``
+  and ``_search_path`` recursed without a ceiling, and Java Access Bridge will
+  report a parent among a node's descendants when an application's accessibility
+  implementation is wrong or mid-update.  Every step of the walk is a fresh
+  cross-process call that succeeds, so following that is not an error -- it is
+  either a ``RecursionError`` from inside pyjab or, for a cycle that does not go
+  straight down, an unbounded number of calls.  ``MAX_SEARCH_DEPTH`` bounds it and
+  the stop is logged, because a silent one would look like a locator problem.  A
+  real Swing hierarchy is under twenty deep; the ceiling is a hundred.
+
+Fixed
+~~~~~
+
 * **``double_click()`` raised ``AttributeError`` on Windows.**  ``_double_click_mouse``
   asked ``win32api`` for ``GetDoubleClickTime``; that module does not expose it,
   so every real double click failed with ``AttributeError: module 'win32api' has

@@ -80,3 +80,13 @@ exclude = ["build*", "dist*", "docs*", "tests*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+# A hung Java Access Bridge call is the one failure the portable suite cannot see
+# and CI cannot catch: the GUI suite runs on a developer's Windows machine, and
+# without this a hang costs however long it takes someone to notice and then says
+# nothing about where.  faulthandler is built in, so this needs no dependency; on
+# the timeout it prints every thread's stack -- which names the pyjab call that
+# never returned -- and gives up.
+#
+# Generous, because a GUI test legitimately waits for a JVM: JABDriver(timeout=30)
+# plus a few bounded waits fits well inside it.
+faulthandler_timeout = 300
