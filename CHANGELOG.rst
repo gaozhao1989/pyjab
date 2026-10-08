@@ -7,8 +7,11 @@ This project adheres to `Semantic Versioning`_ and `Keep a Changelog`_.
 .. _Semantic Versioning: https://semver.org/
 .. _Keep a Changelog: https://keepachangelog.com/
 
-Unreleased
-----------
+1.6.2 (2026-10-09)
+------------------
+
+AccessibleTable selection and scrolling, and the two Windows failures that
+1.6.1 was published with.
 
 Added
 ~~~~~
@@ -78,8 +81,6 @@ Fixed
   the stop is logged, because a silent one would look like a locator problem.  A
   real Swing hierarchy is under twenty deep; the ceiling is a hundred.
 
-Fixed
-~~~~~
 
 * **``double_click()`` raised ``AttributeError`` on Windows.**  ``_double_click_mouse``
   asked ``win32api`` for ``GetDoubleClickTime``; that module does not expose it,
@@ -98,8 +99,6 @@ Fixed
   for itself, and reports git's own stderr when a command fails instead of
   discarding the one thing worth having.
 
-Fixed
-~~~~~
 
 * **Reading a table with off-screen rows could crash the application** (#59).
   Nothing in pyjab indexed past ``returnedChildrenCount``, but the published
@@ -116,8 +115,6 @@ Fixed
   test compares the fake bridge's reference counts before and after and fails on
   any growth.
 
-Fixed
-~~~~~
 
 * **Three of those symbols return a bool that means "no".**  Declared with
   ``errorcheck=True`` -- the default mistake in this codebase --
