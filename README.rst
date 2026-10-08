@@ -16,7 +16,7 @@ most people already know, so that there is nothing new to learn.
 * **Requires:** a JDK (or a standalone Java Access Bridge) and Java Access Bridge
   enabled in the target application.
 * **Locators:** familiar ``find_element_by_*`` locators plus an XPath-like syntax.
-* **License:** GPLv2 -- see `License and commercial use`_ below.
+* **License:** MIT -- see `License and commercial use`_ below.
 
 .. contents::
    :local:
@@ -322,17 +322,19 @@ Oracle, Java and Java Access Bridge are trademarks or registered trademarks of
 Oracle Corporation. pyjab is an independent project and is not affiliated with,
 endorsed by, or sponsored by Oracle.
 
-pyjab is licensed under `GPLv2`_.
+pyjab is licensed under `MIT`_.  You may use it in commercial and closed-source
+software.  The only obligation is that the copyright notice and the licence text
+travel with any copy or substantial portion of it.
 
-This is worth understanding before you depend on it: **GPLv2 is a copyleft
-licence.**  If you distribute software that links pyjab, that software must also
-be distributed under GPLv2.  Using pyjab for internal automation that you never
-distribute does not trigger this, but shipping a product that bundles pyjab
-does.
+Versions up to and including 1.5.0 were released under `GPLv2`_, because the
+project then contained code derived from NVDA, which is GPLv2.  **Those releases
+remain GPLv2** -- a licence cannot be withdrawn from a version that has already
+been distributed -- so pinning one of them means the terms that came with it.
+The derived code has since been written again from the behaviour it implements
+rather than from NVDA's text, and from 1.6.0 pyjab is MIT.
 
-If that is a problem for your use case, please get in touch -- see `Support`_.
-Relicensing is a topic the maintainer is open to discussing with contributors and
-users.
+If an older version under different terms matters to you, please get in touch --
+see `Support`_.
 
 Contributing
 ------------
@@ -349,5 +351,6 @@ reproduction are the most valuable contribution.
 .. _PyPI: https://pypi.org/project/pyjab/
 .. _GitHub: https://github.com/gaozhao1989/pyjab
 .. _Access Bridge Explorer: https://github.com/google/access-bridge-explorer
+.. _MIT: https://opensource.org/license/mit
 .. _GPLv2: https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html
 .. _gaozhao89@qq.com: mailto:gaozhao89@qq.com

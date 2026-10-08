@@ -86,15 +86,15 @@ Explorer is the quickest way to check — see
 
 ## Licence
 
-pyjab is licensed under **GPLv2**.
+pyjab is licensed under **MIT** — you can use it in commercial and closed-source
+software, and the only obligation is to carry the copyright notice and the licence
+text with any copy or substantial portion of it.
 
-GPLv2 is a copyleft licence: if you distribute software that links pyjab, that
-software must also be distributed under GPLv2. Using pyjab for internal
-automation that you never distribute does not trigger this, but shipping a
-product that bundles pyjab does.
-
-If that is a problem for your use case, please get in touch — relicensing is a
-topic the maintainer is open to discussing.
+Versions up to and including 1.5.0 were GPLv2, because the project then contained
+code derived from NVDA, which is GPLv2. **Those releases remain GPLv2**, since a
+licence cannot be withdrawn from a version that has already been distributed. The
+derived code has since been written again from the behaviour it implements, and
+from 1.6.0 pyjab is MIT.
 
 ## Next
 

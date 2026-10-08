@@ -39,8 +39,8 @@ with JABDriver(title="My Application") as driver:
   enabled for the target application. pyjab enables it for you on first use.
 * **Does not require:** any change to the target application. pyjab never
   restarts it, injects into it, or needs its source.
-* **Licence:** GPLv2. See [1. Overview](1-Overview.md) for what that means if you
-  plan to ship a product that bundles pyjab.
+* **Licence:** MIT. See [1. Overview](1-Overview.md) if you plan to ship a product
+  that bundles pyjab.
 
 ## Project
 

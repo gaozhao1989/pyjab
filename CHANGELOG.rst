@@ -7,8 +7,30 @@ This project adheres to `Semantic Versioning`_ and `Keep a Changelog`_.
 .. _Semantic Versioning: https://semver.org/
 .. _Keep a Changelog: https://keepachangelog.com/
 
-Unreleased
-----------
+1.6.0 (2026-10-08)
+------------------
+
+Licence
+~~~~~~~
+
+**pyjab is now MIT.**  It was GPLv2, and it was GPLv2 for one reason: it
+contained code derived from NVDA, which is GPLv2.  That reason is gone -- the
+five files that carried it have been written again from the behaviour they
+implement rather than from NVDA's text -- and every contributor whose work
+remains has agreed to the change.
+
+What this means if you use pyjab:
+
+* you may now use it in commercial and closed-source software.  The only
+  obligation is that the copyright notice and the licence text travel with any
+  copy or substantial portion of it;
+* **versions up to and including 1.5.0 remain GPLv2.**  A licence cannot be
+  withdrawn from a version that has already been distributed, so if you are
+  pinning one of those, the terms that came with it still apply;
+* nothing about the API changes because of this.
+
+Each contributor's consent is recorded in ``CONTRIBUTORS.txt``, with the text of
+the reply where there is one to quote.
 
 Fixed
 ~~~~~
@@ -19,9 +41,9 @@ Fixed
   that hook raises ``RuntimeError`` on a falsy result before the caller can see
   it, so the guard written for exactly that case was unreachable.  The symbol no
   longer has ``errorcheck``, and the caller checks the status itself.  Found while
-  rewriting the method for provenance reasons (below); the live test could not
-  have caught it, because on a desktop that has been clicked, something always
-  has focus.
+  writing the method again for the licence change (below); the live test could
+  not have caught it, because on a desktop that has been clicked, something
+  always has focus.
 
 Changed
 ~~~~~~~
