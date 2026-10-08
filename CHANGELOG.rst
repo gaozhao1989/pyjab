@@ -7,6 +7,45 @@ This project adheres to `Semantic Versioning`_ and `Keep a Changelog`_.
 .. _Semantic Versioning: https://semver.org/
 .. _Keep a Changelog: https://keepachangelog.com/
 
+Unreleased
+----------
+
+Fixed
+~~~~~
+
+* **Six docstrings still carried Selenium's wording.**  The licence change
+  rewrote the README and the docs and left the package's own prose alone:
+  ``"Saves a screenshot of the current window to a PNG image file. Returns False
+  if there is any IOError, else returns True"`` and
+  ``"Sets the width and height of the current window. (window.resizeTo)"`` are
+  Selenium's text, under the Apache-2.0 licence pyjab no longer mentions.  They
+  are written again and say what the methods actually do.
+* **Three of those docstrings described behaviour the code does not have.**
+  ``get_screenshot_as_file`` returns ``None`` -- its own annotation says so --
+  while the docstring promised ``True`` or ``False``.  One example called
+  ``element.screenshot()``, which has never existed here, and two cited
+  ``window.resizeTo`` and ``window.moveTo``, JavaScript methods with no meaning
+  in pyjab.
+* **The README named the wrong copyright holder.**  It said "Gary Gao" while
+  ``LICENSE`` says "Gary Gao and contributors".  The licence is the operative one,
+  so the README was corrected, and the check now compares them.
+
+Changed
+~~~~~~~
+
+* ``tools/check_documented_api.py`` reads the package's own docstrings, not only
+  the published pages.  That is where the fourth missing method was hiding: the
+  package's prose was documentation nobody was checking.
+* ``tools/check_license_consistency.py`` also compares the copyright holder in
+  ``LICENSE`` with the one the README states.
+
+Removed
+~~~~~~~
+
+* ``docs/reference/`` -- two ``.bak`` files that quoted Oracle's headers.  See
+  1.6.0 below for what they were; they were dead, unpublished, and the only files
+  in the repository that were not pyjab's own.
+
 1.6.0 (2026-10-08)
 ------------------
 

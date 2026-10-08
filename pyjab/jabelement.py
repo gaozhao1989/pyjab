@@ -1937,27 +1937,30 @@ class JABElement(object):
         return dict(x=self.bounds.get("x"), y=self.bounds.get("y"))
 
     def get_screenshot_as_file(self, filename: str) -> None:
-        """
-        Saves a screenshot of the current element to a PNG image file. Returns
-           False if there is any IOError, else returns True. Use full paths in
-           your filename.
+        """Write a PNG of this element to ``filename``.
 
-        :Args:
-         - filename: The full path you wish to save your screenshot to. This
-           should end with a `.png` extension.
+        Args:
+            filename (str): where to write it, as a full path ending in ``.png``.
+                A relative path is relative to the working directory, which is
+                rarely what a test wants.
 
-        :Usage:
-            element.screenshot('/Screenshots/foo.png')
+        Returns:
+            None.  Pillow raises if the file cannot be written; there is no
+            True/False to check.
+
+        Use :meth:`get_screenshot` instead if you want the image rather than a
+        file.
         """
         im = self.get_screenshot()
         im.save(filename)
 
     def get_screenshot(self) -> Image:
-        """
-        Gets the screenshot of the current element as pillow Image.
+        """A Pillow ``Image`` of this element's rectangle on screen.
 
-        :Usage:
-            img = element.get_screenshot()
+        The element is grabbed from the screen rather than from the application,
+        so it shows whatever is actually there -- including anything drawn over
+        it.  The window is brought to the foreground first, because otherwise the
+        rectangle would hold whatever was covering it.
         """
         self.win32_utils._set_window_foreground(hwnd=self.hwnd)
         x = self.bounds.get("x")

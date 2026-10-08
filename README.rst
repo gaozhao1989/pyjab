@@ -342,7 +342,7 @@ Contributing
 See `CONTRIBUTING.rst <CONTRIBUTING.rst>`_.  Bug reports with a minimal
 reproduction are the most valuable contribution.
 
-© 2021-2026 Gary Gao.
+© 2021-2026 Gary Gao and contributors.  See `CONTRIBUTORS.txt <CONTRIBUTORS.txt>`_.
 
 
 .. External references:

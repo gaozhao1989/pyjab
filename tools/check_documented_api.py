@@ -188,12 +188,60 @@ def strip_noise(text: str) -> str:
     return QUOTED.sub(blank, URL.sub(blank, text))
 
 
-def references_in(path: Path, modules: dict, members: dict) -> list:
-    """Every API reference in one file, as ``(line, what, problem)``."""
-    problems = []
-    text = strip_noise(path.read_text(encoding="utf-8"))
+def package_files() -> list:
+    """Every module in the package, whose docstrings are read as well.
 
-    for number, line in enumerate(text.splitlines(), start=1):
+    A docstring is documentation.  The three methods the documentation promised
+    and never had were found in README and docs/ -- but when those were fixed, a
+    fourth turned up inside `JABElement.get_screenshot_as_file`, whose example
+    called an `element.screenshot()` that has never existed either.  Nothing was
+    reading the package's own prose.
+    """
+    return sorted((REPO_ROOT / "pyjab").rglob("*.py"))
+
+
+def docstrings_in(path: Path) -> list:
+    """Every docstring in a module, as ``(line, text)``.
+
+    The line number is where the docstring's *content* starts, so a finding
+    points at the sentence rather than at the ``def`` above it.
+    """
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    found = []
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef,
+                                 ast.AsyncFunctionDef)):
+            continue
+        docstring = ast.get_docstring(node, clean=False)
+        if docstring is None:
+            continue
+        # The node's first statement holds the string; count from its own line.
+        body = getattr(node, "body", None)
+        if not body or not isinstance(body[0], ast.Expr):
+            continue
+        start = body[0].value.lineno
+        found.append((start, docstring))
+    return found
+
+
+def references_in(path: Path, modules: dict, members: dict) -> list:
+    """Every API reference in one file, as ``(line, what, problem)``.
+
+    A module is read for its docstrings rather than for its code: the code's own
+    attribute accesses are checked by the test suite, whereas a docstring is
+    prose that nothing else looks at.
+    """
+    if path.suffix == ".py":
+        lines = []
+        for start, docstring in docstrings_in(path):
+            for offset, line in enumerate(strip_noise(docstring).splitlines()):
+                lines.append((start + offset, line))
+    else:
+        text = strip_noise(path.read_text(encoding="utf-8"))
+        lines = list(enumerate(text.splitlines(), start=1))
+
+    problems = []
+    for number, line in lines:
         for match in PYJAB_PATH.finditer(line):
             target = match.group(0)
             if target.rsplit(".", 1)[-1] in FILE_SUFFIXES:
@@ -276,7 +324,7 @@ def main() -> int:
     modules = pyjab_modules()
     members = class_members(modules)
 
-    files = documented_files()
+    files = documented_files() + package_files()
     total = 0
     failures = 0
 
@@ -290,7 +338,8 @@ def main() -> int:
             print(f"  {relative}:{number}  {what}  -- {why}")
             failures += 1
 
-    print(f"\nchecked {total} published file(s), {len(modules)} modules, "
+    print(f"\nchecked {total} file(s) -- published documentation and the "
+          f"package's own docstrings --\nagainst {len(modules)} modules and "
           f"{len(members)} classes")
 
     if failures:

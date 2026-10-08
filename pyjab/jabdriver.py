@@ -630,17 +630,18 @@ class JABDriver(object):
             sleep(poll_interval)
 
     def get_screenshot_as_file(self, filename):
-        """
-        Saves a screenshot of the current window to a PNG image file. Returns
-           False if there is any IOError, else returns True. Use full paths in
-           your filename.
+        """Write a PNG of the bound window to ``filename``.
 
-        :Args:
-         - filename: The full path you wish to save your screenshot to. This
-           should end with a `.png` extension.
+        Args:
+            filename (str): where to write it, as a full path.  A relative path
+                is relative to the working directory.
 
-        :Usage:
-            driver.get_screenshot_as_file('/Screenshots/foo.png')
+        Returns:
+            None.  Pillow raises if the file cannot be written; there is no
+            True/False to check.
+
+        Use :meth:`get_screenshot` instead if you want the image rather than a
+        file.
         """
         im = self.get_screenshot()
         im.save(filename)
@@ -674,41 +675,39 @@ class JABDriver(object):
         )
 
     def set_window_size(self, width, height):
-        """
-        Sets the width and height of the current window. (window.resizeTo)
+        """Resize the bound window, in pixels.
 
-        :Args:
-         - width: the width in pixels to set the window to
-         - height: the height in pixels to set the window to
+        Args:
+            width (int): the new width.
+            height (int): the new height.
 
-        :Usage:
-            driver.set_window_size(800,600)
+        This moves and resizes a real window on the desktop.  It is not the same
+        as setting a preferred size inside the application, and the application
+        may lay itself out differently afterwards.
         """
         self.win32utils._set_window_size(
             hwnd=self.root_element.hwnd, width=width, height=height
         )
 
     def set_window_position(self, x, y):
-        """
-        Sets the x,y position of the current window. (window.moveTo)
+        """Move the bound window to a screen position, in pixels.
 
-        :Args:
-         - x: the x-coordinate in pixels to set the window position
-         - y: the y-coordinate in pixels to set the window position
+        Args:
+            x (int): the new left edge, in screen coordinates.
+            y (int): the new top edge, in screen coordinates.
 
-        :Usage:
-            driver.set_window_position(0,0)
+        The position is the window's top-left corner, including its decorations,
+        not the client area inside them.
         """
         self.win32utils._set_window_position(
             hwnd=self.root_element.hwnd, left=x, top=y
         )
 
     def get_window_position(self):
-        """
-        Gets the x,y position of the current window.
+        """Where the bound window is on screen, as ``(x, y)`` in pixels.
 
-        :Usage:
-            driver.get_window_position()
+        The top-left corner of the window including its decorations, which is the
+        same point :meth:`set_window_position` takes.
         """
         return self.win32utils._get_window_position(hwnd=self.root_element.hwnd)
 
