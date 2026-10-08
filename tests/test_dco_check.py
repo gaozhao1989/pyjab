@@ -141,11 +141,50 @@ def test_a_person_whose_name_merely_contains_bot_is_not_skipped():
 # The whole thing, against a repository this test builds
 # ---------------------------------------------------------------------------
 
-GIT = ["git", "-c", "user.name=Probe", "-c", "user.email=probe@example.com"]
+#: A throwaway repository inherits the machine's global git config, and three of
+#: the things it can contain break committing in a repository that has no signing
+#: key and no business running anybody's hooks:
+#:
+#: * ``commit.gpgsign = true`` -- common, and fatal here.  On a machine with it
+#:   set, ``git commit`` fails with "cannot run gpg" / "failed to write commit
+#:   object", which is how this was found: seven of these tests failed on Windows
+#:   while CI stayed green, because CI has no such setting.
+#: * ``core.hooksPath`` -- a global hooks directory would run arbitrary hooks on a
+#:   test commit.
+#: * ``commit.template`` -- would prefix the message and change what is asserted.
+#:
+#: Turning all three off locally is the difference between testing check_dco.py
+#: and testing whichever machine happens to be running the suite.
+GIT = [
+    "git",
+    "-c", "user.name=Probe",
+    "-c", "user.email=probe@example.com",
+    "-c", "commit.gpgsign=false",
+    "-c", "core.hooksPath=",
+    "-c", "commit.template=",
+]
+
+
+def git(repo: Path, *args: str) -> subprocess.CompletedProcess:
+    """Run git, and show what it said when it fails.
+
+    ``check=True`` with ``capture_output=True`` raises with the command in the
+    message and nothing else -- so the one thing worth having, git's own
+    explanation, is the one thing thrown away.  That is why the Windows failure
+    above took a guess to explain rather than a reading.
+    """
+    result = subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise AssertionError(
+            f"git {' '.join(args)} failed in {repo} with {result.returncode}\n"
+            f"  stdout: {result.stdout.strip()}\n"
+            f"  stderr: {result.stderr.strip()}"
+        )
+    return result
 
 
 def run_git(repo: Path, *args: str) -> None:
-    subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True)
+    git(repo, *args)
 
 
 def make_repo(tmp_path: Path, scripts) -> Path:
@@ -156,9 +195,9 @@ def make_repo(tmp_path: Path, scripts) -> Path:
     for message, sign in scripts:
         # -s belongs to `git commit`, so it goes after the subcommand along with
         # the other options; putting it before makes git reject the invocation.
-        args = GIT + ["commit", "-q", "--allow-empty"] + \
+        args = GIT[1:] + ["commit", "-q", "--allow-empty"] + \
             (["-s"] if sign else []) + ["-m", message]
-        subprocess.run(args, cwd=repo, check=True, capture_output=True)
+        git(repo, *args)
     return repo
 
 

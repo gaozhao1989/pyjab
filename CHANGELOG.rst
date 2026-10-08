@@ -61,6 +61,26 @@ Added
 Fixed
 ~~~~~
 
+* **``double_click()`` raised ``AttributeError`` on Windows.**  ``_double_click_mouse``
+  asked ``win32api`` for ``GetDoubleClickTime``; that module does not expose it,
+  so every real double click failed with ``AttributeError: module 'win32api' has
+  no attribute 'GetDoubleClickTime'``.  It goes through ``ctypes`` to
+  ``user32.GetDoubleClickTime`` now, which is where the function actually lives
+  and needs no pywin32.  Found by running the GUI suite on Windows, which is the
+  only place it can be found: **CI never runs that suite**, so the defect sat
+  behind a green build.
+* **Seven ``test_dco_check.py`` cases failed on any machine with
+  ``commit.gpgsign = true``.**  The throwaway repository those tests build
+  inherits the global git config, and a signing requirement it cannot satisfy
+  makes ``git commit`` fail there -- ``cannot run gpg`` / ``failed to write commit
+  object``.  Confirmed by setting that option locally: seven failures, the same
+  seven.  The test repository now disables signing, hooks and message templates
+  for itself, and reports git's own stderr when a command fails instead of
+  discarding the one thing worth having.
+
+Fixed
+~~~~~
+
 * **Reading a table with off-screen rows could crash the application** (#59).
   Nothing in pyjab indexed past ``returnedChildrenCount``, but the published
   advice did: ``docs/6-Troubleshooting.md`` showed ``len(children.children)`` as
