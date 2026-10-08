@@ -61,6 +61,13 @@ KNOWN_LICENCES = (
     ("BSD-2-Clause", ("Redistribution and use in source and binary forms",)),
 )
 
+#: The copyright line at the top of a licence file.
+COPYRIGHT = re.compile(
+    r"^\s*Copyright\s*(?:\(c\)|©)?\s*(?:\d{4}(?:\s*[-–]\s*\d{4})?\s+)?"
+    r"(?P<holder>.+?)\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
 #: How a licence is likely to be named in prose, for the README check.  The
 #: README is written for people, not for package managers, so it says "GPLv2" and
 #: "MIT" rather than an SPDX identifier.
@@ -146,6 +153,16 @@ def stated_licences(text: str) -> list:
         for match in LICENCE_CLAIM.finditer(line):
             claims.append((number, match.group("stated").strip()))
     return claims
+
+
+def copyright_holder(text: str) -> str:
+    """The holder named by a licence file's copyright line, if it has one.
+
+    Matches the year range whether or not it is there, since MIT files are
+    written both ways, and stops at the end of the line.
+    """
+    match = COPYRIGHT.search(text)
+    return match.group("holder").strip() if match else ""
 
 
 def identify(text: str) -> str | None:
@@ -255,6 +272,22 @@ def main() -> int:
                 "relicensing. Check it reads as history rather than as the "
                 "current licence."
             )
+
+    # The copyright line is the licence's operative sentence about who holds it,
+    # and the README restates it. The README said "Gary Gao" while the LICENSE
+    # said "Gary Gao and contributors" -- which is the difference between
+    # crediting the people whose consent made the change possible and not.
+    holder = copyright_holder(text)
+    readme = REPO_ROOT / "README.rst"
+    if holder and readme.is_file():
+        if holder.lower() not in readme.read_text(encoding="utf-8").lower():
+            problems.append(
+                f"{primary.name} names {holder!r} as the copyright holder and the "
+                "README does not. They ship together; the LICENSE is the one that "
+                "counts, so the README is the one to correct."
+            )
+        else:
+            print(f"README names the holder:  {holder}")
 
     if problems:
         print("\nFAILED")

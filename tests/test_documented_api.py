@@ -228,3 +228,61 @@ def test_the_screenshot_methods_the_docs_once_promised_do_not_exist():
     assert "get_screenshot_as_png" not in MEMBERS["JABDriver"]
     assert "get_screenshot_as_base64" not in MEMBERS["JABDriver"]
     assert "get_window_size" not in MEMBERS["JABDriver"]
+
+
+# ---------------------------------------------------------------------------
+# The package's own docstrings
+# ---------------------------------------------------------------------------
+
+def test_the_package_docstrings_are_read_as_well(tmp_path):
+    """A docstring is documentation too.
+
+    The fourth defect was inside the package rather than in docs/: the example
+    in `JABElement.get_screenshot_as_file` called an `element.screenshot()` that
+    has never existed. Nothing was reading the package's own prose.
+    """
+    module = tmp_path / "probe.py"
+    module.write_text(
+        'def f() -> None:\n'
+        '    """Do a thing.\n'
+        '\n'
+        '    :Usage:\n'
+        '        element.screenshot("x.png")\n'
+        '    """\n',
+        encoding="utf-8",
+    )
+
+    found = checker.references_in(module, MODULES, MEMBERS)
+
+    assert [f[1] for f in found] == ["element.screenshot"]
+
+
+def test_a_docstring_finding_points_at_its_own_line(tmp_path):
+    module = tmp_path / "probe.py"
+    module.write_text(
+        '"""Module docstring."""\n'
+        "\n"
+        "\n"
+        "def f() -> None:\n"
+        '    """Do a thing.\n'
+        "\n"
+        '    :Usage:\n'
+        '        driver.no_such_method()\n'
+        '    """\n',
+        encoding="utf-8",
+    )
+
+    (line, what, _), = checker.references_in(module, MODULES, MEMBERS)
+
+    assert what == "driver.no_such_method"
+    assert line == 8, f"expected the usage line, got {line}"
+
+
+def test_the_package_itself_is_clean():
+    """The end-to-end check over pyjab's own docstrings."""
+    failures = []
+    for path in checker.package_files():
+        for number, what, why in checker.references_in(path, MODULES, MEMBERS):
+            failures.append(f"{path.relative_to(REPO_ROOT)}:{number} {what} -- {why}")
+
+    assert not failures, "\n".join(failures)
