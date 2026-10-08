@@ -61,6 +61,9 @@ KNOWN_LICENCES = (
     ("BSD-2-Clause", ("Redistribution and use in source and binary forms",)),
 )
 
+#: The module attribute a user reads with ``pyjab.__license__``.
+MODULE_LICENCE = re.compile(r'^__license__\s*=\s*"(?P<value>[^"]*)"', re.MULTILINE)
+
 #: The copyright line at the top of a licence file.
 COPYRIGHT = re.compile(
     r"^\s*Copyright\s*(?:\(c\)|©)?\s*(?:\d{4}(?:\s*[-–]\s*\d{4})?\s+)?"
@@ -288,6 +291,27 @@ def main() -> int:
             )
         else:
             print(f"README names the holder:  {holder}")
+
+    # The module attribute, which is what `import pyjab; pyjab.__license__` reads.
+    # It said GPLv2 in the 1.6.0 wheel while the same wheel's METADATA said
+    # License-Expression: MIT -- two answers in one installation, and this check
+    # did not look at the one a user is most likely to see.
+    module = REPO_ROOT / "pyjab" / "__init__.py"
+    if module.is_file() and declared:
+        in_module = MODULE_LICENCE.search(module.read_text(encoding="utf-8"))
+        if in_module is None:
+            problems.append(
+                f"{module.relative_to(REPO_ROOT).as_posix()} has no __license__, so "
+                "`pyjab.__license__` raises.  It is part of the interface."
+            )
+        elif in_module.group("value") != declared:
+            problems.append(
+                f"pyjab/__init__.py says __license__ = {in_module.group('value')!r} "
+                f"but pyproject.toml declares {declared!r}.  Both are shipped in the "
+                "same wheel and a user can read either."
+            )
+        else:
+            print(f"pyjab.__license__ agrees: {in_module.group('value')}")
 
     if problems:
         print("\nFAILED")

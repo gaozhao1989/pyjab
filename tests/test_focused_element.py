@@ -166,36 +166,29 @@ def test_the_only_caller_checks_the_result_itself():
 
 
 # ---------------------------------------------------------------------------
-# The rewrite, against the implementation it replaced
+# The rewrite, against what the implementation it replaced produced
 # ---------------------------------------------------------------------------
 
-def reference_get_focused_element(driver):
-    """The pre-rewrite implementation, verbatim, as an oracle.
-
-    Kept in the test rather than in the package because its only purpose is to
-    prove that the rewrite returns the same thing.  It is the success path that
-    matters here; the failure path is where the rewrite deliberately differs, by
-    returning None where the old declaration made it raise.
-    """
-    from ctypes import c_long, byref
-
-    from pyjab.common.types import JOBJECT64
-    from pyjab.jabelement import JABElement
-
-    vmid = c_long()
-    accessible_context = JOBJECT64()
-    result = driver.bridge.getAccessibleContextWithFocus(
-        driver.hwnd, byref(vmid), byref(accessible_context)
-    )
-    if not result or not accessible_context.value:
-        return None
-
-    return JABElement(
-        bridge=driver.bridge,
-        hwnd=driver.hwnd,
-        vmid=vmid.value,
-        accessible_context=accessible_context,
-    )
+#: ``(status, context, vmid) -> observable result``, recorded from the
+#: implementation as it stood in ``881b32b`` before it was written again.
+#:
+#: A table rather than that implementation, deliberately.  It was kept here as a
+#: verbatim oracle, and it is Chih-Yu's code under a licence he has not been asked
+#: about -- so shipping it in the sdist, which carries the tests, was a smaller
+#: version of the problem the rewrite existed to solve.  The comparison is
+#: unchanged; only what it compares against is.
+#:
+#: ``None`` means no element.  The rest is ``(hwnd, vmid, context)``, which is
+#: everything a caller can observe about the result.
+ORACLE = [
+    ((1, SOME_CONTEXT, SOME_VMID), (4242, SOME_VMID, SOME_CONTEXT)),
+    ((1, SOME_CONTEXT, 0), (4242, 0, SOME_CONTEXT)),
+    ((1, SOME_CONTEXT, 1), (4242, 1, SOME_CONTEXT)),
+    ((1, 0x7FFF_FFFF_FFFF_FFFF, 42), (4242, 42, 0x7FFF_FFFF_FFFF_FFFF)),
+    ((0, SOME_CONTEXT, SOME_VMID), None),
+    ((0, 0, 0), None),
+    ((1, 0, SOME_VMID), None),
+]
 
 
 def summarise(element):
@@ -205,24 +198,16 @@ def summarise(element):
     return (element.hwnd, element.vmid, element.accessible_context.value)
 
 
-@pytest.mark.parametrize("status, context, vmid", [
-    (1, SOME_CONTEXT, SOME_VMID),
-    (1, SOME_CONTEXT, 0),
-    (1, SOME_CONTEXT, 1),
-    (1, 0x7FFF_FFFF_FFFF_FFFF, 42),
-    (0, SOME_CONTEXT, SOME_VMID),
-    (0, 0, 0),
-    (1, 0, SOME_VMID),
-])
-def test_the_rewrite_returns_what_the_old_code_returned(status, context, vmid):
+@pytest.mark.parametrize("case", ORACLE, ids=lambda c: repr(c[0]))
+def test_the_rewrite_returns_what_the_old_code_returned(case):
     """Same observable result, for every shape the bridge can answer with.
 
     The rewrite is written from the behaviour rather than from the old text, so
-    this is the evidence that it does the same thing -- and the one row where it
-    deliberately differs, ``status=0``, agrees anyway because the old code's
+    this is the evidence that it does the same thing -- and the row where it
+    deliberately differs, ``status=0``, agrees anyway, because the old code's
     guard was unreachable rather than wrong.
     """
+    (status, context, vmid), expected = case
     driver = driver_with(FakeBridge(status=status, context=context, vmid=vmid))
 
-    assert summarise(driver.get_focused_element()) == \
-        summarise(reference_get_focused_element(driver))
+    assert summarise(driver.get_focused_element()) == expected
