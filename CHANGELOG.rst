@@ -7,6 +7,60 @@ This project adheres to `Semantic Versioning`_ and `Keep a Changelog`_.
 .. _Semantic Versioning: https://semver.org/
 .. _Keep a Changelog: https://keepachangelog.com/
 
+Unreleased
+----------
+
+Added
+~~~~~
+
+* **AccessibleTable selection** (#57).  A table is driven through its own
+  accessibility selection, and JAB has no call that selects a row or a column, so
+  there was no way in at all: ``table.select(...)`` raised ``KeyError: 'table'``
+  because the role dispatch did not know about tables.
+  ``select_cell(row, column)``, ``select_row(row)``, ``select_column(column)``,
+  ``select_all()`` and ``clear_selection()`` now exist, along with
+  ``selected_rows``, ``selected_columns``, ``selected_row_count``,
+  ``selected_column_count``, ``is_row_selected()`` and ``is_column_selected()``.
+  ``select_row`` and ``select_column`` add each cell of that row or column to the
+  selection, one index at a time -- whether the application then reports the *row*
+  as selected is its decision, so read ``selected_rows`` back rather than assuming
+  it.
+* **``get_selected_elements()``** (#61).  The cells behind the selection, as
+  elements.  ``get_cell()`` reads the table's cell list, which many Java tables
+  report with ``bounds = -1`` -- real elements that cannot be clicked.  The ones
+  reached through the selection are the ones the application presents, and the
+  ones whose actions work.  ``get_selected_element()`` is kept, and its
+  relationship to the new method is documented.
+* **``get_visible_children()``**.  The children actually on screen, as elements.
+  ``docs/6-Troubleshooting.md`` already told readers to bound their loop by what
+  ``getVisibleChildren`` returned rather than by ``row_count * column_count``, but
+  the only way to make that call was the private ``_get_visible_children()``.
+* Seven JAB symbols, none of them declared before:
+  ``getAccessibleTableRowSelections``, ``getAccessibleTableColumnSelections``,
+  ``isAccessibleTableRowSelected``, ``isAccessibleTableColumnSelected``,
+  ``getAccessibleSelectionCountFromContext``,
+  ``removeAccessibleSelectionFromContext`` and
+  ``selectAllAccessibleSelectionFromContext``.
+
+Fixed
+~~~~~
+
+* **Three of those symbols return a bool that means "no".**  Declared with
+  ``errorcheck=True`` -- the default mistake in this codebase --
+  ``isAccessibleTableRowSelected`` would raise ``RuntimeError: Result 0`` on every
+  unselected row, so "is row 3 selected?" could only ever be answered yes; and
+  ``getAccessibleSelectionCountFromContext`` would raise on every freshly-opened
+  table, which is when it is most often asked.  Both are declared without
+  errorcheck, and a test asserts the flags rather than only the behaviour: the
+  fake bridge bypasses ctypes, so behaviour alone would not notice.
+* **``select()`` on a table raised ``KeyError: 'table'``.**  It now raises
+  ``JABException`` naming the methods that do apply, and says the same for any
+  other unsupported role instead of failing a dict lookup.
+* **``docs/6-Troubleshooting.md`` recommended a private method.**
+  ``table._get_visible_children()`` is not part of the published surface.  The API
+  check found it as soon as ``table`` was added to the variables it reads -- which
+  it was not, so the whole Tables section had been going unchecked.
+
 1.6.1 (2026-10-08)
 ------------------
 

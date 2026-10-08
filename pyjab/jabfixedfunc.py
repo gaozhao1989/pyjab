@@ -131,11 +131,42 @@ SIGNATURES = (
     ("getAccessibleTableRow", c_int, (c_long, JOBJECT64, c_int), False),
     ("getAccessibleTableColumn", c_int, (c_long, JOBJECT64, c_int), False),
     ("getAccessibleTableIndex", c_int, (c_long, JOBJECT64, c_int, c_int), False),
+    # Reading a table's selection.  JAB fills the array and the count comes from
+    # getAccessibleTable{Row,Column}SelectionCount above: pass the count you asked
+    # for, get the indices back.  No errorcheck, because a falsy return is how JAB
+    # says it could not answer, and the wrappers turn that into a JABException
+    # carrying the symbol name.
+    ("getAccessibleTableRowSelections", BOOL, (
+        c_long,
+        JOBJECT64,
+        c_int,
+        POINTER(c_int),
+    ), False),
+    ("getAccessibleTableColumnSelections", BOOL, (
+        c_long,
+        JOBJECT64,
+        c_int,
+        POINTER(c_int),
+    ), False),
+    # No errorcheck, deliberately -- the same reasoning as
+    # getAccessibleContextWithFocus.  False means "this row is not selected", which
+    # is an ordinary answer about a table rather than a failed call.  With
+    # errorcheck the hook would raise RuntimeError on every unselected row, so
+    # "is row 3 selected?" could only ever be answered yes.
+    ("isAccessibleTableRowSelected", BOOL, (c_long, JOBJECT64, c_int), False),
+    ("isAccessibleTableColumnSelected", BOOL, (c_long, JOBJECT64, c_int), False),
     ("getAccessibleKeyBindings", BOOL, (c_long, JOBJECT64, POINTER(AccessibleKeyBindings)), True),
     ("setTextContents", BOOL, (c_long, JOBJECT64, POINTER(c_wchar)), True),
     ("clearAccessibleSelectionFromContext", None, (c_long, JOBJECT64), False),
     ("addAccessibleSelectionFromContext", None, (c_long, JOBJECT64, c_int), False),
     ("getAccessibleSelectionFromContext", JOBJECT64, (c_long, JOBJECT64, c_int), False),
+    # No errorcheck: 0 means "nothing is selected", which is the answer for every
+    # freshly-opened list and every table.  Declaring it with errorcheck would make
+    # get_selected_elements() raise on exactly the case it is most often asked
+    # about -- the trap in AGENTS.md 2.7, in its purest form.
+    ("getAccessibleSelectionCountFromContext", c_int, (c_long, JOBJECT64), False),
+    ("removeAccessibleSelectionFromContext", None, (c_long, JOBJECT64, c_int), False),
+    ("selectAllAccessibleSelectionFromContext", None, (c_long, JOBJECT64), False),
     ("getVisibleChildrenCount", c_int, (c_long, JOBJECT64), False),
     ("getVisibleChildren", BOOL, (c_long, JOBJECT64, c_int, POINTER(VisibleChildrenInfo)), True),
 )

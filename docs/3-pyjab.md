@@ -186,7 +186,9 @@ element.expand()                   # a no-op if it is already expanded
 element.scroll(to_bottom=True)
 element.slide(to_bottom=True)
 element.spin("3")                  # spinners
-element.get_selected_element()
+element.get_selected_element()     # the first selected child
+element.get_selected_elements()    # all of them
+element.get_visible_children()     # what is actually on screen
 ```
 
 `double_click()` and `context_click()` always move the mouse: Java Access Bridge
@@ -248,20 +250,74 @@ the accessibility action is ignored.
 
 ## Tables
 
-Java tables are reached through the accessibility selection API, not by clicking
-cells — cells frequently report `bounds = -1`.
+A Java table is driven through the accessibility selection API, not by clicking
+cells — cells frequently report `bounds = -1`, so there is no coordinate to click.
+
+Reading and selecting are separate. `get_cell()` reads the table's **cell list**,
+which is fine for text. Selecting goes through the table's **accessible
+selection**, and the cells that come back from there are the ones the application
+is presenting as selected — for many tables those are the ones whose actions
+actually work. That difference is what #57 and #61 were about.
 
 ```python
 table = driver.find_element_by_role("table")
 
 info = table.table                  # {'row_count': .., 'column_count': ..}
-cell = table.get_cell(row=2, column=1)
-print(cell.text)
+print(table.get_cell(row=2, column=1).text)
 ```
 
-**Rows scrolled out of view are not readable.** They are not in the
-accessibility tree, and trying to reach them can destabilise the target
-application. Scroll the table so the row is visible, then query again.
+### Selecting
+
+```python
+table.select_cell(row=2, column=1)   # clears the selection first
+table.select_row(2)                  # every cell in the row
+table.select_column(1)
+table.select_all()
+table.clear_selection()
+```
+
+Then read back what the application reports, rather than assuming it agrees:
+
+```python
+table.selected_rows                  # [2]
+table.selected_columns               # [1]
+table.selected_row_count             # 1
+table.is_row_selected(2)             # True
+table.is_column_selected(0)          # False
+```
+
+**JAB has no call that selects a row or a column.** `select_row()` adds each cell
+of that row to the selection, one index at a time. Whether the application then
+reports the *row* as selected is its own decision — some do, some only ever report
+cells. Check `selected_rows` after selecting rather than building on the
+assumption.
+
+### The selected cells
+
+`get_selected_elements()` returns the cells behind the selection as `JABElement`s
+— the "Select Cells" property rather than "Cells", in Access Bridge Explorer's
+terms:
+
+```python
+table.select_row(2)
+for cell in table.get_selected_elements():
+    print(cell.name, cell.text)
+    cell.release_jabelement()        # see below
+```
+
+Each one carries a Java object reference, so **release it when you have finished**,
+as with any object pyjab hands out. An empty list means nothing is selected, which
+is the ordinary state of a table you have just opened.
+
+### Limitations
+
+**Rows scrolled out of view are not readable.** They are not in the accessibility
+tree, and trying to reach them can destabilise the target application. Scroll the
+table so the row is visible, then query again.
+
+**`select()` does not apply to a table.** It takes a name, and a table is selected
+by position, so calling it on a table raises `JABException` saying so. Use the
+methods above.
 
 ## Windows and screenshots
 
