@@ -106,6 +106,9 @@ public class PyjabTestApp {
     private static final int BUTTON_COLUMN_WIDTH = 240;
     private static final int INPUT_COLUMN_WIDTH = 310;
     private static final int TABLE_COLUMN_WIDTH = 390;
+    /** Big enough that most rows are off screen, which is what #59 and #15 need. */
+    private static final int LONG_TABLE_ROWS = 200;
+    private static final String LONG_TABLE_NAME = "Long table";
 
     public static void main(String[] args) {
         for (String arg : args) {
@@ -739,6 +742,26 @@ public class PyjabTestApp {
         // showing rather than clipped by the viewport.
         tableScrollPane.setPreferredSize(new Dimension(TABLE_COLUMN_WIDTH - 10, 150));
         addRow(column, tableScrollPane);
+
+        // Supports scroll-into-view (#15) and reading a table with rows that are
+        // not on screen (#59).  Deliberately taller than its viewport: the point
+        // of both is that most of it is not in the accessibility tree, so a table
+        // that fits would test nothing.  The rows are numbered so a test can say
+        // which one it scrolled to.
+        Object[] longColumnNames = {"Row", "Value"};
+        Object[][] longRowData = new Object[LONG_TABLE_ROWS][2];
+        for (int i = 0; i < LONG_TABLE_ROWS; i++) {
+            longRowData[i][0] = "Row " + i;
+            longRowData[i][1] = "value " + i;
+        }
+        JTable longTable = new JTable(new DefaultTableModel(longRowData, longColumnNames));
+        longTable.setName(LONG_TABLE_NAME);
+        longTable.setFillsViewportHeight(true);
+        JScrollPane longTableScrollPane = new JScrollPane(longTable);
+        longTableScrollPane.setName(LONG_TABLE_NAME + " scroll pane");
+        // Room for about four rows of the two hundred, so the rest need scrolling.
+        longTableScrollPane.setPreferredSize(new Dimension(TABLE_COLUMN_WIDTH - 10, 110));
+        addRow(column, longTableScrollPane);
 
         // Supports the "scroll bar" lookups for the vertical and the
         // horizontal states.  The content is both taller and wider than the

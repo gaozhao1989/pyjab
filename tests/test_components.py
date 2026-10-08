@@ -261,7 +261,11 @@ class TestComponents(object):
     # ---------------------------------------------------------------- data
 
     def test_table(self, test_app: JABDriver):
-        table = test_app.find_element_by_role(Role.TABLE)
+        # By name, not by role.  The application has two tables now -- the second
+        # exists so the scroll tests have something taller than its viewport -- and
+        # find_element_by_role(Role.TABLE) would return whichever the tree walk
+        # reached first.  That is not a guarantee worth resting an assertion on.
+        table = test_app.find_element_by_name("Sports table")
         assert table
         self.logger.info(table.get_element_information())
 
@@ -272,7 +276,8 @@ class TestComponents(object):
 
     def test_table_edit(self, test_app: JABDriver):
         """A cell can take focus and receive simulated input."""
-        table = test_app.find_element_by_role(Role.TABLE)
+        # By name, for the reason given in test_table above.
+        table = test_app.find_element_by_name("Sports table")
         cell = table.get_cell(2, 0)
         assert cell
 
