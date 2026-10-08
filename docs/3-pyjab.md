@@ -207,12 +207,17 @@ button = panel.find_element_by_name("Submit")
 ### Screenshots
 
 ```python
-driver.get_screenshot_as_file("window.png")
-driver.get_screenshot_as_png()
-driver.get_screenshot_as_base64()
+driver.get_screenshot_as_file("window.png")   # writes a PNG
+image = driver.get_screenshot()               # a Pillow Image
 
 element.get_screenshot_as_file("element.png")
+image = element.get_screenshot()
 ```
+
+Two methods, not the four a Selenium user may expect: `get_screenshot_as_file()`
+writes the file and `get_screenshot()` returns a Pillow `Image`, which you can
+save, encode or inspect yourself. There is no `get_screenshot_as_png()` or
+`get_screenshot_as_base64()`.
 
 ## The `simulate` parameter
 
@@ -265,7 +270,6 @@ driver.hwnd
 driver.pid
 driver.vmid
 driver.title
-driver.get_window_size()
 driver.set_window_size(1280, 800)
 driver.get_window_position()
 driver.set_window_position(0, 0)

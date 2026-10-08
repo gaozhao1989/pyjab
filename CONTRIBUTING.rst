@@ -221,9 +221,11 @@ What CI runs
   the DLL is both found **and loaded**;
 * a Windows import smoke test, which also exercises the message pump against the
   real ``pythoncom``;
-* a check that every runtime dependency is permissively licensed
-  (``tools/check_dependency_licences.py``) and that the licence pyjab declares is
-  the one it ships (``tools/check_license_consistency.py``);
+* a check that what the repository declares matches what it contains: that every
+  runtime dependency is permissively licensed
+  (``tools/check_dependency_licences.py``), that the licence pyjab declares is the
+  one it ships (``tools/check_license_consistency.py``), and that every pyjab API
+  the documentation names actually exists (``tools/check_documented_api.py``);
 * a distribution build with metadata checks, including a guard that no stale
   copy of the package was packaged.
 
