@@ -145,6 +145,24 @@ children = table.get_visible_children()
 count = len(children)               # do NOT assume row_count * column_count
 ```
 
+`get_visible_children()` takes its count from the bridge's own
+`returnedChildrenCount`, so it cannot index past what came back — which is what
+that count is for.
+
+To bring a row that is scrolled out of view into it:
+
+```python
+row = table.get_cell(row=40, column=0)
+if not row.bounds_within(table):
+    row.scroll_into_view()          # returns whether it succeeded
+```
+
+Best effort, and it says so: JAB exposes no scroll position, so there is no offset
+to compute. It nudges the vertical scroll bar and re-reads `bounds` after each
+step. It needs valid bounds on both the row and the scrollable ancestor; a table
+whose cells report `-1` cannot be scrolled this way.
+
+
 Rows that are scrolled out of view are not in the accessibility tree. Reaching
 for them anyway is what destabilises the application.
 

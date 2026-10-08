@@ -42,6 +42,40 @@ Added
   ``removeAccessibleSelectionFromContext`` and
   ``selectAllAccessibleSelectionFromContext``.
 
+* **``scroll_into_view()``** (#15).  Best effort, and it returns whether it
+  worked rather than assuming.  Java Access Bridge exposes no scroll position --
+  there is no call that says where a scroll bar is -- so there is no offset to
+  compute and jump to.  This nudges the vertical scroll bar one step at a time and
+  re-reads the rectangle, stopping when the element comes inside, when the
+  rectangle stops changing, or after ``max_steps``.  ``False`` also means "there
+  is no scrollable ancestor", which is not an error.
+* **``bounds_within(container)``**.  The geometric half of "on screen", and not
+  the same question as ``is_visible()``, which reads the ``visible`` state -- a
+  control can be visible and scrolled out of its viewport, which is the whole
+  problem here.  Swing's ``-1`` rectangles answer False rather than being compared
+  arithmetically.
+* ``JABElement.parent`` now says what it is.  Its docstring claimed it returned
+  "the JabDriver instance this element was found from"; it returns the accessible
+  parent.
+
+Fixed
+~~~~~
+
+* **Reading a table with off-screen rows could crash the application** (#59).
+  Nothing in pyjab indexed past ``returnedChildrenCount``, but the published
+  advice did: ``docs/6-Troubleshooting.md`` showed ``len(children.children)`` as
+  the bound to use, which was right, while the only way to make the call was a
+  private method.  ``get_visible_children()`` is that call, publicly.  Also
+  ``get_visible_children()`` is now the supported form of
+  ``table._get_visible_children()``, which the troubleshooting page recommended
+  and which was never part of the published surface.
+* **The scroll-into-view walk leaked Java references.**  Both
+  ``find_element_by_role`` and the ancestor walk hand out objects the caller owns,
+  and an early version released neither -- one accumulated reference per call,
+  which is the shape of #43 ("gets slower until it stalls", still undiagnosed).  A
+  test compares the fake bridge's reference counts before and after and fails on
+  any growth.
+
 Fixed
 ~~~~~
 

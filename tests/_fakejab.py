@@ -44,13 +44,18 @@ JABElement = _win32stubs.import_jabelement()
 class Node:
     """One accessible object."""
 
-    def __init__(self, role, name="", children=(), row_count=0, column_count=0):
+    def __init__(self, role, name="", children=(), row_count=0, column_count=0,
+                 bounds=None):
         self.role = role
         self.name = name
         self.children = []
         self.parent = None
         self.row_count = row_count
         self.column_count = column_count
+        #: Screen rectangle, as Swing reports it.  Real tables report
+        #: ``-1, -1, -1, -1`` for cells that are not on screen, which is why
+        #: scroll-into-view has to look at these rather than trust the role.
+        self.bounds = dict(bounds or {"x": 0, "y": 0, "width": 10, "height": 10})
         self.handle = None
         #: Cell indices in this object's accessible selection, for a table.  The
         #: real thing is a set of selected children kept by the JVM; a table is
@@ -74,9 +79,13 @@ class Node:
         return f"<{self.role} {self.name!r} children={len(self.children)}>"
 
 
-def node(role, *children, name="", row_count=0, column_count=0) -> Node:
+def node(role, *children, name="", row_count=0, column_count=0, bounds=None) -> Node:
     return Node(role, name=name, children=children,
-                row_count=row_count, column_count=column_count)
+                row_count=row_count, column_count=column_count, bounds=bounds)
+
+
+def rect(x, y, width, height) -> dict:
+    return {"x": x, "y": y, "width": width, "height": height}
 
 
 def panel(*children, name="", index=None):
@@ -172,7 +181,10 @@ class CountingBridge:
         index = getattr(item, "forced_index", None)
         info.indexInParent = item.index_in_parent() if index is None else index
         info.childrenCount = len(item.children)
-        info.x, info.y, info.width, info.height = 0, 0, 10, 10
+        info.x = item.bounds["x"]
+        info.y = item.bounds["y"]
+        info.width = item.bounds["width"]
+        info.height = item.bounds["height"]
         info.accessibleComponent = 1
         info.accessibleAction = 1
         info.accessibleSelection = 1 if item.role == "table" else 0

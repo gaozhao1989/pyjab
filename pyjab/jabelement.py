@@ -973,6 +973,166 @@ class JABElement(object):
             None, lambda: self.text, error_msg_function="clear text"
         )
 
+    # --- scroll into view (issue #15) ------------------------------------
+    #
+    # JAB exposes no scroll position: there is no call that says where a scroll bar
+    # is, and the PropertyVisibleDataChange event fires without saying where it
+    # went.  So this cannot compute an offset and jump to it.  What it can do is
+    # compare rectangles, nudge the scroll bar, and look again -- which is the
+    # approach the reporter of #15 proposed and the only one available.
+
+    def bounds_within(self, container: JABElement) -> bool:
+        """Whether this element's rectangle lies inside ``container``'s.
+
+        A rectangle fully inside another is the geometric half of "on screen".
+        Two caveats that matter in practice:
+
+        * Swing reports ``-1`` for each of x, y, width and height on controls it
+          has no rectangle for -- a table cell scrolled out of view is the usual
+          case (#20, #61).  There is nothing to compare, so this answers False
+          rather than trying arithmetic on -1.
+        * It is not the same question as :meth:`is_visible`, which reads the
+          ``visible`` *state*.  A control can be visible and scrolled out of its
+          viewport, which is the whole problem here.
+
+        Args:
+            container (JABElement): the rectangle to test against, usually a
+                scroll pane.
+
+        Returns:
+            bool: True when this element's rectangle is inside the container's.
+        """
+        inner = self.bounds
+        outer = container.bounds
+        if any(inner[key] < 0 for key in ("x", "y", "width", "height")):
+            return False
+        if any(outer[key] < 0 for key in ("x", "y", "width", "height")):
+            return False
+        return (
+            inner["x"] >= outer["x"]
+            and inner["y"] >= outer["y"]
+            and inner["x"] + inner["width"] <= outer["x"] + outer["width"]
+            and inner["y"] + inner["height"] <= outer["y"] + outer["height"]
+        )
+
+    def _scrollable_ancestor(self, max_depth: int = 12):
+        """The nearest ancestor that can scroll, or None.
+
+        A scroll pane is the usual answer.  A panel that merely contains a scroll
+        bar also counts, because that is how some applications lay one out.
+        """
+        current = self
+        walker = None
+        for _ in range(max_depth):
+            try:
+                parent = current.parent
+            except JABException:
+                return None
+            if parent is None or not parent.accessible_context:
+                return None
+
+            found = parent.role_en_us == Role.SCROLL_PANE
+            if not found:
+                probe = None
+                try:
+                    probe = parent.find_element_by_role(Role.SCROLL_BAR)
+                    found = True
+                except JABException:
+                    found = False
+                finally:
+                    # find_element_by_role hands out an object the caller owns; not
+                    # releasing it leaks one reference per call.
+                    self._release_walk(probe)
+            if found:
+                # Anything taken on the way up is dead now -- JAB keeps a
+                # reference to every object it hands out, so leaking them here
+                # would accumulate one per call for the life of the process,
+                # which is the shape of #43.
+                self._release_walk(walker)
+                return parent
+
+            self._release_walk(walker)
+            walker = parent
+            current = parent
+        self._release_walk(walker)
+        return None
+
+    @staticmethod
+    def _release_walk(element) -> None:
+        """Release an ancestor that the walk has finished with, if there is one."""
+        if element is not None:
+            try:
+                element.release_jabelement()
+            except JABException:
+                # A failed load, or an already-released object: nothing to do, and
+                # raising here would turn "could not scroll" into a crash.
+                pass
+
+    def scroll_into_view(
+            self,
+            max_steps: int = 10,
+            hold: int = 1,
+            poll_interval: float = ELEMENT_POLL_INTERVAL,
+    ) -> bool:
+        """Scroll until this element is inside its scrollable ancestor.
+
+        Best effort, and it returns what it achieved rather than assuming success.
+        There is no scroll position to compute from -- see the note above the
+        class of methods -- so this nudges the vertical scroll bar one step at a
+        time and re-reads the rectangle, stopping when the element is inside, when
+        the rectangle stops changing (the bar is at its end), or after
+        ``max_steps``.
+
+        Args:
+            max_steps (int, optional): how many scroll steps to try. Defaults to 10.
+            hold (int, optional): mouse hold time for each scroll step, in the same
+                units as :meth:`scroll`. Defaults to 1.
+            poll_interval (float, optional): pause between steps, to let the
+                application repaint before the rectangle is read again. Defaults
+                to ``ELEMENT_POLL_INTERVAL``.
+
+        Returns:
+            bool: whether the element ended up inside its scrollable ancestor.
+            False also means "there is no scrollable ancestor", which is not an
+            error -- a control that does not scroll is simply not this problem.
+
+        Note:
+            Needs valid bounds on both this element and the ancestor.  A table
+            whose cells report ``-1`` cannot be scrolled this way, and the
+            accessibility action path is the only option -- see
+            :meth:`select_cell`.
+        """
+        ancestor = self._scrollable_ancestor()
+        if ancestor is None:
+            return False
+        try:
+            if self.bounds_within(ancestor):
+                return True
+
+            try:
+                scroll_bar = ancestor.find_element_by_role(Role.SCROLL_BAR)
+            except JABException:
+                return False
+            try:
+                for _ in range(max_steps):
+                    before = self.bounds
+                    scroll_bar.scroll(to_bottom=True, hold=hold)
+                    sleep(poll_interval)
+                    if self.bounds_within(ancestor):
+                        return True
+                    if self.bounds == before:
+                        # The bar is at its end, or the mouse action did not take.
+                        # More steps would be the same step.
+                        return False
+                return self.bounds_within(ancestor)
+            finally:
+                self._release_walk(scroll_bar)
+        finally:
+            # Both find_element_by_role and the ancestor walk hand out objects the
+            # caller owns.  Leaving them unreleased accumulates a Java object per
+            # call, which is the shape of #43.
+            self._release_walk(ancestor)
+
     def scroll(self, to_bottom: bool = True, hold: int = 2) -> None:
         """Scroll a scoll bar to top or to bottom.
 
@@ -2122,7 +2282,15 @@ class JABElement(object):
 
     @property
     def parent(self):
-        """Internal reference to the JabDriver instance this element was found from."""
+        """The accessible parent of this element, as a :class:`JABElement`.
+
+        Not the driver: an element does not hold one.  This walks up the
+        accessibility tree, so the parent is one object closer to the window, and
+        calling it repeatedly walks up rather than out.
+
+        The reference JAB hands out must be released -- see
+        :meth:`release_jabelement`.
+        """
         parent_acc = self._get_accessible_parent_from_context()
         return JABElement(
             bridge=self.bridge,
