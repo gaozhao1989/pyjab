@@ -57,6 +57,11 @@ Changed
 Removed
 ~~~~~~~
 
+* ``README_CN.rst``, the Chinese readme, along with its ``MANIFEST.in`` line so it
+  stops shipping.  It had drifted out of step with the English one -- its examples
+  were reported broken in #64 and never fixed -- and a second readme that nobody
+  maintains is a liability rather than a translation.  It is in the git history for
+  anyone who wants it.
 * ``docs/reference/`` -- two ``.bak`` files that quoted Oracle's headers.  See
   1.6.0 below for what they were; they were dead, unpublished, and the only files
   in the repository that were not pyjab's own.
