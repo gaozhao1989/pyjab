@@ -509,3 +509,55 @@ def test_double_click_needs_bounds_like_any_other_mouse_click():
     with patch.object(Win32UtilsClass, "_set_window_foreground"):
         with pytest.raises(JABException):
             element.double_click()
+
+
+# ---------------------------------------------------------------------------
+# The double-click interval, which win32api does not have
+# ---------------------------------------------------------------------------
+
+def test_the_double_click_gap_is_half_the_system_interval(monkeypatch):
+    """``user32.GetDoubleClickTime`` in milliseconds, halved, in seconds.
+
+    Through ctypes rather than ``win32api`` because ``win32api`` does not expose
+    ``GetDoubleClickTime`` at all -- which is how this was found.  The GUI suite
+    failed on Windows with ``AttributeError: module 'win32api' has no attribute
+    'GetDoubleClickTime'`` and CI stayed green, because CI never runs the GUI
+    suite.  So the arithmetic gets a test that runs everywhere.
+    """
+    import ctypes
+    import types
+
+    from pyjab.common import win32utils
+
+    user32 = types.SimpleNamespace(GetDoubleClickTime=lambda: 500)
+    monkeypatch.setattr(ctypes, "windll", types.SimpleNamespace(user32=user32),
+                        raising=False)
+
+    assert win32utils.double_click_gap() == 0.25
+
+    user32.GetDoubleClickTime = lambda: 900
+    assert win32utils.double_click_gap() == 0.45
+
+
+def test_double_click_waits_that_long_between_the_two_clicks(monkeypatch):
+    """The gap is used, and it is the one the system reports."""
+    from pyjab.common import win32utils
+
+    slept = []
+    monkeypatch.setattr(win32utils, "double_click_gap", lambda: 0.125)
+    monkeypatch.setattr(win32utils.time, "sleep", slept.append)
+    # This test is about the wait, not about what pywin32 exposes, so both the
+    # module and its constants are replaced wholesale.  A partial or absent
+    # pywin32 has to be able to run the suite -- AGENTS.md 4 -- and a bare
+    # `win32con` has no MOUSEEVENTF_LEFTDOWN to look up.
+    monkeypatch.setattr(win32utils, "win32api", types.SimpleNamespace(
+        SetCursorPos=lambda where: None,
+        mouse_event=lambda *args: None,
+    ))
+    monkeypatch.setattr(win32utils, "win32con", types.SimpleNamespace(
+        MOUSEEVENTF_LEFTDOWN=1, MOUSEEVENTF_LEFTUP=2,
+    ))
+
+    Win32UtilsClass._double_click_mouse(x=3, y=4)
+
+    assert slept == [0.125], "it did not wait half the interval"

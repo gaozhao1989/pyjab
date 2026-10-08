@@ -1,3 +1,4 @@
+import ctypes
 import fnmatch
 import time
 from ctypes.wintypes import HWND
@@ -11,6 +12,27 @@ import win32gui
 from pyjab.common.logger import Logger
 from pyjab.common.singleton import singleton
 from pyjab.config import TIMEOUT
+
+
+def double_click_gap() -> float:
+    """Half the system double-click interval, in seconds.
+
+    Half of it is safely inside the window whether the setting is 200ms or 900ms,
+    which is why the division is by 2000 rather than 1000.
+
+    Through ``ctypes`` and ``user32`` rather than ``win32api``.  ``GetDoubleClickTime``
+    is a ``user32`` export and is always there; **``win32api`` does not expose it at
+    all** on a current pywin32.  That is how this was found: the GUI suite failed on
+    Windows with ``AttributeError: module 'win32api' has no attribute
+    'GetDoubleClickTime'`` while CI stayed green, because CI never runs the GUI
+    suite.
+
+    Module level rather than a staticmethod so that it can be called without going
+    through the ``@singleton`` wrapper -- ``functools.wraps`` copies the class
+    dictionary onto that wrapper, and a ``staticmethod`` object is not callable
+    there on Python 3.9.
+    """
+    return ctypes.windll.user32.GetDoubleClickTime() / 2000.0
 
 
 @singleton
@@ -311,11 +333,9 @@ class Win32Utils(object):
         """Two clicks at the same place, close enough to count as one double click.
 
         The gap has to fall inside the system's double-click interval, which is
-        configurable and therefore not a constant.  Asking Windows for it is
-        cheaper than guessing, and half of it is safely inside the window whether
-        the setting is 200ms or 900ms.
+        configurable and therefore not a constant; see :func:`double_click_gap`.
         """
-        gap = win32api.GetDoubleClickTime() / 2000.0
+        gap = double_click_gap()
         win32api.SetCursorPos((x, y))
         win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, x, y, 0, 0)
         win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, x, y, 0, 0)
