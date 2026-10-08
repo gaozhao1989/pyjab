@@ -13,6 +13,21 @@ Unreleased
 Fixed
 ~~~~~
 
+* **An MIT wheel contained GPLv2-derived code.**  Two test files kept the
+  implementations they were written to compare against, verbatim, as oracles:
+  ``_textreader_reference.py`` held the pre-rewrite ``TextReader``, which came
+  from NVDA's GPLv2 ``getTextFromRawBytes``, and ``test_focused_element.py`` held
+  Chih-Yu's ``get_focused_element``.  Tests travel in the sdist, so both shipped
+  -- including in **1.6.0, which is published**.  A PyPI version cannot be
+  withdrawn, so this is fixed in 1.6.1; anyone who needs a clean sdist should use
+  that rather than the 1.6.0 tarball.  The behaviour each oracle recorded is now
+  data -- 1,890 input/output pairs for the decoder, seven rows for the focused
+  element -- so the assertions are unchanged and the code they were checking
+  against is gone.
+* **``pyjab.__license__`` said GPLv2 in the 1.6.0 wheel** whose own METADATA said
+  ``License-Expression: MIT``.  Two answers in one installation, and the one a
+  user reaches for first was the wrong one.  The licence check reads the module
+  attribute now.
 * **Six docstrings still carried Selenium's wording.**  The licence change
   rewrote the README and the docs and left the package's own prose alone:
   ``"Saves a screenshot of the current window to a PNG image file. Returns False

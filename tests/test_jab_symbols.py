@@ -139,3 +139,73 @@ def test_a_missing_def_is_reported_not_crashed(monkeypatch, tmp_path):
 @pytest.mark.parametrize("entry", ["", "   ", "; only a comment", "EXPORTS"])
 def test_an_empty_def_yields_no_symbols(def_file, entry):
     assert checker.exported_symbols(def_file(entry)) == set()
+
+
+# ---------------------------------------------------------------------------
+# Checking against a library rather than a list of names
+# ---------------------------------------------------------------------------
+
+def a_library_with_malloc():
+    """Something loadable with ``malloc`` in it, on this platform.
+
+    ``CDLL(None)`` -- the running process -- is the obvious choice and is POSIX
+    only.  These two tests used it and failed on Windows, which is the fourth time
+    in this work that a test written here has failed there.
+    """
+    import ctypes.util
+
+    if sys.platform.startswith("win"):
+        return "msvcrt.dll"
+    return ctypes.util.find_library("c") or None
+
+
+def test_a_symbol_the_library_does_not_export_is_reported():
+    """The DLL mode, exercised against a real library.
+
+    The bridge's symbols are not in the C library, so they come back missing
+    without needing Windows or a JDK.
+    """
+    library = a_library_with_malloc()
+    if library is None and not sys.platform.startswith("win"):
+        pytest.skip("no C library found to load")
+
+    missing = checker.check_against_dll(
+        library, ["getAccessibleContextInfo", "Windows_run"]
+    )
+
+    assert missing == ["getAccessibleContextInfo", "Windows_run"]
+
+
+def test_a_symbol_the_library_does_export_is_not_reported():
+    """``malloc`` is in every C library, so it must not be reported missing.
+
+    The row that matters: without it, a check that reported *everything* as
+    missing would pass the test above.
+    """
+    library = a_library_with_malloc()
+    if library is None and not sys.platform.startswith("win"):
+        pytest.skip("no C library found to load")
+
+    assert checker.check_against_dll(library, ["malloc"]) == []
+
+
+def test_the_dll_mode_is_the_default_and_the_def_mode_is_opt_in():
+    """The DEF is not in an installed JDK; the DLL is.
+
+    The first version of this tool assumed the DEF shipped with the JDK, looked
+    under JAVA_HOME, and found nothing on a runner with Temurin 17 -- so the guard
+    existed, was tested, and never ran.
+    """
+    source = (REPO_ROOT / "tools" / "check_jab_symbols.py").read_text(encoding="utf-8")
+
+    assert "if args.def_path:" in source
+    assert "return report_against_dll(args.dll_path, declared)" in source
+
+
+def test_the_docstring_says_where_the_def_actually_lives():
+    """It is in the OpenJDK source tree, not an installed JDK."""
+    source = (REPO_ROOT / "tools" / "check_jab_symbols.py").read_text(encoding="utf-8")
+
+    assert "OpenJDK source tree" in source
+    assert "not\nshipped inside an installed JDK" in source or \
+        "not shipped inside an installed JDK" in source.replace("\n", " ")

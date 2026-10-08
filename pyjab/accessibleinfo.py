@@ -7,13 +7,22 @@ member means the call writes past the end of the buffer, or pyjab reads one
 field's bytes as another's.
 
 The layouts are therefore not a design decision.  They are the ABI declared in
-the JDK's ``AccessBridgeCalls.h`` and the headers it includes, and every field
-name, type and position below comes from there.  Sizes and offsets are asserted
+the JDK's ``AccessBridgeCalls.h`` and the headers it includes, and the field
+order, types and meanings below come from there.  Sizes and offsets are asserted
 against the frozen baseline in ``tests/test_accessibleinfo_abi.py``, so an
 accidental edit is caught rather than shipped.
 
-The ``MAX_*`` sizes live in :mod:`pyjab.config` because they are also what
-decides how large a string can be before JAB truncates it.
+Two caveats, because "comes from the header" is not exactly true of everything:
+
+* some names are spelled differently here -- the header's ``VMversion`` is
+  ``VMVersion`` below -- because the spelling is the interface once Python reads
+  the field;
+* the ``MAX_*`` sizes in :mod:`pyjab.config` are the caller's buffer sizes rather
+  than the JDK's own limits, and at least one differs: ``MAX_KEY_BINDINGS`` is 50
+  where the header says 10.  An oversized buffer is safe -- JAB fills what it has
+  and reports the count -- and the alternative, being too small, truncates
+  silently.  50 is kept deliberately; the point here is that it is pyjab's number
+  rather than the header's.
 """
 
 from ctypes import Structure
