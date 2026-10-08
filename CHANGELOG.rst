@@ -35,6 +35,14 @@ the reply where there is one to quote.
 Fixed
 ~~~~~
 
+* **The documentation promised three methods that do not exist.**
+  ``driver.get_screenshot_as_png()`` and ``driver.get_screenshot_as_base64()``
+  were in the screenshots example and have never existed in pyjab, and
+  ``driver.get_window_size()`` was listed beside ``get_window_position()`` with no
+  counterpart in the code.  ``JABDriver.get_screenshot()``'s own docstring also
+  described it as returning base64, and its example called the method that is not
+  there -- it returns a Pillow ``Image``.  All four are corrected.  Found by
+  ``tools/check_documented_api.py``, written for the purpose.
 * **``get_focused_element()`` raised on a window with nothing focused.**  Its
   docstring has always said it returns ``None`` for that; it did not.
   ``getAccessibleContextWithFocus`` was declared with ``errorcheck=True``, and
@@ -79,6 +87,12 @@ Added
   terms on everyone who installs pyjab.
 * ``tools/verify_dpi.py`` -- measures which coordinate space ``simulate=True``
   needs on a given display, rather than assuming (#62).
+* ``tools/check_documented_api.py``, run in CI -- reads the API out of the code
+  and fails if ``README.rst`` or ``docs/`` names something that is not there.  It
+  exists because this failure is invisible in the direction that matters: a
+  missing method in a test fails the suite, whereas a missing method in the
+  README fails nothing until a user copies the example.  It found three on its
+  first run.
 
 1.5.0 (2026-10-08)
 ------------------

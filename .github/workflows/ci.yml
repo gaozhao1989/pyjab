@@ -223,13 +223,12 @@ jobs:
             "${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
 
   # ---------------------------------------------------------------------------
-  # Every runtime dependency has to stay permissively licensed. pyjab is GPLv2
-  # only because that is what it inherited, and it is on its way to a permissive
-  # licence -- a copyleft dependency added in the meantime would either block
-  # that or impose its terms on everyone who installs pyjab.
+  # The repository's declared metadata, checked against reality: what it depends
+  # on, what licence it says it is, and what API its documentation promises.
+  # All three are things that are only discovered to be wrong by a user.
   # ---------------------------------------------------------------------------
-  licences:
-    name: Dependency licences
+  checks:
+    name: Licences and documentation
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -255,6 +254,12 @@ jobs:
       # editing one of them reminds you about the others.
       - name: Check that the declared licence matches the shipped one
         run: python tools/check_license_consistency.py
+
+      # The working agreement says to confirm an API exists before citing it.
+      # That rule was kept by hand, which held until someone was in a hurry: the
+      # documentation promised three methods that have never existed.
+      - name: Check that every documented API exists
+        run: python tools/check_documented_api.py
 
   # ---------------------------------------------------------------------------
   # Build the distributions and validate the metadata, so a broken release is

@@ -646,12 +646,15 @@ class JABDriver(object):
         im.save(filename)
 
     def get_screenshot(self):
-        """
-        Gets the screenshot of the current window as a base64 encoded string
-           which is useful in embedded images in HTML.
+        """The screenshot of the current window, as a Pillow ``Image``.
+
+        Selenium's method of this name returns base64; this one returns the image
+        itself, and :meth:`get_screenshot_as_file` is the one that writes a file.
+        The docstring said base64 and its example called a
+        ``get_screenshot_as_base64()`` that has never existed in pyjab.
 
         :Usage:
-            driver.get_screenshot_as_base64()
+            image = driver.get_screenshot()
         """
         self.win32utils._set_window_foreground(hwnd=self.root_element.hwnd)
         bounds = self.root_element.bounds
