@@ -13,6 +13,16 @@ Unreleased
 Added
 ~~~~~
 
+* **`tools/verify_xpath.py`, for the part the real-tree test cannot reach.**  The
+  locators are tested against the real application's accessibility tree everywhere,
+  but that tree comes from the application's own accessibility API -- so it says
+  nothing about what **Java Access Bridge** reports, how many round trips a locator
+  costs, or whether a click lands.  This script runs on Windows and checks those:
+  JAB's `role_en_us` spelling, JAB's `indexinparent` / `childrencount` /
+  `objectdepth` values, a real `getAccessibleParentFromContext` for `..`, a
+  `simulate=True` click, and the average cost of a lookup.  It exits non-zero and
+  prints what each number is supposed to show.
+
 * **The new locators are exercised against the real application's tree, not only
   against hand-built ones.**  `tests/test_xpath_real_tree.py` starts the Swing
   application the GUI suite drives, asks it for its accessibility tree, loads that

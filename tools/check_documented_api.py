@@ -58,6 +58,19 @@ DOCUMENTED_VARIABLES = {
     # methods that did not exist, which is the failure this tool exists to catch.
     "table": "JABElement",
     "cell": "JABElement",
+    # Names used by the verification scripts, which hold JABElements they found by
+    # xpath. Without these the check silently skips every attribute access in
+    # tools/verify_xpath.py, because they are not called `element`.
+    "button": "JABElement",
+    "buttons": "JABElement",
+    "target": "JABElement",
+    "disable": "JABElement",
+    "parents": "JABElement",
+    "named": "JABElement",
+    "merged": "JABElement",
+    "firsts": "JABElement",
+    "twice": "JABElement",
+    "every": "JABElement",
 }
 
 #: Names that are deliberately absent from the code, with the reason.  A
