@@ -7,6 +7,27 @@ This project adheres to `Semantic Versioning`_ and `Keep a Changelog`_.
 .. _Semantic Versioning: https://semver.org/
 .. _Keep a Changelog: https://keepachangelog.com/
 
+Unreleased
+----------
+
+Added
+~~~~~
+
+* **Three methods the documentation used to promise now exist.**
+  ``get_screenshot_as_png()`` and ``get_screenshot_as_base64()`` on both
+  ``JABDriver`` and ``JABElement``, and ``get_window_size()`` on the driver.
+  ``docs/3-pyjab.md`` had been written from Selenium's documentation and named all
+  three; none had ever existed here, and 1.6.1's fix was to correct the docs and
+  pin their absence with a test so that adding them would be a decision rather
+  than an accident inherited from a copy-paste.  The decision was made, so the
+  test now pins their presence instead, for the same reason turned around.
+
+  ``get_screenshot_as_png()`` returns the PNG bytes, ``get_screenshot_as_base64()``
+  returns the same bytes base64 encoded -- which is what makes
+  ``data:image/png;base64,...`` embedding work -- and ``get_window_size()``
+  returns ``(width, height)``.  A tuple rather than the dict Selenium returns for
+  that name, to match ``get_window_position()``, which pyjab already made a tuple.
+
 1.6.2 (2026-10-09)
 ------------------
 

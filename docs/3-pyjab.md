@@ -189,6 +189,7 @@ element.spin("3")                  # spinners
 element.get_selected_element()     # the first selected child
 element.get_selected_elements()    # all of them
 element.get_visible_children()     # what is actually on screen
+element.get_screenshot_as_png()    # PNG bytes, and the base64 and Image forms
 element.bounds_within(other)       # geometry, not the `visible` state
 element.scroll_into_view()         # best effort; returns whether it worked
 ```
@@ -211,17 +212,32 @@ button = panel.find_element_by_name("Submit")
 ### Screenshots
 
 ```python
-driver.get_screenshot_as_file("window.png")   # writes a PNG
-image = driver.get_screenshot()               # a Pillow Image
+driver.get_screenshot_as_file("window.png")   # writes a PNG, returns None
 
-element.get_screenshot_as_file("element.png")
-image = element.get_screenshot()
+png = driver.get_screenshot_as_png()          # the PNG bytes
+b64 = driver.get_screenshot_as_base64()       # the same bytes, base64
+
+image = driver.get_screenshot()               # a Pillow Image
 ```
 
-Two methods, not the four a Selenium user may expect: `get_screenshot_as_file()`
-writes the file and `get_screenshot()` returns a Pillow `Image`, which you can
-save, encode or inspect yourself. There is no `get_screenshot_as_png()` or
-`get_screenshot_as_base64()`.
+All four work on an element as well, cropping to that element:
+
+```python
+element.get_screenshot_as_file("element.png")
+element.get_screenshot_as_png()
+element.get_screenshot_as_base64()
+element.get_screenshot()
+```
+
+The names and the return types are Selenium's, so the usual embedding works:
+
+```python
+html = f'<img src="data:image/png;base64,{driver.get_screenshot_as_base64()}">'
+```
+
+One difference to know about: **`get_screenshot_as_file()` returns `None`, not
+`True`/`False`.** Pillow raises if the file cannot be written, so a failure is an
+exception rather than a value you have to remember to check.
 
 ## The `simulate` parameter
 

@@ -12,6 +12,8 @@ if sys.platform != "win32":  # pragma: no cover - platform dependent
         "Windows with a JDK installed.".format(sys.platform)
     )
 
+import base64
+from io import BytesIO
 from time import monotonic, sleep
 
 from pyjab.common.logger import Logger
@@ -2577,6 +2579,29 @@ class JABElement(object):
                 )
             )
         return children
+
+    def get_screenshot_as_png(self) -> bytes:
+        """The screenshot as PNG data, the way Selenium returns it.
+
+        This is what :meth:`get_screenshot_as_base64` encodes, and what
+        :meth:`get_screenshot_as_file` writes.  Use :meth:`get_screenshot` when
+        you want the Pillow ``Image`` itself.
+
+        Returns:
+            bytes: a complete PNG file, magic number and all.
+        """
+        buffer = BytesIO()
+        self.get_screenshot().save(buffer, format="PNG")
+        return buffer.getvalue()
+
+    def get_screenshot_as_base64(self) -> str:
+        """The screenshot as a base64-encoded PNG, for embedding in HTML or JSON.
+
+        Returns:
+            str: the same bytes :meth:`get_screenshot_as_png` returns, base64
+            encoded as ASCII.
+        """
+        return base64.b64encode(self.get_screenshot_as_png()).decode("ascii")
 
     def get_element_information(self) -> dict:
         """Get dict information of current JABElement.

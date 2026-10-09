@@ -135,11 +135,14 @@ def problems_for(tmp_path, body):
 
 
 def test_a_missing_method_is_reported(tmp_path):
-    found = problems_for(tmp_path, "```python\ndriver.get_screenshot_as_png()\n```")
+    # Used to be get_screenshot_as_png(), which was a good example until 1.6.2
+    # added it -- at which point this test failed, correctly, because there was
+    # nothing left to report.
+    found = problems_for(tmp_path, "```python\ndriver.get_screenshot_as_tiff()\n```")
 
     assert len(found) == 1
     line, what, why = found[0]
-    assert what == "driver.get_screenshot_as_png"
+    assert what == "driver.get_screenshot_as_tiff"
     assert "JABDriver" in why
 
 
@@ -216,18 +219,29 @@ def test_every_published_file_is_clean():
     assert not failures, "\n".join(failures)
 
 
-def test_the_screenshot_methods_the_docs_once_promised_do_not_exist():
-    """The finding, pinned so that adding them later is a deliberate act.
+def test_the_screenshot_methods_the_docs_once_promised_now_exist():
+    """This test used to assert the opposite.
 
-    If someone adds `get_screenshot_as_base64()` this test should fail, and the
-    person should then delete it and note the addition in the changelog -- which
-    is the point: the docs used to promise it without anyone deciding to.
+    ``docs/3-pyjab.md`` promised ``get_screenshot_as_png()``,
+    ``get_screenshot_as_base64()`` and ``get_window_size()`` and none of them
+    existed -- the section had been written from Selenium's documentation.  The
+    first version of this test pinned their absence so that adding them would be
+    a decision rather than an accident, and cited in the changelog.
+
+    They were added in 1.6.2, deliberately, after that decision was made.  The
+    test now pins the opposite, for the same reason turned around: removing one
+    should also be deliberate.
     """
-    assert "get_screenshot_as_file" in MEMBERS["JABDriver"]
-    assert "get_screenshot" in MEMBERS["JABDriver"]
-    assert "get_screenshot_as_png" not in MEMBERS["JABDriver"]
-    assert "get_screenshot_as_base64" not in MEMBERS["JABDriver"]
-    assert "get_window_size" not in MEMBERS["JABDriver"]
+    for name in ("get_screenshot_as_file", "get_screenshot",
+                 "get_screenshot_as_png", "get_screenshot_as_base64",
+                 "get_window_size"):
+        assert name in MEMBERS["JABDriver"], name
+
+    # An element has no window, so it has no window size.
+    for name in ("get_screenshot_as_file", "get_screenshot",
+                 "get_screenshot_as_png", "get_screenshot_as_base64"):
+        assert name in MEMBERS["JABElement"], name
+    assert "get_window_size" not in MEMBERS["JABElement"]
 
 
 # ---------------------------------------------------------------------------
