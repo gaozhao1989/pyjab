@@ -320,6 +320,19 @@ panel = driver.find_element_by_name("OrderPanel")
 button = panel.find_element_by_name("Submit")
 ```
 
+Both objects answer the same way, including about the window itself: a search looks at
+**descendants only**, so `driver.find_element_by_name(window_title)` raises rather than
+returning the window. A window is not its own descendant, and the window is already
+there as `driver.root_element`:
+
+```python
+driver.root_element.find_element_by_name("Submit")   # same as above
+```
+
+Every element a search returns is yours to release with `release_jabelement`. The root
+is the exception, because the driver holds it for its lifetime — which is part of why
+the search does not hand it back.
+
 ### Screenshots
 
 ```python
