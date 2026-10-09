@@ -63,6 +63,28 @@ Removed
 Fixed
 ~~~~~
 
+* **``tools/verify_dpi.py`` now runs the decisive check twice, and can reproduce
+  #62 on demand.**  A 150% run on a display with an **unaware** target and an
+  **unaware** pyjab reported the JAB position landing — which is the result to
+  expect once the two-process geometry is clear: both ends are in the same
+  virtualised space, so logical coordinates on the way in and logical coordinates
+  on the way out cancel.  That configuration cannot show the bug, and the run said
+  "nothing to fix" while testing only one of the two arrangements that matter.
+
+  The second pass issues the same clicks from a thread switched to per-monitor
+  awareness with ``SetThreadDpiAwarenessContext``.  That is the mixed case: the
+  target's coordinates are logical because the target is unaware, while an aware
+  caller's mouse coordinates are taken as physical.  If the unaware pass lands and
+  the aware pass does not, the script reports **#62 reproduced** and says why — two
+  processes in different coordinate spaces, not a property of the display or of the
+  target on its own.
+
+  The switch is undone in a ``finally``, and only the calling thread is affected,
+  so the application is untouched either way.
+
+Fixed
+~~~~~
+
 * **``tools/verify_dpi.py`` asked for the target's DPI awareness with a process id
   where the API takes a process handle.**  ``GetProcessDpiAwareness`` is declared
   ``HRESULT GetProcessDpiAwareness(HANDLE hprocess, PROCESS_DPI_AWARENESS *value)``,
