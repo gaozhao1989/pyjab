@@ -318,6 +318,9 @@ Support
 * **Commercial support, integration help or custom development:** contact
   `gaozhao89@qq.com`_.
 
+What each of those covers, what a good bug report contains, and what is deliberately not
+free are set out in `SUPPORT.md`_.
+
 License and commercial use
 --------------------------
 
@@ -357,3 +360,4 @@ reproduction are the most valuable contribution.
 .. _MIT: https://opensource.org/license/mit
 .. _GPLv2: https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html
 .. _gaozhao89@qq.com: mailto:gaozhao89@qq.com
+.. _SUPPORT.md: https://github.com/gaozhao1989/pyjab/blob/master/SUPPORT.md
