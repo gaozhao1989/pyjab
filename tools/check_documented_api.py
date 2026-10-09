@@ -175,6 +175,25 @@ def class_members(modules: dict) -> dict:
                     for target in child.targets:
                         if isinstance(target, ast.Name) and is_public(target.id):
                             found.add(target.id)
+            # Attributes assigned to self inside a method count as well.
+            # JABDriver sets self.win32utils in __init__, and a version that
+            # looked only at the class body reported it as missing -- a false
+            # positive that would have failed this check on correct code.
+            for item in ast.walk(node):
+                target = None
+                if isinstance(item, ast.Assign):
+                    for candidate in item.targets:
+                        if (isinstance(candidate, ast.Attribute)
+                                and isinstance(candidate.value, ast.Name)
+                                and candidate.value.id == "self"):
+                            target = candidate.attr
+                elif (isinstance(item, ast.AnnAssign)
+                      and isinstance(item.target, ast.Attribute)
+                      and isinstance(item.target.value, ast.Name)
+                      and item.target.value.id == "self"):
+                    target = item.target.attr
+                if target and is_public(target):
+                    found.add(target)
             members.setdefault(node.name, set()).update(found)
     return members
 
@@ -203,6 +222,72 @@ def package_files() -> list:
     reading the package's own prose.
     """
     return sorted((REPO_ROOT / "pyjab").rglob("*.py"))
+
+
+#: What a script calls a JABDriver or a JABElement.  Separate from
+#: DOCUMENTED_VARIABLES because scripts use different words for the same things,
+#: and adding them there would change what the documentation check reports.
+TOOL_VARIABLES = {
+    "driver": "JABDriver",
+    "app": "JABDriver",
+    "jab": "JABDriver",
+    "test_app": "JABDriver",
+    "element": "JABElement",
+    "el": "JABElement",
+    "table": "JABElement",
+    "cell": "JABElement",
+}
+
+
+def tool_files() -> list:
+    """Every script in tools/, whose attribute accesses are checked as well.
+
+    AGENTS.md 1.1 says to confirm an API exists before citing it "in
+    documentation, tests, scripts and issue replies alike", and calls it
+    mechanical.  This check did the documentation and the package docstrings and
+    stopped there, so the scripts went unread -- and ``tools/verify_dpi.py``
+    reached ``driver.win32_utils``, which does not exist.  ``JABDriver`` names it
+    ``win32utils``; ``JABElement`` names it ``win32_utils``.  The script used the
+    element's spelling on the driver.
+
+    Nobody could have caught it by reading here: it compiles, it imports, and it
+    runs until the one machine that can execute it -- Windows, with a JDK, at the
+    point of the decisive click, after the measurements had already been taken.
+    That is the whole argument for checking it rather than finding it.
+    """
+    return sorted((REPO_ROOT / "tools").glob("*.py"))
+
+
+def tool_references(path: Path, members: dict) -> list:
+    """Attribute accesses in one script that the class does not have.
+
+    Only for the variable names in TOOL_VARIABLES.  A script that calls its driver
+    something else is not checked, which is a gap -- and the cost of closing it
+    with a guess is a false positive that makes the check untrustworthy, which is
+    worse than a gap.
+    """
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except SyntaxError:
+        return []
+    problems = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Attribute):
+            continue
+        if not isinstance(node.value, ast.Name):
+            continue
+        class_name = TOOL_VARIABLES.get(node.value.id)
+        if class_name is None:
+            continue
+        if node.attr.startswith("__"):
+            continue
+        if node.attr not in members.get(class_name, set()):
+            problems.append((
+                node.lineno,
+                f"{node.value.id}.{node.attr}",
+                f"{node.value.id} is a {class_name}, which has no such attribute",
+            ))
+    return problems
 
 
 def docstrings_in(path: Path) -> list:
@@ -330,36 +415,46 @@ def main() -> int:
     members = class_members(modules)
 
     files = documented_files() + package_files()
+    tools = tool_files()
     total = 0
     failures = 0
 
+    print("documentation and package docstrings")
     for path in files:
         problems = references_in(path, modules, members)
         total += 1
-        if not problems:
-            continue
-        relative = path.relative_to(REPO_ROOT).as_posix()
-        for number, what, why in problems:
-            print(f"  {relative}:{number}  {what}  -- {why}")
-            failures += 1
+        failures += report(path, problems)
 
-    print(f"\nchecked {total} file(s) -- published documentation and the "
-          f"package's own docstrings --\nagainst {len(modules)} modules and "
+    print("\nscripts")
+    for path in tools:
+        problems = tool_references(path, members)
+        total += 1
+        failures += report(path, problems)
+
+    print(f"\nchecked {total} file(s) -- published documentation, the package's own "
+          f"docstrings,\nand tools/ --\nagainst {len(modules)} modules and "
           f"{len(members)} classes")
 
     if failures:
         print(f"\nFAILED: {failures} reference(s) name something that does not exist.")
         print(
-            "\n  Either the code lost an API the documentation still promises, or\n"
-            "  the documentation invented one. Both are worth knowing about before\n"
-            "  a reader copies it. If the reference is deliberate -- a changelog\n"
-            "  describing something removed -- add the name to KNOWN_REMOVED in\n"
-            "  this script with the reason."
+            "\n  Either the code lost an API something still uses, or the reference\n"
+            "  was invented. Both are worth knowing about before it is run. If the\n"
+            "  reference is deliberate -- a changelog describing something removed\n"
+            "  -- add the name to KNOWN_REMOVED in this script with the reason."
         )
         return 1
 
-    print("\nPASSED: every API the documentation names exists.")
+    print("\nPASSED: every API the documentation and the tools name exists.")
     return 0
+
+
+def report(path: Path, problems: list) -> int:
+    """Print one file's findings, and say how many there were."""
+    relative = path.relative_to(REPO_ROOT).as_posix()
+    for number, what, why in problems:
+        print(f"  {relative}:{number}  {what}  -- {why}")
+    return len(problems)
 
 
 if __name__ == "__main__":
