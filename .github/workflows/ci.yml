@@ -282,6 +282,15 @@ jobs:
       - name: A released changelog section must not change
         run: python tools/check_changelog_immutable.py
 
+      # The audit the notes call P1-2, made mechanical. Two Java object leaks have been
+      # found in this codebase, in a path every user takes; the second was found by
+      # writing this, after a hand inventory of the call sites missed that call twice.
+      # A new call that hands out a reference now fails here until somebody records
+      # where the reference goes -- reachability of a release is not decidable, but the
+      # set of places that need one is.
+      - name: Every JAB object reference has a recorded destination
+        run: python tools/check_jab_object_sites.py
+
   # ---------------------------------------------------------------------------
   # Build the distributions and validate the metadata, so a broken release is
   # caught on the PR rather than at tag time.

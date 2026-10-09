@@ -223,6 +223,14 @@ class JABDriver(object):
             self.hwnd = self.bridge.getHWNDFromAccessibleContext(
                 self.vmid, top_level_object
             )
+            # getTopLevelObject hands out a reference and this is the only place it is
+            # used, so it is the only place it can be released. Not releasing it leaked
+            # one Java object per driver built from a vmid and a context rather than
+            # from a title or an hwnd -- the less common construction, which is why it
+            # went unnoticed. Note that self.accessible_context is a *different*
+            # object, derived from this one rather than owned by it, so releasing this
+            # does not disturb it.
+            self.bridge.releaseJavaObject(self.vmid, top_level_object)
         else:
             raise RuntimeError(
                 "At least hwnd or vmid and accessible_context is required"
