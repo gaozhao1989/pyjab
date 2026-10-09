@@ -14,12 +14,14 @@ if sys.platform != "win32":  # pragma: no cover - platform dependent
         "Windows with a JDK installed.".format(sys.platform)
     )
 
+import base64
 import os
 import signal
 from ctypes import byref
 from ctypes import CDLL
 from ctypes import c_long
 from ctypes.wintypes import HWND
+from io import BytesIO
 from pathlib import Path
 from subprocess import Popen
 from time import sleep, time
@@ -710,6 +712,41 @@ class JABDriver(object):
         same point :meth:`set_window_position` takes.
         """
         return self.win32utils._get_window_position(hwnd=self.root_element.hwnd)
+
+    def get_screenshot_as_png(self) -> bytes:
+        """The screenshot as PNG data, the way Selenium returns it.
+
+        This is what :meth:`get_screenshot_as_base64` encodes, and what
+        :meth:`get_screenshot_as_file` writes.  Use :meth:`get_screenshot` when
+        you want the Pillow ``Image`` itself.
+
+        Returns:
+            bytes: a complete PNG file, magic number and all.
+        """
+        buffer = BytesIO()
+        self.get_screenshot().save(buffer, format="PNG")
+        return buffer.getvalue()
+
+    def get_screenshot_as_base64(self) -> str:
+        """The screenshot as a base64-encoded PNG, for embedding in HTML or JSON.
+
+        Returns:
+            str: the same bytes :meth:`get_screenshot_as_png` returns, base64
+            encoded as ASCII.
+        """
+        return base64.b64encode(self.get_screenshot_as_png()).decode("ascii")
+
+    def get_window_size(self):
+        """The bound window's size in pixels, as ``(width, height)``.
+
+        Includes the window decorations, so it is the rectangle
+        :meth:`set_window_size` takes and :meth:`get_window_position` reports the
+        corner of.
+
+        A tuple rather than the dict Selenium returns for the same name, to match
+        :meth:`get_window_position`, which is also a tuple.
+        """
+        return self.win32utils._get_window_size(hwnd=self.root_element.hwnd)
 
     def get_focused_element(self) -> Optional[JABElement]:
         """The element that currently has keyboard focus in this window.

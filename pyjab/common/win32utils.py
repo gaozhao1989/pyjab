@@ -286,6 +286,20 @@ class Win32Utils(object):
         win32gui.SetForegroundWindow(hwnd)
 
     @staticmethod
+    def _get_window_size(hwnd: HWND) -> tuple:
+        """The bound window's size in pixels, as ``(width, height)``.
+
+        Includes the decorations, so it is the same rectangle
+        :meth:`_set_window_size` takes and :meth:`_get_window_position` reports
+        the corner of.
+
+        A tuple rather than the dict Selenium returns for the same name, to match
+        :meth:`_get_window_position`, which pyjab already made a tuple.
+        """
+        left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+        return (right - left, bottom - top)
+
+    @staticmethod
     def _set_window_maximize(hwnd: HWND) -> None:
         win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
         win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
