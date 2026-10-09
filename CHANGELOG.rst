@@ -17,6 +17,36 @@ here rather than in a minor release.
 Added
 ~~~~~
 
+* **`simulate=True` clicks at the wrong place on a scaled display (#62).**  JAB
+  reports the **target application's** coordinates and ``SetCursorPos`` takes the
+  **calling thread's**; when the two processes scale differently those are different
+  spaces, and the click lands elsewhere with nothing reporting an error.
+
+  Measured on a 150% display with an unaware target, before this change:
+
+  ======================  =========================================
+  calling thread          clicking the point JAB reported
+  ======================  =========================================
+  unaware (pyjab)         **lands** — both ends are logical
+  aware                   **misses**; the point x1.5 lands
+  ======================  =========================================
+
+  ``win32utils.physical_point`` reads the target's awareness, the calling thread's
+  awareness and the display's real scale, and converts only when the two differ, in
+  whichever direction is missing. Every site that moves the real mouse goes through
+  ``JABElement._physical_point``, which a test enforces by reading the module.
+
+  The default configuration — an unaware target against an unaware pyjab — is
+  **unchanged**, because that is every setup nobody has reported a problem with, and
+  converting there would break it. Neither is anything converted when the display is
+  at 100%, or when the target's awareness cannot be read: an elevated target cannot
+  be opened, and guessing "unaware" there would move the cursor on a setup that
+  works.
+
+  **Verified by unit test for the arithmetic and the wiring; not yet verified by a
+  click on a scaled display.** ``tools/verify_dpi.py`` reproduces the failing case on
+  demand and is how it has to be confirmed.
+
 * **Three methods the documentation used to promise now exist.**
   ``get_screenshot_as_png()`` and ``get_screenshot_as_base64()`` on both
   ``JABDriver`` and ``JABElement``, and ``get_window_size()`` on the driver.
