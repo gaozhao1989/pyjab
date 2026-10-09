@@ -47,6 +47,28 @@ SIGN_OFF = re.compile(r"^Signed-off-by:\s*(?P<who>.+?)\s*$", re.IGNORECASE | re.
 #: rather than a rubber stamp, which is the trade being made here.
 BOT_SUFFIXES = ("[bot]", "-bot", "_bot")
 
+#: The commit that introduced this check, and therefore the point from which the
+#: requirement applies.
+#:
+#: ``CONTRIBUTING.rst`` tells a contributor to run this against their own branch,
+#: but the obvious way to try it is ``--base v1.5.0`` or similar on ``master`` --
+#: where it reported nine commits as missing a sign-off.  Those nine are all
+#: commits the maintainer pushed directly, before this file existed.  Nothing was
+#: wrong with them and nothing could be: the rule did not exist yet, and a
+#: requirement cannot be retroactive to commits made in its absence.
+#:
+#: Reporting them as failures was therefore wrong in a way that mattered -- it
+#: made the documented command look broken to exactly the person being asked to
+#: trust it, and it obscured the real signal, which is that every commit after
+#: this one does carry a sign-off.
+#:
+#: If this commit is not an ancestor of the range being checked -- a fork branch,
+#: an unrelated clone -- nothing is exempt and every commit is checked.  Failing
+#: open is the right direction: the cost of a false exemption is that an unsigned
+#: commit goes unremarked, and the cost of a false failure is that people stop
+#: running the check.
+REQUIRED_FROM = "350c9787eb57f41b72aee5e71f24e8c672b8b301"
+
 
 def git(*args: str) -> str:
     result = subprocess.run(["git", *args], capture_output=True, text=True)
@@ -112,6 +134,34 @@ def is_merge(commit: dict) -> bool:
 def is_bot(commit: dict) -> bool:
     name = commit["author"].lower()
     return any(name.endswith(suffix) for suffix in BOT_SUFFIXES)
+
+
+def before_the_rule(sha: str) -> bool:
+    """Whether *sha* was committed before the requirement existed.
+
+    Exact rather than a date comparison: the boundary is a commit, and asking git
+    whether this one is an ancestor of it is the same question stated directly.
+    A commit equal to the boundary is not exempt -- it is the one that introduced
+    the rule.
+    """
+    # subprocess rather than the module's git(): that helper exits the process on
+    # failure, and "the baseline is not in this clone" is an ordinary answer here
+    # -- it is what happens when the check runs against a throwaway test
+    # repository, or a fork that does not contain upstream history.
+    resolved = subprocess.run(
+        ["git", "rev-parse", "--verify", "--quiet", REQUIRED_FROM + "^{commit}"],
+        capture_output=True, text=True,
+    ).stdout.strip()
+    if not resolved:
+        # The baseline is not here, so nothing is exempt.  Failing open is the
+        # right direction -- see REQUIRED_FROM.
+        return False
+    if sha == resolved:
+        return False
+    return subprocess.run(
+        ["git", "merge-base", "--is-ancestor", sha, resolved],
+        capture_output=True,
+    ).returncode == 0
 
 
 def sign_offs(commit: dict) -> list:
@@ -182,12 +232,17 @@ def main() -> int:
     unsigned = []
     misattributed = []
     skipped = 0
+    before_rule = 0
 
     for sha in shas:
         commit = describe(sha)
         short = commit["sha"][:8]
         label = first_line(commit)[:58]
 
+        if before_the_rule(commit["sha"]):
+            print(f"  {short}  before-rule  {label}")
+            before_rule += 1
+            continue
         if is_merge(commit):
             print(f"  {short}  skipped  merge commit")
             skipped += 1
@@ -237,6 +292,16 @@ def main() -> int:
 
     print(f"\nPASSED: every commit carries a sign-off "
           f"({skipped} skipped as merge or bot)")
+    if before_rule:
+        # Said plainly, because a reader who reached back past the rule needs to
+        # know these were not quietly ignored.
+        print(f"\n  {before_rule} commit(s) marked before-rule: they predate "
+              f"{REQUIRED_FROM[:8]},\n"
+              "  the commit that introduced this check.  A requirement cannot "
+              "apply to\n"
+              "  commits made before it existed, so they are reported rather "
+              "than failed.\n"
+              "  Every commit after that one is checked.")
     return 0
 
 

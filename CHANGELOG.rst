@@ -10,6 +10,27 @@ This project adheres to `Semantic Versioning`_ and `Keep a Changelog`_.
 Unreleased
 ----------
 
+Fixed
+~~~~~
+
+* **The documented sign-off command no longer fails on this repository's own
+  history.**  ``CONTRIBUTING.rst`` tells a contributor to run
+  ``python tools/check_dco.py --base origin/master``, and the obvious way to try
+  it is against ``master`` — where it reported nine commits as missing a
+  sign-off.  All nine are commits the maintainer pushed directly, from before
+  ``tools/check_dco.py`` existed.  Nothing was wrong with them and nothing could
+  be: a requirement cannot apply to commits made before it.
+
+  ``check_dco.py`` now knows the commit that introduced the requirement
+  (``REQUIRED_FROM``) and reports anything older as ``before-rule`` rather than as
+  a failure — reported, not skipped silently, because a rule nobody can see being
+  applied is a rule people stop reading.  Everything after that commit is checked
+  normally, and a checkout that does not contain the baseline — a fork, a
+  throwaway test repository — exempts nothing and checks everything.  That is the
+  right direction to fail: a false exemption lets an unsigned commit go
+  unremarked, while a false failure is what made the command look broken to the
+  person being asked to trust it.
+
 Removed
 ~~~~~~~
 

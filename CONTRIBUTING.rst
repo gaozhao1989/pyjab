@@ -47,6 +47,13 @@ who is neither the author nor the committer -- a trailer naming nobody states
 nothing. Merge commits and bots are skipped. If you have already committed
 without ``-s``, ``git rebase --signoff <base>`` adds it to the whole branch.
 
+Run it against **your own branch**, which is what ``--base origin/master`` means
+above. Checking a range that reaches back into this repository's history will
+print some commits as ``before-rule`` rather than as failures: they predate the
+commit that introduced the requirement, and a rule cannot apply to commits made
+before it existed. Those are reported so they are visible, not failed, and
+everything after that commit is checked normally.
+
 .. _Developer Certificate of Origin: https://developercertificate.org/
 
 Reporting a bug
