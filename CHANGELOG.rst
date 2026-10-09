@@ -7,8 +7,58 @@ This project adheres to `Semantic Versioning`_ and `Keep a Changelog`_.
 .. _Semantic Versioning: https://semver.org/
 .. _Keep a Changelog: https://keepachangelog.com/
 
-Unreleased
-----------
+1.6.3 (2026-10-09)
+------------------
+
+Three screenshot methods that the documentation used to promise, and the
+removal of a module nothing called.  See Removed for why that last one is
+here rather than in a minor release.
+
+Added
+~~~~~
+
+* **Three methods the documentation used to promise now exist.**
+  ``get_screenshot_as_png()`` and ``get_screenshot_as_base64()`` on both
+  ``JABDriver`` and ``JABElement``, and ``get_window_size()`` on the driver.
+  ``docs/3-pyjab.md`` had been written from Selenium's documentation and named all
+  three; none had ever existed here, and 1.6.1's fix was to correct the docs and
+  pin their absence with a test so that adding them would be a decision rather
+  than an accident inherited from a copy-paste.  The decision was made, so the
+  test now pins their presence instead, for the same reason turned around.
+
+  ``get_screenshot_as_png()`` returns the PNG bytes, ``get_screenshot_as_base64()``
+  returns the same bytes base64 encoded -- which is what makes
+  ``data:image/png;base64,...`` embedding work -- and ``get_window_size()``
+  returns ``(width, height)``.  A tuple rather than the dict Selenium returns for
+  that name, to match ``get_window_position()``, which pyjab already made a tuple.
+
+Removed
+~~~~~~~
+
+* **``pyjab.common.shortcutkeys``.**  164 lines, 37 methods, and **zero callers**
+  anywhere -- not in the package, the tests, the docs or the tooling.  It was a
+  list of Oracle *Forms* keyboard shortcuts, which is a different product from
+  Swing/AWT; the file's own comment said so.  Left over from somewhere else, and
+  never reachable from anything pyjab does.
+
+  It also could not have worked if something had used it: the combination keys
+  called ``press_key``, which presses *and releases*, so ``previous_field`` sent
+  shift-release followed by tab rather than shift+tab.  The correct call is used
+  elsewhere in the same file.
+
+  **This ships in a patch release, which breaks the project's own rule.**  The
+  rule is in the release skill and it exists for a reason: a patch is what people
+  take without reading.  It is being broken here deliberately, on the
+  maintainer's decision, and the reasoning is that the module had **zero callers
+  anywhere** -- not in pyjab, not in the tests, not in the docs, not in any script
+  -- and was a list of Oracle *Forms* shortcuts in a Swing/AWT library.  The
+  exposure is real but small: anyone who imported it by name will get
+  ``ModuleNotFoundError`` on a patch version.
+
+  Recorded rather than quietly done, so that the next person who reads "do not
+  break existing public API in a patch release" and then looks at this history
+  finds a decision instead of an oversight.  It is in the git history for anyone
+  who wants it back.
 
 Fixed
 ~~~~~
@@ -76,42 +126,6 @@ Fixed
   right direction to fail: a false exemption lets an unsigned commit go
   unremarked, while a false failure is what made the command look broken to the
   person being asked to trust it.
-
-Removed
-~~~~~~~
-
-* **``pyjab.common.shortcutkeys``.**  164 lines, 37 methods, and **zero callers**
-  anywhere -- not in the package, the tests, the docs or the tooling.  It was a
-  list of Oracle *Forms* keyboard shortcuts, which is a different product from
-  Swing/AWT; the file's own comment said so.  Left over from somewhere else, and
-  never reachable from anything pyjab does.
-
-  It also could not have worked if something had used it: the combination keys
-  called ``press_key``, which presses *and releases*, so ``previous_field`` sent
-  shift-release followed by tab rather than shift+tab.  The correct call is used
-  elsewhere in the same file.
-
-  Being importable made this a public API removal, so the next release is a
-  **minor** version, not a patch.  It is in the git history for anyone who wants
-  it; nothing in pyjab calls it.
-
-Added
-~~~~~
-
-* **Three methods the documentation used to promise now exist.**
-  ``get_screenshot_as_png()`` and ``get_screenshot_as_base64()`` on both
-  ``JABDriver`` and ``JABElement``, and ``get_window_size()`` on the driver.
-  ``docs/3-pyjab.md`` had been written from Selenium's documentation and named all
-  three; none had ever existed here, and 1.6.1's fix was to correct the docs and
-  pin their absence with a test so that adding them would be a decision rather
-  than an accident inherited from a copy-paste.  The decision was made, so the
-  test now pins their presence instead, for the same reason turned around.
-
-  ``get_screenshot_as_png()`` returns the PNG bytes, ``get_screenshot_as_base64()``
-  returns the same bytes base64 encoded -- which is what makes
-  ``data:image/png;base64,...`` embedding work -- and ``get_window_size()``
-  returns ``(width, height)``.  A tuple rather than the dict Selenium returns for
-  that name, to match ``get_window_position()``, which pyjab already made a tuple.
 
 1.6.2 (2026-10-09)
 ------------------
