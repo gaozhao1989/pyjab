@@ -1,0 +1,35 @@
+# Line endings, decided once instead of by whichever editor or script last
+# touched a file.
+#
+# The repository was mixed: eleven files in pyjab/common/ plus jabelement.py were
+# CRLF and the other sixty-six were LF.  Nothing enforced either, so an edit made
+# with anything that normalises on write silently rewrote every line of a file.
+# That happened four times during the relicensing work -- once turning a
+# sixteen-line change to jabelement.py into a 4191-line diff -- and each time it
+# was caught by reading `git diff --stat`, which is not a thing to rely on.
+#
+# `text=auto` makes git decide what is text and normalise it to LF *in the
+# repository*, whatever the working tree holds.  `eol=lf` then checks it out as
+# LF on every platform, so the working tree is the same everywhere and a file
+# rewritten with CRLF or LF produces no diff at all.  The accident stops being
+# possible rather than being watched for.
+#
+# LF rather than CRLF on Windows too: this is a Python project, Python reads
+# either, and one working tree for every platform is the property that removes
+# the whole class of problem.  Nothing here is a Windows resource file that needs
+# CRLF to be read correctly.
+* text=auto eol=lf
+
+# Belt and braces.  `text=auto` detects these already, and saying so explicitly
+# means a future binary that happens to look like text cannot be mangled.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.whl binary
+*.dll binary
+*.exe binary
