@@ -330,3 +330,89 @@ def test_shortcutkeys_is_gone():
         importlib.import_module("pyjab.common.shortcutkeys")
 
     assert not (REPO_ROOT / "pyjab" / "common" / "shortcutkeys.py").exists()
+
+
+# ---------------------------------------------------------------------------
+# The scripts in tools/
+# ---------------------------------------------------------------------------
+
+def test_a_script_calling_a_missing_attribute_is_reported(tmp_path):
+    """The bug this was written for, in miniature.
+
+    ``tools/verify_dpi.py`` reached ``driver.win32_utils``.  ``JABDriver`` names it
+    ``win32utils``; ``JABElement`` names it ``win32_utils``.  The script used the
+    element's spelling on the driver.
+    """
+    script = tmp_path / "probe.py"
+    script.write_text("driver.win32_utils._click_mouse(1, 2)\n", encoding="utf-8")
+
+    found = checker.tool_references(script, MEMBERS)
+
+    assert [f[1] for f in found] == ["driver.win32_utils"]
+    assert "JABDriver" in found[0][2]
+
+
+def test_the_right_spelling_is_not_reported(tmp_path):
+    """Reverting the fix must fail the check, and applying it must not."""
+    script = tmp_path / "probe.py"
+    script.write_text("driver.win32utils._click_mouse(1, 2)\n", encoding="utf-8")
+
+    assert checker.tool_references(script, MEMBERS) == []
+
+
+def test_the_driver_and_the_element_spell_it_differently():
+    """Pinned, because it is the trap rather than an accident to be tidied away.
+
+    Two classes, one attribute, two names.  If this ever becomes one name, the
+    assertion below is what will notice -- and whoever unifies it should delete
+    this and say so in the changelog.
+    """
+    assert "win32utils" in MEMBERS["JABDriver"]
+    assert "win32_utils" not in MEMBERS["JABDriver"]
+    assert "win32_utils" in MEMBERS["JABElement"]
+    assert "win32utils" not in MEMBERS["JABElement"]
+
+
+def test_an_attribute_assigned_in_init_counts_as_a_member():
+    """Guards the guard, in the direction that would have made it useless.
+
+    A version of ``class_members`` that looked only at the class body did not see
+    ``self.win32utils`` and reported correct code as broken.  A check that fails
+    on correct code gets turned off, so that false positive mattered.
+    """
+    assert "win32utils" in MEMBERS["JABDriver"], "set in JABDriver.__init__"
+    assert "logger" in MEMBERS["JABDriver"], "also set in __init__"
+    assert "bridge" in MEMBERS["JABElement"], "set in JABElement.__init__"
+
+
+def test_a_private_attribute_is_still_not_a_member():
+    assert not checker.is_public("_double_click_mouse")
+
+
+def test_a_script_using_another_name_is_not_checked(tmp_path):
+    """The gap, stated rather than left implicit.
+
+    Only the names in TOOL_VARIABLES are checked.  A script that calls its driver
+    ``d`` is not examined.  Closing that gap with a guess would produce false
+    positives, and a check that cries wolf is worse than a check with a known
+    hole in it.
+    """
+    script = tmp_path / "probe.py"
+    script.write_text("d.win32_utils._click_mouse(1, 2)\n", encoding="utf-8")
+
+    assert checker.tool_references(script, MEMBERS) == []
+    assert "d" not in checker.TOOL_VARIABLES
+
+
+def test_every_tool_is_clean():
+    """The end-to-end check over tools/."""
+    failures = []
+    for path in checker.tool_files():
+        for number, what, why in checker.tool_references(path, MEMBERS):
+            failures.append(f"{path.relative_to(REPO_ROOT)}:{number} {what} -- {why}")
+
+    assert not failures, "\n".join(failures)
+
+
+def test_the_tools_are_actually_found():
+    assert len(checker.tool_files()) >= 10

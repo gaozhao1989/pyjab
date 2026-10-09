@@ -216,8 +216,13 @@ def decisive_check(driver, scale: float) -> dict:
         if not middle_enabled():
             outcome[label] = "could not re-enable the middle button; skipped"
             return False
-        driver.win32_utils._set_window_foreground(hwnd=disable.hwnd)
-        driver.win32_utils._click_mouse(x=x, y=y)
+        # driver.win32utils, no underscore.  JABDriver names it without and
+        # JABElement names it with -- element.win32_utils -- and using the
+        # element's spelling here raised AttributeError on the one machine that
+        # can run this, at the point of the decisive click, after the JDK had
+        # compiled and the measurements had been taken.
+        driver.win32utils._set_window_foreground(hwnd=disable.hwnd)
+        driver.win32utils._click_mouse(x=x, y=y)
         time.sleep(0.5)
         changed = not middle_enabled()
         outcome[label] = "the click landed" if changed else "nothing happened"

@@ -13,6 +13,28 @@ Unreleased
 Fixed
 ~~~~~
 
+* **``tools/verify_dpi.py`` could not finish, on the one machine that can run it.**
+  It reached ``driver.win32_utils``, and ``JABDriver`` names that ``win32utils``
+  — ``JABElement`` is the one that spells it with an underscore.  The script used
+  the element's spelling on the driver, so it raised ``AttributeError`` after the
+  JDK had compiled and the measurements had been taken, at the point of the
+  decisive click, and produced no verdict.
+
+  Nothing here could have caught it by reading: it compiles, it imports, and it
+  runs until Windows.  It is exactly the failure AGENTS.md 1.1 describes, and
+  exactly the one it says is mechanical to prevent.
+
+* **The API check now reads ``tools/`` as well**, which is what AGENTS.md 1.1
+  asks for — an API is to be confirmed before it is cited "in documentation,
+  tests, scripts and issue replies alike".  The check covered the documentation
+  and the package's own docstrings and stopped there, so the scripts went unread.
+
+  ``class_members()`` also had to learn that an attribute assigned to ``self``
+  inside a method is a member.  ``JABDriver`` sets ``self.win32utils`` in
+  ``__init__``, and a check that looked only at the class body reported that as
+  missing — a false positive that would have failed on correct code, and a check
+  that fails on correct code gets turned off.
+
 * **The XPath documentation claimed a feature that does not exist, and denied two
   that do.**  ``docs/3-pyjab.md`` listed ``[n]`` positional predicates as
   supported.  They are not, and never were: ``get_node_attributes`` recognises
