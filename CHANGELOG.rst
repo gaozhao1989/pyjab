@@ -13,6 +13,32 @@ Unreleased
 Added
 ~~~~~
 
+* **`[n]` positional predicates, and predicates applied in order.**  XPath's own
+  semantics, taken from the specification rather than from intuition: `[n]` is
+  **1-based** and counted **within each parent**, so `//panel[1]` is the first panel
+  child of every parent, not the first panel in the window. The second example in
+  W3C XPath 1.0 section 2 is `child::para[position()=1]`, "the first `para` child of
+  the context node".
+
+  Predicates now filter **left to right**, which is what makes these two different
+  questions rather than the same one:
+
+  ```python
+  //panel[@name='OK'][2]     # the second of those named OK
+  //panel[2][@name='OK']     # the second panel child, if it happens to be named OK
+  ```
+
+  The parser returns an ordered predicate list rather than a flat attribute list,
+  because a flat list cannot tell them apart -- and the previous version refused a
+  second bracket outright (`extra node conditions found`) rather than approximating.
+  The flattened `attributes` key is still returned, so older callers are unaffected.
+
+  `[0]`, `[position()=2]` and `[last()]` are rejected with a parse error instead of
+  being approximated: the first because positions are 1-based, the others because
+  they need an expression evaluator. `[0]` matching nothing, or `[last()]` quietly
+  behaving like `[1]`, would report "no element" for a locator that was never going
+  to work.
+
 * **A check that a released changelog section cannot change.**  Every entry added
   after v1.6.3 went into the 1.6.3 section -- that section sits at the top of the
   file and the anchor used to insert them matched it -- so the repository claimed

@@ -72,36 +72,83 @@ class XpathParser(object):
 
     @staticmethod
     def get_node_attributes(node_conditions: str) -> list:
-        pattern = re.compile(r"([^\[\]]+)")
-        conditions = pattern.findall(node_conditions)
-        if len(conditions) == 0:
-            return list()
-        if len(conditions) > 1:
-            raise XpathParserException(
-                f"extra node conditions found '{conditions}'"
-            )
-        condition = conditions[0]
-        pattern = re.compile(r"(@\w+?=\s*\w*\(?(\"[\s\S]*?\"|'[\s\S]*?')?\)?)")
-
+        """The attribute predicates on a node, flattened, for existing callers."""
+        predicates = XpathParser.get_predicates(node_conditions)
         attributes = []
-        for match in pattern.finditer(condition):
-            # Whatever stands between the previous predicate and this one is the
-            # operator joining them. It used to be discarded, which meant `or` was
-            # silently evaluated as `and`: a locator written with it found nothing
-            # and reported "no element", which reads as the element being absent
-            # rather than the locator being wrong.
-            joiner = condition[:match.start()].strip() if attributes else ""
-            operator = "or" if joiner.lower().endswith("or") else "and"
-            name, value = match.group(0)[1:].split(sep="=", maxsplit=1)
-            attributes.append(dict(name=name, value=value, operator=operator))
-
-        if not attributes:
-            raise XpathParserException(
-                f"no contents found conditions '{condition}'"
-            )
+        for predicate in predicates:
+            attributes.extend(predicate.get("attributes", []))
         return attributes
+
+    @staticmethod
+    def get_predicates(node_conditions: str) -> list:
+        """The node's predicates, in the order they appear, one entry per bracket.
+
+        XPath applies predicates left to right and each one filters what the previous
+        left behind, which is why the order is part of the meaning:
+
+            child::para[@type='warning'][position()=5]   the fifth of those with @type
+            child::para[position()=5][@type='warning']   the fifth child, if it has @type
+
+        Returning a flat attribute list cannot express that, and the previous version
+        refused more than one bracket rather than trying. Each entry here is either
+
+            {"attributes": [...]}   a boolean expression over attributes, and/or
+            {"position": 3}         1-based, counted within the parent being searched
+
+        Two forms are rejected rather than approximated: `[position()>1]` and
+        `[last()]`, which would need a general expression evaluator. A locator that
+        cannot work should say so, not report that the element is missing.
+        """
+        conditions = re.findall(r"([^\[\]]+)", node_conditions)
+        if not conditions:
+            return list()
+
+        predicates = []
+        for condition in conditions:
+            stripped = condition.strip()
+            if not stripped:
+                continue
+
+            if re.fullmatch(r"\d+", stripped):
+                position = int(stripped)
+                if position < 1:
+                    raise XpathParserException(
+                        f"positions are 1-based in XPath, and '{stripped}' is not"
+                    )
+                predicates.append(dict(position=position))
+                continue
+
+            if re.search(r"\b(position|last)\s*\(", stripped):
+                raise XpathParserException(
+                    f"only a bare position is supported, not '{stripped}'. "
+                    "Write [2] rather than [position()=2]; last() is not supported."
+                )
+
+            pattern = re.compile(r"(@\w+?=\s*\w*\(?(\"[\s\S]*?\"|'[\s\S]*?')?\)?)")
+            attributes = []
+            for match in pattern.finditer(stripped):
+                # Whatever stands between the previous predicate and this one is the
+                # operator joining them. It used to be discarded, which meant `or` was
+                # silently evaluated as `and`: a locator written with it found nothing
+                # and reported "no element", which reads as the element being absent
+                # rather than the locator being wrong.
+                joiner = stripped[:match.start()].strip() if attributes else ""
+                operator = "or" if joiner.lower().endswith("or") else "and"
+                name, value = match.group(0)[1:].split(sep="=", maxsplit=1)
+                attributes.append(dict(name=name, value=value, operator=operator))
+
+            if not attributes:
+                raise XpathParserException(
+                    f"no contents found conditions '{stripped}'"
+                )
+            predicates.append(dict(attributes=attributes))
+
+        return predicates
 
     def get_node_information(self, node: str) -> dict:
         node_role = self.get_node_role(node)
-        node_attributes = self.get_node_attributes(node[len(node_role):])
-        return dict(role=node_role, attributes=node_attributes)
+        predicates = self.get_predicates(node[len(node_role):])
+        attributes = []
+        for predicate in predicates:
+            attributes.extend(predicate.get("attributes", []))
+        return dict(role=node_role, attributes=attributes, predicates=predicates)
