@@ -30,7 +30,7 @@ from PIL import Image, ImageGrab
 from pyjab.common.by import By
 from pyjab.common.exceptions import JABException
 from pyjab.common.types import jint, JOBJECT64
-from pyjab.common.win32utils import Win32Utils
+from pyjab.common.win32utils import Win32Utils, physical_point
 from pyjab.common.xpathparser import XpathParser
 from pyjab.accessibleinfo import (
     AccessibleActions,
@@ -893,7 +893,7 @@ class JABElement(object):
         """
         if simulate:
             self.win32_utils._set_window_foreground(hwnd=self.hwnd)
-            position_x, position_y = self._click_point()
+            position_x, position_y = self._physical_point(*self._click_point())
             self.win32_utils._click_mouse(x=position_x, y=position_y)
         else:
             self._do_accessible_action(action="click")
@@ -915,7 +915,7 @@ class JABElement(object):
             ``element.double_click()``
         """
         self.win32_utils._set_window_foreground(hwnd=self.hwnd)
-        position_x, position_y = self._click_point()
+        position_x, position_y = self._physical_point(*self._click_point())
         self.win32_utils._double_click_mouse(x=position_x, y=position_y)
 
     def context_click(self) -> None:
@@ -928,8 +928,18 @@ class JABElement(object):
             ``element.context_click()``
         """
         self.win32_utils._set_window_foreground(hwnd=self.hwnd)
-        position_x, position_y = self._click_point()
+        position_x, position_y = self._physical_point(*self._click_point())
         self.win32_utils._click_mouse(x=position_x, y=position_y, button="right")
+
+    def _physical_point(self, x: int, y: int) -> tuple:
+        """JAB's point for this element, in the coordinates the mouse API wants.
+
+        The two are not always the same -- see
+        :func:`pyjab.common.win32utils.physical_point` and issue #62. Everything
+        that moves the real mouse goes through here, so the conversion happens once
+        per click rather than once per caller.
+        """
+        return physical_point(x, y, hwnd=self.hwnd)
 
     def _click_point(self) -> tuple:
         """The screen position to move the mouse to in order to click this element.
@@ -1184,7 +1194,8 @@ class JABElement(object):
         else:
             x = x + width / 2
             y = y + width + 5
-        self.win32_utils._click_mouse(x=int(x), y=int(y), hold=hold)
+        click_x, click_y = self._physical_point(int(x), int(y))
+        self.win32_utils._click_mouse(x=click_x, y=click_y, hold=hold)
 
     def slide(self, to_bottom: bool = True, hold: int = 5) -> None:
         """Slide a slider to top or to bottom.
@@ -1217,7 +1228,8 @@ class JABElement(object):
             y = y + height / 2
         else:
             x = x + width / 2
-        self.win32_utils._click_mouse(x=int(x), y=int(y), hold=hold)
+        click_x, click_y = self._physical_point(int(x), int(y))
+        self.win32_utils._click_mouse(x=click_x, y=click_y, hold=hold)
 
     def select(self, option: str, simulate: bool = False, wait_for_selection: bool = True) -> None:
         """Select an item from JABElement selector.
@@ -1360,7 +1372,8 @@ class JABElement(object):
             self.win32_utils._set_window_foreground(hwnd=self.hwnd)
             x = x + width - 5
             y = y + height / 2 + offset_y_position
-            self.win32_utils._click_mouse(x=int(x), y=int(y))
+            click_x, click_y = self._physical_point(int(x), int(y))
+            self.win32_utils._click_mouse(x=click_x, y=click_y)
             return
         self._do_accessible_action(action=action)
 

@@ -217,6 +217,26 @@ exposes no accessibility action for either, so unlike `click()` they have no
 non-simulated form and they need the element to report usable bounds. Both leave
 the window in the foreground first.
 
+### Coordinate conversion on scaled displays
+
+`simulate=True` moves the real mouse, and the coordinates JAB reports are the
+**target application's** while the mouse API takes the **caller's**. When the two
+scale differently the click lands in the wrong place with nothing reporting an
+error.
+
+pyjab handles this itself — there is nothing to configure:
+
+| target | pyjab | what happens |
+|---|---|---|
+| DPI unaware | unaware | coordinates used as-is; the two cancel |
+| DPI unaware | aware | scaled up before the click |
+| DPI aware | unaware | scaled down, so Windows scales it back |
+| DPI aware | aware | coordinates used as-is |
+
+A display at 100% needs no conversion whatever the awarenesses are, and so does a
+case where the target's awareness cannot be read — an elevated target cannot be
+opened, and guessing there would move the cursor on a setup that works.
+
 ### When nothing matches
 
 `find_element*` and `find_elements*` both **raise `JABException`**, with a message

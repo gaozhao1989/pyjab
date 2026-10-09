@@ -35,6 +35,172 @@ def double_click_gap() -> float:
     return ctypes.windll.user32.GetDoubleClickTime() / 2000.0
 
 
+#: PROCESS_DPI_AWARENESS values that mean "this process does its own scaling".
+PROCESS_DPI_SYSTEM_AWARE = 2
+PROCESS_DPI_PER_MONITOR_AWARE = 3
+PROCESS_DPI_PER_MONITOR_AWARE_V2 = 4
+_AWARE_VALUES = (
+    PROCESS_DPI_SYSTEM_AWARE,
+    PROCESS_DPI_PER_MONITOR_AWARE,
+    PROCESS_DPI_PER_MONITOR_AWARE_V2,
+)
+
+PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+MONITOR_DEFAULTTONEAREST = 2
+MDT_EFFECTIVE_DPI = 0
+DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = -4
+
+
+def _declare(*functions) -> None:
+    """Set the ctypes signature of a shcore entry point.
+
+    Without ``argtypes`` ctypes masks integer arguments to C ``int``, so a 64-bit
+    handle passed as a Python ``int`` silently becomes 32 bits; without ``restype``
+    a returned handle is truncated the same way.  AGENTS.md 2.8 is about exactly
+    this, and "it happens to work for these particular values" is how the next one
+    gets written.
+    """
+    for function, argtypes in functions:
+        function.argtypes = argtypes
+        function.restype = ctypes.c_long
+
+
+def display_scale(hwnd: int) -> float:
+    """The scale factor of the display *hwnd* is on, as a float, 1.0 if unknown.
+
+    Read through a thread that is temporarily made DPI aware.  Both
+    ``GetDpiForWindow`` and ``GetDpiForMonitor`` answer **96 for an unaware
+    caller** -- Microsoft documents a flat 96 on the Unaware row of each -- so from
+    a process that declares no awareness, which is what pyjab is, neither one can
+    see a 150% display at all.  ``SetThreadDpiAwarenessContext`` changes the calling
+    thread only and is undone in a ``finally``.
+    """
+    try:
+        user32 = ctypes.windll.user32
+        shcore = ctypes.windll.shcore
+        monitor = user32.MonitorFromWindow(HWND(hwnd), MONITOR_DEFAULTTONEAREST)
+        if not monitor:
+            return 1.0
+
+        user32.GetThreadDpiAwarenessContext.restype = ctypes.c_void_p
+        user32.SetThreadDpiAwarenessContext.argtypes = [ctypes.c_void_p]
+        previous = user32.GetThreadDpiAwarenessContext()
+        user32.SetThreadDpiAwarenessContext(
+            ctypes.c_void_p(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)
+        )
+        try:
+            dpi_x, dpi_y = ctypes.c_uint(), ctypes.c_uint()
+            hresult = shcore.GetDpiForMonitor(
+                ctypes.c_void_p(monitor), MDT_EFFECTIVE_DPI,
+                ctypes.byref(dpi_x), ctypes.byref(dpi_y),
+            )
+            if hresult != 0 or not dpi_x.value:
+                return 1.0
+            return dpi_x.value / 96.0
+        finally:
+            user32.SetThreadDpiAwarenessContext(ctypes.c_void_p(previous))
+    except Exception:  # pragma: no cover - Windows 8 and older, or no shcore
+        return 1.0
+
+
+def target_dpi_aware(hwnd: int) -> Optional[bool]:
+    """Whether the process owning *hwnd* does its own DPI scaling, or None.
+
+    None means it could not be determined, which is different from False: an
+    elevated target cannot be opened, and guessing "unaware" there would move the
+    cursor on a setup that works.
+    """
+    k32 = ctypes.windll.kernel32
+    shcore = ctypes.windll.shcore
+    handle = None
+    try:
+        pid = ctypes.c_ulong()
+        ctypes.windll.user32.GetWindowThreadProcessId(HWND(hwnd), ctypes.byref(pid))
+        if not pid.value:
+            return None
+        handle = k32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid.value)
+        if not handle:
+            return None
+        awareness = ctypes.c_int()
+        hresult = shcore.GetProcessDpiAwareness(
+            ctypes.c_void_p(handle), ctypes.byref(awareness)
+        )
+        if hresult != 0:
+            return None
+        return awareness.value in _AWARE_VALUES
+    except Exception:  # pragma: no cover - platform dependent
+        return None
+    finally:
+        if handle:
+            try:
+                k32.CloseHandle(ctypes.c_void_p(handle))
+            except Exception:  # pragma: no cover
+                pass
+
+
+def thread_dpi_aware() -> Optional[bool]:
+    """Whether the calling thread's coordinates are taken as physical.
+
+    This is the half that decides how ``SetCursorPos`` reads its arguments, and
+    which Tk (so Tkinter), and anything else that calls
+    ``SetProcessDpiAwareness``, can turn on inside a process that never asked.
+    """
+    try:
+        user32 = ctypes.windll.user32
+        user32.GetThreadDpiAwarenessContext.restype = ctypes.c_void_p
+        user32.GetAwarenessFromDpiAwarenessContext.argtypes = [ctypes.c_void_p]
+        context = user32.GetThreadDpiAwarenessContext()
+        awareness = user32.GetAwarenessFromDpiAwarenessContext(
+            ctypes.c_void_p(context)
+        )
+        return awareness in _AWARE_VALUES
+    except Exception:  # pragma: no cover - Windows 10 1607 and older
+        return None
+
+
+def physical_point(x: int, y: int, hwnd: int) -> tuple:
+    """Convert a point reported by JAB into the point the mouse API wants.
+
+    Issue #62. The coordinates JAB returns are the **target's**, and the mouse
+    coordinates ``SetCursorPos`` takes are the **calling thread's**. When the two
+    processes scale differently those are different spaces, and pyjab moves the
+    cursor to the wrong place with nothing reporting an error.
+
+    Measured, at 150% scaling, with a target that is unaware:
+
+    ===================  ==========================================
+    calling thread       clicking the JAB point
+    ===================  ==========================================
+    unaware (pyjab)      **lands** -- both spaces are logical
+    aware                **misses**; the point x1.5 lands
+    ===================  ==========================================
+
+    So the rule is to convert only when the two differ, and in the direction that
+    is missing: an aware caller needs the target's logical point scaled **up** into
+    physical space, an unaware caller needs a physical point scaled **down** so
+    that Windows' own virtualisation scales it back.
+
+    When either side cannot be determined, or the display is at 100%, the point is
+    returned unchanged. That is the behaviour pyjab has always had, and it is the
+    one that works for the default configuration -- an unaware process against an
+    unaware target -- which is every setup nobody has complained about.
+    """
+    scale = display_scale(hwnd)
+    if scale == 1.0:
+        return int(x), int(y)
+
+    aware_caller = thread_dpi_aware()
+    aware_target = target_dpi_aware(hwnd)
+    if aware_caller is None or aware_target is None:
+        return int(x), int(y)
+
+    if aware_caller and not aware_target:
+        return round(x * scale), round(y * scale)
+    if aware_target and not aware_caller:
+        return round(x / scale), round(y / scale)
+    return int(x), int(y)
+
+
 @singleton
 class Win32Utils(object):
     virtual_key_code = {
