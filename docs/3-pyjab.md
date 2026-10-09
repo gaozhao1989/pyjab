@@ -76,16 +76,27 @@ You write locators for the **accessible name, role, description or state** of a
 control — the information a screen reader would announce, which is frequently
 *not* the same as the visible label.
 
-### Use Access Bridge Explorer
+### Look, rather than guess
 
-Install [Access Bridge Explorer](https://github.com/google/access-bridge-explorer).
-It shows the accessibility tree of any Java application, and every node displays
-exactly the fields pyjab exposes: `name`, `description`, `role`, `states`,
-`indexInParent`, `bounds`, `childrenCount`, `objectDepth`.
+`pyjab-inspect` ships with pyjab and prints what is actually in the window:
 
-Whatever you see there is what you pass to `find_element_by_*`. This removes all
-the guesswork, and it is also how you tell whether a control is reachable at all
-— if Access Bridge Explorer cannot see it, neither can pyjab.
+```console
+$ pyjab-inspect windows                     # which Java windows JAB can see
+$ pyjab-inspect tree "My Application"       # role, name, index and children per element
+$ pyjab-inspect find "My Application" "//panel//push button"
+$ pyjab-inspect locator "My Application" --name Login
+```
+
+`tree` shows exactly the fields `find_element_by_*` matches on: `name`,
+`description`, `role`, `states`, `indexInParent`, `bounds`, `childrenCount`,
+`objectDepth`. Whatever you see there is what you pass to a locator. `find` resolves a
+locator one step at a time and reports **which step** stopped matching, which is
+usually faster than reading a tree.
+
+For a whole-machine view, [Access Bridge Explorer](https://github.com/google/access-bridge-explorer)
+shows every Java process at once and goes further than `pyjab-inspect` does — but it is
+a separate Java application to install, and if it cannot see a control, neither can
+pyjab.
 
 ### Choosing a strategy
 
@@ -510,8 +521,9 @@ supported, and no client-side work will change that:
 * **Components that do not implement the accessibility interfaces.**
 * **Off-screen table rows** — see [Tables](#tables).
 
-Always check Access Bridge Explorer first. If it cannot see it, pyjab cannot
-either.
+Check with `pyjab-inspect tree "<window title>"` first, and with Access Bridge
+Explorer if you want the whole machine at once. **If neither can see it, pyjab
+cannot either.**
 
 ## Known rough edges
 
