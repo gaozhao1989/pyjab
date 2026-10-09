@@ -447,6 +447,46 @@ def decisive_check(driver, scale: float, aware: bool = False) -> dict:
     return outcome
 
 
+def reproduction(outcome: dict, aware_outcome: dict) -> str:
+    """Whether the two passes together reproduce issue #62, and what to say.
+
+    Extracted from main() because it was written there first and crashed there: the
+    branch read ``landed_raw`` before the line that assigns it, so the one run that
+    reproduced #62 ended in a traceback instead of a verdict. A decision with four
+    inputs and three outcomes belongs somewhere a test can call it.
+
+    Returns the lines to print, or an empty list when this is not the reproduction.
+    """
+    unaware_raw = outcome.get("clicked at the JAB position") == "the click landed"
+    aware_raw = aware_outcome.get("clicked at the JAB position") == "the click landed"
+    aware_scaled = any(
+        key.startswith("clicked at the JAB position x") and value == "the click landed"
+        for key, value in aware_outcome.items()
+    )
+
+    if not (unaware_raw and not aware_raw):
+        return []
+
+    lines = [
+        "#62 REPRODUCED, and the shape of it is now clear:",
+        "  unaware, the click at the JAB position lands; DPI aware, it does not"
+        + (" -- and the position scaled by the display scale does." if aware_scaled
+           else "."),
+        "  So the mismatch is not a property of the display, nor of the target on",
+        "  its own: it is the caller and the target sitting in different",
+        "  coordinate spaces. The JAB coordinates are the target's, and an aware",
+        "  caller has its mouse coordinates taken as physical, so the two stop",
+        "  agreeing.",
+    ]
+    if not aware_scaled:
+        lines.append(
+            "  Scaling did not land either, so read the numbers above before "
+            "concluding."
+        )
+    lines.append("  Please paste everything above into #62.")
+    return lines
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--no-launch", action="store_true",
@@ -519,27 +559,17 @@ def main() -> int:
         print("\n" + "=" * 68)
         print("VERDICT")
         print("=" * 68)
-        aware_raw = aware_outcome.get("clicked at the JAB position") == "the click landed"
-        aware_scaled = any(
-            key.startswith("clicked at the JAB position x")
-            and value == "the click landed"
-            for key, value in aware_outcome.items()
-        )
-
-        if landed_raw and not aware_raw:
-            print("  #62 REPRODUCED, and the shape of it is now clear:")
-            print("  unaware, the JAB position lands; DPI aware, it does not"
-                  + (" and the scaled position does." if aware_scaled else "."))
-            print("  So the mismatch is not about the display or the target alone --")
-            print("  it is about the two processes being in different coordinate")
-            print("  spaces. Please paste everything above into #62.")
-            return 1
-
         landed_raw = outcome.get("clicked at the JAB position") == "the click landed"
         landed_scaled = any(
             key.startswith("clicked at the JAB position x") and value == "the click landed"
             for key, value in outcome.items()
         )
+
+        reproduced = reproduction(outcome, aware_outcome)
+        if reproduced:
+            for line in reproduced:
+                print(f"  {line}")
+            return 1
 
         if landed_raw:
             print("  The JAB position is the right one on this display.")
