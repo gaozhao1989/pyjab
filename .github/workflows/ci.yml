@@ -327,6 +327,43 @@ jobs:
           print(f"{wheels[0]} is clean ({len(names)} entries)")
           PY
 
+      # The console script is the only way a user reaches pyjab-inspect, since the
+      # wheel contains no tools/. Nothing else checks that it survives packaging:
+      # the tests read pyproject.toml, which says what should happen, not what did.
+      - name: Check the console script is in the wheel and runs
+        run: |
+          python - <<'PY'
+          import glob
+          import sys
+          import zipfile
+
+          wheels = glob.glob("dist/*.whl")
+          if len(wheels) != 1:
+              print(f"::error::expected exactly one wheel, found {wheels}")
+              sys.exit(1)
+
+          entries = [n for n in zipfile.ZipFile(wheels[0]).namelist()
+                     if n.endswith("entry_points.txt")]
+          if not entries:
+              print("::error::the wheel has no entry_points.txt")
+              sys.exit(1)
+          text = zipfile.ZipFile(wheels[0]).read(entries[0]).decode()
+          if "pyjab-inspect" not in text:
+              print(f"::error::no console script in {entries[0]}:\n{text}")
+              sys.exit(1)
+          print(text.strip())
+          PY
+          python -m venv /tmp/check-wheel
+          /tmp/check-wheel/bin/python -m pip install --quiet dist/*.whl
+          # Run it rather than importing the module: this is the path a user takes,
+          # and --help is the one invocation that does not need Windows.
+          /tmp/check-wheel/bin/pyjab-inspect --help
+          # And the Windows-only path has to fail with a sentence, not a traceback.
+          if /tmp/check-wheel/bin/pyjab-inspect windows; then
+            echo "::error::pyjab-inspect windows succeeded off Windows"
+            exit 1
+          fi
+
       - name: Check the sdist carries the GUI test application
         run: |
           # The Swing application in tests/java is what the GUI suite drives, and
