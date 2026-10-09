@@ -1706,14 +1706,35 @@ class JABElement(object):
             By.CHILDREN_COUNT: self._is_match_attr_childrencount,
             By.INDEX_IN_PARENT: self._is_match_attr_indexinparent,
         }
+        # `and` binds tighter than `or`, as it does in XPath: the predicates are
+        # split into groups at each `or` and the groups are ORed, so
+        # `[@a and @b or @c]` means `(a and b) or c` rather than anything else.
+        #
+        # `or` used to be discarded by the parser, so every predicate was ANDed --
+        # a locator written with `or` matched nothing and reported "no element",
+        # which reads as the element being absent rather than the locator being
+        # wrong. Rejecting it would have been better than that; honouring it is
+        # better still.
+        groups = [[]]
         for attribute in attributes:
-            name = attribute.get("name")
-            value = attribute.get("value")
-            if name not in dict_attribute.keys():
-                raise JABException(f"incorrect attribute name '{name}'")
-            if not dict_attribute[name](value, jabelement):
-                return False
-        return True
+            if groups[-1] and attribute.get("operator") == "or":
+                groups.append([attribute])
+            else:
+                groups[-1].append(attribute)
+
+        for group in groups:
+            matched = True
+            for attribute in group:
+                name = attribute.get("name")
+                value = attribute.get("value")
+                if name not in dict_attribute.keys():
+                    raise JABException(f"incorrect attribute name '{name}'")
+                if not dict_attribute[name](value, jabelement):
+                    matched = False
+                    break
+            if matched:
+                return True
+        return False
 
     def _get_node_element(self, jabelement: JABElement = None) -> JABElement:
         """Get node JABElement.
