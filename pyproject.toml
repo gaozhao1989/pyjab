@@ -53,6 +53,13 @@ dependencies = [
     "pywin32>=302; sys_platform == 'win32'",
 ]
 
+[project.scripts]
+# The locator tool, in the package rather than in tools/, because the wheel contains
+# only `pyjab` -- a script under tools/ ships in the sdist and never arrives with
+# `pip install pyjab`. Issue #75 is "cannot find a control", and the answer has to be
+# available to someone who installed from PyPI and nothing else.
+pyjab-inspect = "pyjab.inspector:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0.1",

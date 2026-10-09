@@ -10,6 +10,35 @@ This project adheres to `Semantic Versioning`_ and `Keep a Changelog`_.
 Unreleased
 ----------
 
+Added
+~~~~~
+
+* **``pyjab-inspect``, a locator tool that ships with pyjab.** Issue #75 is "cannot
+  find a control", and the answer was to install a separate Java application or read
+  the source of the error message, which says nothing matched but not why.
+
+  ```console
+  pyjab-inspect windows                      # which Java windows JAB can see
+  pyjab-inspect tree "My Application"        # role, name, index, children, per element
+  pyjab-inspect find "My Application" "//panel//push button"
+  pyjab-inspect locator "My Application" --name Login
+  ```
+
+  ``find`` is the one that earns its place: a locator is a sequence of steps and usually
+  only one is wrong, so it resolves each prefix and reports the step where the count
+  went from *n* to zero, along with the parse errors a predicate can raise. ``tree``
+  shows the fields locators match on, and ``locator`` prints locators that resolve right
+  now rather than leaving one to be written by hand.
+
+  It is a console script rather than a script in ``tools/``, deliberately: the wheel
+  contains only ``pyjab``, so anything under ``tools/`` ships in the sdist and never
+  arrives with ``pip install pyjab``. Issue #75 is about someone who installed from
+  PyPI.
+
+  It never terminates an application it did not start. ``JABDriver.__exit__`` stops the
+  bound Java process by pid, which is right for a driver that launched one and wrong for
+  a tool asked to look at a window that was already open.
+
 Changed
 ~~~~~~~
 

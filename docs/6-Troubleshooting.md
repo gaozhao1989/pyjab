@@ -60,26 +60,70 @@ itself still works, because `pyjab.config` is platform independent.
 
 ## `JABException: JABElement with locator ... does not found`
 
-The locator did not match anything. In order of likelihood:
+The error says nothing matched. It does not say which of four quite different things
+went wrong, so ask `pyjab-inspect` rather than guessing — it ships with pyjab, and
+needs nothing installed:
 
-1. **The accessible name is not the visible label.** They are frequently
-   different — a button showing `Login` may have the accessible name `Login...`,
-   `&Login`, or nothing at all. Install
-   [Access Bridge Explorer](https://github.com/google/access-bridge-explorer)
-   and read the real value.
+```console
+$ pyjab-inspect windows
+```
+
+If your application is not in that list, nothing else can work and the problem is the
+attached window, not the locator. Then read what is actually there:
+
+```console
+$ pyjab-inspect tree "My Application" --depth 4
+```
+
+`tree` prints each element's role, name, index among its siblings and child count,
+indented by depth. The accessible name is frequently **not** the visible label — a
+button showing `Login` may report `Login...`, `&Login`, or nothing — and this is where
+you find out which.
+
+Then check the locator itself. `find` resolves it one step at a time and reports where
+it stopped:
+
+```console
+$ pyjab-inspect find "My Application" "//panel[@name='Login']//push button"
+  //panel[@name='Login']
+      3 match(es)
+  //panel[@name='Login']//push button
+      0 match(es)
+
+Nothing resolved at: //panel[@name='Login']//push button
+The step before it had 3 match(es), so the problem is that step.
+```
+
+That is usually the whole answer: the first step was fine and the second one is wrong.
+A path is a sequence of steps and only one of them is normally at fault.
+
+Finally, if you have no idea what to search for, ask for the locators that resolve right
+now rather than writing one:
+
+```console
+$ pyjab-inspect locator "My Application" --name Login
+  //push button[@name='Login']
+      (push button name='Login' idx=2)
+```
+
+The order of likelihood, if you would rather reason about it first:
+
+1. **The accessible name is not the visible label** — the common case.
 2. **You bound to the wrong window.** Check `driver.title` and `driver.hwnd`.
 3. **The control is inside a different top-level window** — a dialog or a second
    window. Bind to that window, or search the dialog by role.
-4. **The control genuinely has no accessible name.** Use
-   `find_elements_by_role(...)` and inspect what comes back; a sibling or parent
-   usually carries the label.
+4. **The control genuinely has no accessible name.** Enumerate by role and inspect what
+   comes back; a sibling or parent usually carries the label:
 
-Enumerating is almost always faster than guessing:
+   ```python
+   for element in driver.find_elements_by_role("push button"):
+       print(repr(element.name), element.index_in_parent, element.bounds)
+   ```
 
-```python
-for element in driver.find_elements_by_role("push button"):
-    print(repr(element.name), element.index_in_parent, element.bounds)
-```
+For a view of the whole accessibility tree across every process on the machine,
+[Access Bridge Explorer](https://github.com/google/access-bridge-explorer) goes further
+than `pyjab-inspect` does. It is a separate Java application; `pyjab-inspect` is the one
+that is already installed.
 
 ---
 
@@ -242,8 +286,10 @@ together.
 
 ## The elements I need are not there at all
 
-Check with [Access Bridge Explorer](https://github.com/google/access-bridge-explorer)
-first. **If it cannot see them, pyjab cannot either.** The usual causes:
+Check with `pyjab-inspect tree "<window title>"` first, or with
+[Access Bridge Explorer](https://github.com/google/access-bridge-explorer) for the
+whole machine at once. **If neither can see them, pyjab cannot either.** The usual
+causes:
 
 * **canvas-drawn interfaces** — the component paints its own widgets, so the
   accessibility tree stops at the canvas;

@@ -240,8 +240,10 @@ supported, and no amount of client-side work will change that:
   unreliable and can destabilise the target application; scroll the table into
   view first.
 
-If Access Bridge Explorer cannot see it, pyjab cannot see it.  Always check
-there first.
+``pyjab-inspect`` shows what is actually in the window, and needs nothing else
+installed: ``pyjab-inspect tree "<window title>"`` prints every element's role,
+name, index and child count.  If Access Bridge Explorer cannot see it either,
+pyjab cannot see it -- see `Troubleshooting`_.
 
 Troubleshooting
 ---------------
@@ -268,7 +270,8 @@ Troubleshooting
    The locator did not match.  Common causes: the window title bound to the wrong
    window; the dialog is modal and needs the pump to run (pyjab handles this for
    most cases); or the control's accessible name differs from its visible label.
-   Use Access Bridge Explorer to read the real name.
+   ``pyjab-inspect find "<title>" "<locator>"`` reports which step of the locator
+   stopped matching, and ``pyjab-inspect tree "<title>"`` shows the real names.
 
 Elements report ``bounds = {'x': -1, 'y': -1, 'width': -1, 'height': -1}``
    The application does not report geometry for this control -- common for table
