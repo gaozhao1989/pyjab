@@ -1867,6 +1867,20 @@ class JABElement(object):
         # Reachable directly by callers, so it needs its own pump even though
         # find_element() also routes through here.
         self.win32_utils.pump_messages()
+
+        branches = self.xpath_parser.split_union(value)
+        if len(branches) > 1:
+            # A union is a node-set, and this returns one element -- so the branches
+            # are tried in the order they were written and the first match wins.
+            # That is not the same as "first in document order", which is what XPath
+            # would say, and it is documented rather than approximated silently.
+            for branch in branches:
+                try:
+                    return self.find_element_by_xpath(branch, visible=visible)
+                except JABException:
+                    continue
+            raise JABException(f"no JABElement found by xpath '{value}'")
+
         relative = value.startswith(".")
         nodes = self.xpath_parser.split_nodes(value[1:] if relative else value)
         root = self if relative else self._xpath_search_root()
@@ -2334,6 +2348,29 @@ class JABElement(object):
         """
         # See find_elements(): reachable directly by callers.
         self.win32_utils.pump_messages()
+
+        branches = self.xpath_parser.split_union(value)
+        if len(branches) > 1:
+            merged: list = []
+            for branch in branches:
+                try:
+                    produced = self.find_elements_by_xpath(branch, visible=visible)
+                except JABException:
+                    continue
+                for element in produced:
+                    # XPath says a node-set has no duplicates, so a node reached by
+                    # two branches appears once. The repeat is released here rather
+                    # than handed to the caller, because the caller owns one
+                    # reference to it and releasing it twice is use-after-free.
+                    if any(self._is_same_object(element.accessible_context,
+                                                kept.accessible_context)
+                           for kept in merged):
+                        self.release_jabelement(element)
+                        continue
+                    merged.append(element)
+            if not merged:
+                raise JABException(f"no JABElement found by xpath '{value}'")
+            return merged
 
         relative = value.startswith(".")
         nodes = self.xpath_parser.split_nodes(value[1:] if relative else value)

@@ -73,8 +73,12 @@ def parses(xpath: str) -> bool:
     for ``double_click_gap``.
     """
     try:
-        for node in parser.split_nodes(xpath):
-            parser.get_node_information(node)
+        # Unions first: `//a | //b` is two paths, and split_nodes would treat the `|`
+        # as part of a role name. This is the check that caught the omission -- it
+        # failed on the union examples the moment they were added to the docs.
+        for branch in parser.split_union(xpath):
+            for node in parser.split_nodes(branch):
+                parser.get_node_information(node)
     except XpathParserException:
         return False
     return True

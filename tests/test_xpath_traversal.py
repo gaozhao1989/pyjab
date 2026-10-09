@@ -885,3 +885,123 @@ def test_comparing_an_integer_attribute_against_a_word_says_so():
 
     with pytest.raises(JABException):
         element.find_elements_by_xpath("//panel[@indexinparent>'two']")
+
+
+# ---------------------------------------------------------------------------
+# Unions
+# ---------------------------------------------------------------------------
+
+def union_tree():
+    root = node("frame",
+                panel(node("label", name="L1"), panel(name="p1"), name="outer"),
+                panel(node("push button", name="OK"), name="second"),
+                name="app")
+    return bind(root)
+
+
+def test_a_union_returns_every_branchs_matches():
+    element, _ = union_tree()
+
+    found = element.find_elements_by_xpath("//panel | //label")
+
+    assert sorted(f"{f.role_en_us}:{f.name}" for f in found) == [
+        "label:L1", "panel:outer", "panel:p1", "panel:second"
+    ]
+
+
+def test_a_union_has_no_duplicates():
+    """XPath: a node-set is "an unordered collection of nodes without duplicates".
+
+    Both branches reach the same three panels, and each may appear once.
+    """
+    element, _ = union_tree()
+
+    found = element.find_elements_by_xpath("//panel | //panel")
+
+    assert sorted(f.name for f in found) == ["outer", "p1", "second"]
+
+
+def test_a_union_of_overlapping_branches_deduplicates_across_them():
+    element, _ = union_tree()
+
+    found = element.find_elements_by_xpath("//panel/panel | //panel")
+
+    assert sorted(f.name for f in found) == ["outer", "p1", "second"]
+
+
+def test_a_union_keeps_the_branch_order():
+    """Documented rather than left to be discovered.
+
+    XPath would return document order; this returns the branches in the order they
+    were written, because a union of two searches has no single document walk behind
+    it. The first *element* lookup uses the same order.
+    """
+    element, _ = union_tree()
+
+    labels_first = element.find_elements_by_xpath("//label | //panel")
+    panels_first = element.find_elements_by_xpath("//panel | //label")
+
+    assert labels_first[0].role_en_us == "label"
+    assert panels_first[0].role_en_us == "panel"
+
+
+def test_find_element_takes_the_first_branch_that_matches():
+    element, _ = union_tree()
+
+    assert element.find_element_by_xpath("//label | //panel").role_en_us == "label"
+    assert element.find_element_by_xpath("//panel | //label").role_en_us == "panel"
+
+
+def test_find_element_falls_through_to_a_later_branch():
+    element, _ = union_tree()
+
+    found = element.find_element_by_xpath("//push button | //label")
+
+    assert f"{found.role_en_us}:{found.name}" == "push button:OK"
+
+
+def test_a_union_where_nothing_matches_raises():
+    element, _ = union_tree()
+
+    # A role that is valid but not in this tree. An invalid one would be a parse
+    # error, which is a different thing -- and the first version of this test used
+    # Role.SCROLL_BAR, whose value is not the lowercase role string at all.
+    absent = "//table"
+
+    with pytest.raises(JABException):
+        element.find_elements_by_xpath(f"{absent} | {absent}")
+    with pytest.raises(JABException):
+        element.find_element_by_xpath(f"{absent} | {absent}")
+
+
+def test_a_bar_inside_a_quoted_value_is_not_a_union():
+    """The same rule split_nodes applies to `/`."""
+    from pyjab.common.xpathparser import XpathParser
+
+    parser = XpathParser.__wrapped__()
+
+    assert parser.split_union("//panel[@name='a|b']") == ["//panel[@name='a|b']"]
+    assert parser.split_union("//panel[@name='a|b'] | //label") == [
+        "//panel[@name='a|b']", "//label"
+    ]
+
+
+def test_a_union_does_not_leak_the_references_it_throws_away():
+    """A duplicate has to be released here, not handed on.
+
+    The caller owns one reference to each returned element. Passing on a second
+    reference to the same node would mean the caller releasing it twice, which the
+    fake bridge treats as use-after-free.
+    """
+    root = node("frame", panel(name="p1"), panel(name="p2"), name="app")
+    element, bridge = bind(root)
+    before = dict(bridge.refs)
+
+    found = element.find_elements_by_xpath("//panel | //panel")
+
+    assert len(found) == 2
+    outstanding = {h: bridge.refs[h] - before.get(h, 0)
+                   for h in bridge.refs if bridge.refs[h] > before.get(h, 0)}
+    assert len(outstanding) == 2, outstanding
+    for element_ in found:
+        element_.release_jabelement()
