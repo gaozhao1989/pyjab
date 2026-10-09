@@ -265,11 +265,66 @@ Code style
 
 Match the surrounding code. Two things worth calling out:
 
-* **Type hints on new public functions.** ``pyjab`` supports Python 3.8, so use
+* **Type hints on new public functions.** ``requires-python`` says ``>=3.8`` and
+  that holds for a wheel install, but an **sdist cannot be built on 3.8** -- it
+  needs ``setuptools>=77`` for the PEP 639 licence expression, and setuptools
+  dropped 3.8 after 75.3.4. Write annotations that work on 3.9, which is what CI
+  tests. Use
   ``from __future__ import annotations`` if you want builtin generics in
   annotations.
 * **Say why, not what, in comments.** The existing comments explain the
   reasoning behind non-obvious choices; that is the standard to aim for.
+
+Version numbers
+---------------
+
+`Semantic versioning`_, with one relaxation that is written down here so it is a
+policy rather than a judgement made afresh each time.
+
+**major** for a backward incompatible change; **minor** for new backward compatible
+functionality, for anything marked deprecated, and for a behaviour change a user has
+to adapt to; **patch** for a bug fix, a packaging fix, or documentation.
+
+The relaxation is in the first of those. In ``1.x``, removing a public name is
+treated as a **minor** rather than a major — but only when it has already been
+deprecated in a released minor and the changelog says what to use instead. Without
+that, it is a major. ``setup_msg_pump()`` went in 1.3.0 under this reading.
+
+``pyjab.common.shortcutkeys`` was removed in **1.6.3**, a patch, which strict
+semantic versioning calls a major — so it was two levels off rather than one. It is
+recorded as the exception it is rather than as a precedent: zero callers anywhere,
+and Oracle *Forms* shortcut code in a Swing/AWT library. The next removal of an
+importable name is a minor with a deprecation cycle, or it is a major.
+
+Deprecating something
+~~~~~~~~~~~~~~~~~~~~~
+
+A removal never goes straight into a release. The order is:
+
+1. a **minor** release adds the deprecation — ``warnings.warn(..., DeprecationWarning)``
+   at the call site, a note in the docstring, and an entry under ``Deprecated`` in
+   ``CHANGELOG.rst``. The functionality keeps working;
+2. **at least one further minor release** where it is still deprecated and still
+   working, so anyone using the old API has a release to move on from;
+3. then the removal, in a minor or a major depending on the paragraph above.
+
+This is what `semantic versioning`_'s own FAQ asks for, and it is what makes a
+relaxed removal survivable: nobody loses a name without having had a release in
+which they were told to stop using it.
+
+Version strings on PyPI
+~~~~~~~~~~~~~~~~~~~~~~~
+
+PyPI takes `PEP 440`_ versions, which are not quite semantic versions. Two things
+have caught people out:
+
+* ``1.7.0-rc.1`` is **rejected**. SemVer's ``-`` and ``+`` forms are not allowed in
+  the public version field; write ``1.7.0rc1``.
+* ``.postN`` is not for bug fixes — PEP 440 says to increment the final component
+  instead. ``1.6.4``, not ``1.6.3.post1``.
+
+A patch release also promises ``~=1.6.3``, which expands to ``>=1.6.3, ==1.6.*``.
+That promise is where "do not break public API in a patch" comes from.
 
 Releases
 --------
@@ -290,3 +345,5 @@ Releases are cut from ``master``. The process is:
 GitHub release.
 
 .. _GitHub: https://github.com/gaozhao1989/pyjab
+.. _semantic versioning: https://semver.org/
+.. _PEP 440: https://peps.python.org/pep-0440/
