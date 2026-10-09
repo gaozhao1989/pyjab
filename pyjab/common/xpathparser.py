@@ -4,6 +4,9 @@ from pyjab.common.exceptions import XpathParserException
 from pyjab.common.logger import Logger
 from pyjab.common.singleton import singleton
 
+#: The parent step. XPath spells it `..`, short for `parent::node()`.
+PARENT = ".."
+
 
 # TODO: this is very simple parser, need refactor in future
 @singleton
@@ -85,6 +88,11 @@ class XpathParser(object):
 
     @staticmethod
     def get_node_role(node: str) -> str:
+        # Checked before the role pattern, which would otherwise read the first dot as
+        # the start of a role name and refuse the step as "incorrect role set '.'".
+        if node.startswith(PARENT):
+            return PARENT
+
         pattern = re.compile(r"^[a-z ]+|^\*")
         content = pattern.search(node)
         try:

@@ -1005,3 +1005,113 @@ def test_a_union_does_not_leak_the_references_it_throws_away():
     assert len(outstanding) == 2, outstanding
     for element_ in found:
         element_.release_jabelement()
+
+
+# ---------------------------------------------------------------------------
+# The parent axis, ..
+# ---------------------------------------------------------------------------
+
+def parent_tree():
+    root = node("frame",
+                panel(node("label", name="L1"), panel(name="p1"), name="outer"),
+                panel(node("label", name="L2"), name="second"),
+                name="app")
+    return bind(root)
+
+
+def test_dotdot_is_the_parent_of_each_match():
+    element, _ = parent_tree()
+
+    found = element.find_elements_by_xpath("//label/..")
+
+    assert sorted(f.name for f in found) == ["outer", "second"]
+
+
+def test_a_step_after_dotdot_is_a_child_of_that_parent():
+    """`//label/../panel` is the panel children of each label's parent.
+
+    Only `outer` has one, which is what makes this worth asserting: a version that
+    treated the step after `..` as "anywhere below" would also find `p1` when
+    starting from `second`, and a version that treated `..` as a no-op would find
+    every panel.
+    """
+    element, _ = parent_tree()
+
+    found = element.find_elements_by_xpath("//label/../panel")
+
+    assert [f.name for f in found] == ["p1"]
+
+
+def test_dotdot_collapses_the_duplicates_it_creates():
+    """A parent is reached once per child, and a node-set has no duplicates.
+
+    `//panel/..` reaches `app` twice -- once through `outer` and once through
+    `second` -- and XPath defines a node-set as "an unordered collection of nodes
+    without duplicates". Before this the same node could come back twice, which no
+    earlier path could produce; `..` is what made it reachable.
+    """
+    element, _ = parent_tree()
+
+    found = element.find_elements_by_xpath("//panel/..")
+
+    assert sorted(f.name for f in found) == ["app", "outer"], "app once, not twice"
+
+
+def test_two_parent_steps_walk_up_twice():
+    element, _ = parent_tree()
+
+    found = element.find_elements_by_xpath("//panel/../..")
+
+    assert sorted(f.name for f in found) == ["app"]
+
+
+def test_the_top_of_the_tree_has_no_parent_and_is_not_an_error():
+    """`..` past the top yields nothing, which is what XPath says."""
+    element, _ = parent_tree()
+
+    with pytest.raises(JABException):
+        element.find_elements_by_xpath("//frame/..")
+
+
+def test_dotdot_does_not_leak_the_ancestors_it_walks_through():
+    """Every ancestor came from a JAB call and has to be released exactly once.
+
+    The walk has to go **past the top** for this: `//label/../../..` reaches the
+    frame and returns it, and the reference that stays outstanding is the one the
+    caller was handed. The first version of this test asserted a raise there and
+    failed with DID NOT RAISE, which was my arithmetic about the tree and not a bug.
+    """
+    root = node("frame", panel(panel(node("label", name="L")), name="mid"), name="app")
+    element, bridge = bind(root)
+    before = dict(bridge.refs)
+
+    with pytest.raises(JABException):
+        element.find_elements_by_xpath("//label/../../../..")
+
+    grew = {h: bridge.refs[h] - before.get(h, 0)
+            for h in bridge.refs if bridge.refs[h] > before.get(h, 0)}
+    assert not grew, f"walking up leaked {grew}"
+
+
+def test_dotdot_releases_everything_it_created_when_it_finds_something():
+    root = node("frame", panel(node("label", name="L"), name="mid"), name="app")
+    element, bridge = bind(root)
+    before = dict(bridge.refs)
+
+    found = element.find_elements_by_xpath("//label/..")
+
+    assert [f.name for f in found] == ["mid"]
+    outstanding = {h: bridge.refs[h] - before.get(h, 0)
+                   for h in bridge.refs if bridge.refs[h] > before.get(h, 0)}
+    assert len(outstanding) == 1, outstanding
+    for element_ in found:
+        element_.release_jabelement()
+
+
+def test_a_union_of_dotdot_branches_has_no_duplicates_either():
+    """The union path and the parent path both go through one deduplication now."""
+    element, _ = parent_tree()
+
+    found = element.find_elements_by_xpath("//label/.. | //label/..")
+
+    assert sorted(f.name for f in found) == ["outer", "second"]
