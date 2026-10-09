@@ -1742,12 +1742,79 @@ class JABElement(object):
                 value = attribute.get("value")
                 if name not in dict_attribute.keys():
                     raise JABException(f"incorrect attribute name '{name}'")
-                if not dict_attribute[name](value, jabelement):
+                comparison = attribute.get("comparison", "=")
+                if comparison == "=":
+                    # Equality keeps going through the matchers, which also understand
+                    # contains(...) -- something a comparison has no meaning for.
+                    ok = dict_attribute[name](value, jabelement)
+                else:
+                    ok = self._compare_attribute(name, comparison, value, jabelement)
+                if not ok:
                     matched = False
                     break
             if matched:
                 return True
         return False
+
+    #: The JAB attribute each By constant names, as a property of JABElement.
+    _ATTRIBUTE_PROPERTY = {
+        By.NAME: "name",
+        By.DESCRIPTION: "description",
+        By.ROLE: "role",
+        By.STATES: "states_en_us",
+        By.OBJECT_DEPTH: "object_depth",
+        By.CHILDREN_COUNT: "children_count",
+        By.INDEX_IN_PARENT: "index_in_parent",
+    }
+
+    def _compare_attribute(
+            self, name: str, comparison: str, value: str, jabelement: JABElement
+    ) -> bool:
+        """`@x <op> value` for an operator other than `=`.
+
+        XPath compares two values as numbers when both are numbers and as strings
+        otherwise, and this does the same: an attribute the element reports as an int
+        is compared numerically, so `[@indexinparent > 9]` means what it looks like
+        rather than putting "10" before "9". Anything else is compared as a string,
+        which is what XPath does with strings -- `[@name < 'm']` is a lexicographic
+        comparison, not an error.
+
+        `!=` is inequality on the same terms, so `[@role != 'panel']` is the
+        complement of `[@role = 'panel']` rather than a second way of writing it.
+        """
+        actual = getattr(jabelement, self._ATTRIBUTE_PROPERTY[name])
+        expected = value.strip()
+        if len(expected) >= 2 and expected[0] in "'\"" and expected[-1] == expected[0]:
+            expected = expected[1:-1]
+
+        if isinstance(actual, (list, tuple)):
+            # states is a list; its natural string form is what `=` compares against.
+            actual = ",".join(actual)
+
+        if isinstance(actual, int) and not isinstance(actual, bool):
+            try:
+                expected_value = int(expected)
+            except ValueError:
+                raise JABException(
+                    f"'{name}' is an integer on the element, and '{expected}' is not "
+                    f"a number to compare it with"
+                ) from None
+            return {
+                "!=": actual != expected_value,
+                "<": actual < expected_value,
+                "<=": actual <= expected_value,
+                ">": actual > expected_value,
+                ">=": actual >= expected_value,
+            }[comparison]
+
+        actual = str(actual)
+        return {
+            "!=": actual != expected,
+            "<": actual < expected,
+            "<=": actual <= expected,
+            ">": actual > expected,
+            ">=": actual >= expected,
+        }[comparison]
 
     def _get_node_element(self, jabelement: JABElement = None) -> JABElement:
         """Get node JABElement.

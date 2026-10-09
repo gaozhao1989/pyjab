@@ -124,7 +124,10 @@ class XpathParser(object):
                     "Write [2] rather than [position()=2]; last() is not supported."
                 )
 
-            pattern = re.compile(r"(@\w+?=\s*\w*\(?(\"[\s\S]*?\"|'[\s\S]*?')?\)?)")
+            # The comparison first, so `>=` is not read as `>` with a stray `=`.
+            pattern = re.compile(
+                r"(@\w+?\s*(<=|>=|!=|<|>|=)\s*\w*\(?(\"[\s\S]*?\"|'[\s\S]*?')?\)?)"
+            )
             attributes = []
             for match in pattern.finditer(stripped):
                 # Whatever stands between the previous predicate and this one is the
@@ -134,8 +137,11 @@ class XpathParser(object):
                 # rather than the locator being wrong.
                 joiner = stripped[:match.start()].strip() if attributes else ""
                 operator = "or" if joiner.lower().endswith("or") else "and"
-                name, value = match.group(0)[1:].split(sep="=", maxsplit=1)
-                attributes.append(dict(name=name, value=value, operator=operator))
+                name, comparison, value = re.split(
+                    r"(<=|>=|!=|<|>|=)", match.group(0)[1:], maxsplit=1
+                )
+                attributes.append(dict(name=name.strip(), value=value,
+                                       operator=operator, comparison=comparison))
 
             if not attributes:
                 raise XpathParserException(

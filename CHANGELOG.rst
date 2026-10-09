@@ -13,6 +13,16 @@ Unreleased
 Added
 ~~~~~
 
+* **Comparison operators: `!=`, `<`, `<=`, `>` and `>=`.**  An attribute the element
+  reports as an integer is compared **numerically**, so `[@indexinparent > 9]` finds
+  index 10 -- compared as strings, `"10"` sorts before `"9"` and the answer would be
+  a plausible-looking wrong one. Everything else is compared as a string, which is
+  what XPath does with strings: `[@name < 'p2']` is lexicographic and `p10` sorts
+  before `p2`.
+
+  `!=` is the complement of `=`, and `=` still routes through the existing matchers,
+  so `contains()` keeps working there. Comparisons compose with `and` and with `[n]`.
+
 * **`[n]` positional predicates, and predicates applied in order.**  XPath's own
   semantics, taken from the specification rather than from intuition: `[n]` is
   **1-based** and counted **within each parent**, so `//panel[1]` is the first panel
