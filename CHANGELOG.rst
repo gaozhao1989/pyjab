@@ -19,6 +19,28 @@ accessibility tree rather than only against trees built to suit them.
 Added
 ~~~~~
 
+Fixed
+~~~~~
+
+* **Five places still said pyjab was GPLv2, three releases after it became MIT.**
+  The licence declaration at the top of `AGENTS.md` was one of them, and so was the
+  message `tools/check_dependency_licences.py` prints when it refuses a copyleft
+  dependency -- which told the reader pyjab "is being moved off the GPLv2 it
+  inherited", true before 1.6.0 and false since.
+
+  The check that exists to catch exactly this did not, for two reasons: it scanned
+  the README and `docs/*.md` but not `tools/*.py`, where three of the five were, and
+  its pattern matched only "pyjab is licensed under ..." and the README's
+  "**License:**" bullet. None of the five was written either way.
+
+  The check now reads `tools/*.py` and `AGENTS.md` when it is present, and matches
+  "<project> is <Licence>" as well, with the licence required to be one the check
+  knows -- so "pyjab is Windows only" is not read as a claim. That covers two of the
+  five; the other three have no verb joining the subject to the licence, or put a
+  verb phrase between them, and the check says so in a comment rather than leaving
+  the edges to be discovered.
+
+
 * **`tools/verify_xpath.py`, for the part the real-tree test cannot reach.**  The
   locators are tested against the real application's accessibility tree everywhere,
   but that tree comes from the application's own accessibility API -- so it says

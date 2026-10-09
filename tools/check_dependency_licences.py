@@ -3,11 +3,11 @@
 
 Why this exists
 ---------------
-pyjab is GPLv2 because that is what it inherited, and it is on its way to a
-permissive licence.  A copyleft dependency added in the meantime would either
-block that move or impose terms on everyone who installs pyjab, and neither is
-the kind of thing to discover when a lawyer asks.  This catches it when the
-dependency is added.
+pyjab is MIT, and has been since 1.6.0 -- it inherited GPLv2 and left it, which
+took a written permission from every contributor whose work was still in the
+code.  A copyleft dependency would impose its terms on everyone who installs
+pyjab, and that is not the kind of thing to discover when a lawyer asks.  This
+catches it when the dependency is added.
 
 It is deliberately a list of licences to refuse rather than a list to allow.  An
 unusual permissive licence -- CMU, Zope, historical BSD wordings -- should not
@@ -50,7 +50,7 @@ REFUSED = (
     "Commons Clause",
 )
 
-#: The project itself is GPLv2, which is the whole reason for the check.
+#: The project itself is MIT, which is the whole reason for the check.
 SELF = "pyjab"
 
 _REQUIREMENT_NAME = re.compile(r"^\s*([A-Za-z0-9._-]+)")
@@ -148,10 +148,10 @@ def main() -> int:
             if info["url"]:
                 print(f"      {info['url']}")
         print(
-            "\n  pyjab is being moved off the GPLv2 it inherited. A dependency under\n"
-            "  one of these either blocks that or imposes its terms on everyone who\n"
-            "  installs pyjab. Find a permissively licensed alternative, make it\n"
-            "  optional, or raise it in an issue before adding it."
+            "\n  pyjab is MIT. A dependency under one of these would impose its terms\n"
+            "  on everyone who installs pyjab. Find a permissively licensed\n"
+            "  alternative, make it optional, or raise it in an issue before adding\n"
+            "  it."
         )
         return 1
 

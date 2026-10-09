@@ -125,6 +125,51 @@ LICENCE_CLAIM = re.compile(
     re.IGNORECASE,
 )
 
+#: Every prose spelling of a licence this check knows, longest first so that
+#: "GPL-2.0" is preferred over "GPL".
+KNOWN_PROSE_NAMES = tuple(
+    sorted({name for names in PROSE_NAMES.values() for name in names},
+           key=len, reverse=True)
+)
+
+#: A present-tense copula joining the project to a licence name. When pyjab left
+#: GPLv2 for MIT, five statements drifted and the pattern above caught none of them,
+#: because they were written five other ways. Described rather than quoted, since
+#: quoting them would make this file match its own rule:
+#:
+#:   1. a bare licence name as a sentence of its own, with no verb to hang a
+#:      subject on -- which is how the one at the top of AGENTS.md was written;
+#:   2. a copula in a tool docstring -- the project, "is", the old licence name;
+#:   3. the same shape a few lines further down, in another tool;
+#:   4. a verb phrase between subject and licence -- "is being moved off" it;
+#:   5. the same inside a subordinate clause -- "being locked to" it.
+#:
+#: This rule covers 2 and 3 and nothing else. It cannot cover 1, which has no verb
+#: for the subject to be joined to the licence by, or 4 and 5, where the licence is
+#: not the copula's complement. Written down rather than left to be discovered: a
+#: check that looks like it covers prose and does not is worse than one whose edges
+#: are stated. An earlier draft of this comment claimed it covered the AGENTS.md
+#: statement, which is the first shape and is not matched -- the same kind of
+#: confidently wrong claim the check exists to catch.
+#:
+#: The complement must be a licence this check knows, not merely a capitalised word,
+#: so that "pyjab is Windows only" and "pyjab is a Python library" are not claims.
+SELF_LICENCE = re.compile(
+    r"(?:pyjab|this\s+project|the\s+project(?:\s+itself)?)\s+is\s+"
+    r"(?P<stated>(?:" + "|".join(re.escape(n) for n in KNOWN_PROSE_NAMES) + r"))"
+    r"(?![A-Za-z0-9])",
+    re.IGNORECASE,
+)
+
+
+def self_licence_claims(text: str) -> list:
+    """``(line, stated)`` for every "<project> is <Licence>" in *text*."""
+    found = []
+    for number, line in enumerate(text.splitlines(), start=1):
+        for match in SELF_LICENCE.finditer(line):
+            found.append((number, match.group("stated").strip()))
+    return found
+
 
 def as_display_path(path: Path) -> str:
     """A path relative to the project root, always with forward slashes.
@@ -138,14 +183,27 @@ def as_display_path(path: Path) -> str:
 
 
 def places_that_state_the_licence(root: Path) -> list:
-    """Every published file that claims a licence, in a stable order."""
+    """Every published file that claims a licence, in a stable order.
+
+    ``tools/`` is here because it ships in the sdist and is full of prose about the
+    project -- three of the five statements that drifted when pyjab left GPLv2 were
+    in there, including one that is printed to a user when the dependency check
+    fails. Nothing was reading them.
+
+    ``AGENTS.md`` is here when it exists, which on a published tarball it does not:
+    it is gitignored and excluded from the sdist, and it is also the file that
+    governs every change made here. The statement of the licence at the top of it
+    said GPLv2 for two releases after the licence changed.
+    """
     found = []
-    readme = root / "README.rst"
-    if readme.is_file():
-        found.append(readme)
+    for name in ("README.rst", "AGENTS.md"):
+        path = root / name
+        if path.is_file():
+            found.append(path)
     for path in sorted((root / "docs").glob("*.md")):
         if path.name not in INTERNAL_NOTES:
             found.append(path)
+    found.extend(sorted((root / "tools").glob("*.py")))
     return found
 
 
@@ -256,6 +314,21 @@ def main() -> int:
                 )
             else:
                 print(f"{relative + ':' + str(number):<28} agrees: {stated}")
+
+        # "<project> is <Licence>", enforced rather than reported.  A present-tense
+        # copula is a claim about now; "was GPLv2" and "versions up to 1.5.0 were
+        # GPLv2" are records of what used to be, and the rule does not match either.
+        for number, stated in self_licence_claims(path.read_text(encoding="utf-8")):
+            if detected is None:
+                break
+            names = PROSE_NAMES.get(detected, ())
+            if names and not names_the_licence(stated, names):
+                problems.append(
+                    f"{relative}:{number} says pyjab is {stated!r}, which is not "
+                    f"{detected!r}. Expected one of: {', '.join(names)}."
+                )
+            else:
+                print(f"{relative + ':' + str(number):<28} agrees: is {stated}")
 
     # CONTRIBUTING explains the relicensing, so it is expected to name licences
     # other than the current one.  Reported rather than enforced.

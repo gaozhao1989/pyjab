@@ -6,7 +6,9 @@ Why this exists
 ``CONTRIBUTING.rst`` asks a contributor to sign off their commits: the Developer
 Certificate of Origin, plus a grant that lets the maintainer distribute the
 contribution under a licence other than the one in force.  That second half is
-what stops the project being locked to GPLv2 forever by its own history.
+what keeps a future licence change possible: every contributor grants it in
+advance, instead of the project having to find each of them later.  It inherited
+GPLv2 and left it in 1.6.0, and that is what the asking cost.
 
 A requirement nobody checks prevents nothing.  The first unsigned pull request
 merges, its author has granted nothing, and the problem is exactly where it
