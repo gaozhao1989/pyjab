@@ -99,7 +99,7 @@ def test_the_check_would_notice_a_wrong_example():
     """
     assert parses("//panel[@name='x']")
     assert parses("//panel[1]"), "[n] is supported now; it was not before 1.8.0"
-    assert not parses("//panel[@indexinparent > 10]"), "comparisons are still rejected"
+    assert parses("//panel[@indexinparent > 10]"), "comparisons work as of this release"
     assert not parses("//panel/../panel"), "the parent axis is still rejected"
 
 

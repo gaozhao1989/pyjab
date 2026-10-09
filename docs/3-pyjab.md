@@ -162,12 +162,25 @@ Predicates are applied **in order**, so the two orders ask different questions:
 //panel[2][@name='OK']     # the second panel child, if it happens to be named OK
 ```
 
+**Comparisons.** `=`, `!=`, `<`, `<=`, `>` and `>=` all work:
+
+```python
+//panel[@indexinparent > 9]        # numeric: p10 and p11, not p9
+//panel[@role != 'panel']
+//panel[@indexinparent>=2 and @indexinparent<5]
+```
+
+An attribute the element reports as an integer is compared **numerically**, so
+`[@indexinparent > 9]` finds index 10 rather than putting `"10"` before `"9"`.
+Everything else is compared as a **string**, which is what XPath does with strings —
+`[@name < 'p2']` is lexicographic, and `p10` sorts before `p2`. `contains()` remains
+available with `=` only.
+
 `[0]`, `[position()=2]` and `[last()]` are rejected with a parse error — the first
 because positions are 1-based, the others because they need an expression evaluator.
-Going the other way — `..` for the parent — is **not** supported, and neither are
-comparisons such as `[@indexinparent > 10]` or unions (`|`). Those are rejected
-rather than answered, which is the point: a locator that cannot work should say so,
-not report that the element is missing.
+Going the other way — `..` for the parent — and unions (`|`) are **not** supported.
+Those are rejected rather than answered, which is the point: a locator that cannot
+work should say so, not report that the element is missing.
 
 ## JABElement
 

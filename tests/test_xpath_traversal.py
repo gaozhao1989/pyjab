@@ -764,3 +764,124 @@ def test_a_lone_position_still_reports_no_attributes():
 
     assert info["attributes"] == []
     assert info["predicates"] == [{"position": 2}]
+
+
+# ---------------------------------------------------------------------------
+# Comparison operators and !=
+# ---------------------------------------------------------------------------
+
+def numbered_panels(count=12):
+    root = node("frame",
+                *[panel(name=f"p{i}", index=i) for i in range(count)],
+                name="app")
+    return bind(root)
+
+
+def test_a_numeric_attribute_is_compared_numerically():
+    """The whole reason this is not just a string comparison.
+
+    `[@indexinparent > 9]` has to find p10 and p11. Compared as strings, "10" sorts
+    before "9" and the answer would be p9 and the two-digit ones below it -- wrong,
+    and wrong in a way that looks plausible.
+    """
+    element, _ = numbered_panels()
+
+    found = element.find_elements_by_xpath("//panel[@indexinparent>9]")
+
+    assert sorted(f.name for f in found) == ["p10", "p11"]
+
+
+def test_the_comparison_operators_are_distinct():
+    element, _ = numbered_panels()
+
+    def names(locator):
+        return sorted(f.name for f in element.find_elements_by_xpath(locator))
+
+    assert names("//panel[@indexinparent<2]") == ["p0", "p1"]
+    assert names("//panel[@indexinparent<=2]") == ["p0", "p1", "p2"]
+    assert names("//panel[@indexinparent>=9]") == ["p10", "p11", "p9"]
+    assert names("//panel[@indexinparent>9]") == ["p10", "p11"]
+
+
+def test_a_string_attribute_is_compared_lexicographically():
+    """Which is what XPath does with strings, and it has to be visible.
+
+    "p10" sorts before "p2", so this is the opposite of what a numeric reading would
+    give -- and it is the same data as the test above.
+    """
+    element, _ = numbered_panels()
+
+    found = element.find_elements_by_xpath("//panel[@name<'p2']")
+
+    assert sorted(f.name for f in found) == ["p0", "p1", "p10", "p11"]
+
+
+def test_not_equals_is_the_complement_of_equals():
+    element, _ = numbered_panels(4)
+
+    not_p0 = element.find_elements_by_xpath("//panel[@name!='p0']")
+    is_p0 = element.find_elements_by_xpath("//panel[@name='p0']")
+
+    assert sorted(f.name for f in not_p0) == ["p1", "p2", "p3"]
+    assert [f.name for f in is_p0] == ["p0"]
+
+
+def test_not_equals_on_an_attribute_they_all_share_finds_nothing():
+    element, _ = numbered_panels(3)
+
+    with pytest.raises(JABException):
+        element.find_elements_by_xpath("//panel[@role!='panel']")
+
+
+def test_a_comparison_composes_with_and():
+    element, _ = numbered_panels()
+
+    found = element.find_elements_by_xpath(
+        "//panel[@indexinparent>2 and @indexinparent<5]"
+    )
+
+    assert sorted(f.name for f in found) == ["p3", "p4"]
+
+
+def test_a_comparison_composes_with_a_position():
+    """The two features from the two commits, used together."""
+    element, _ = numbered_panels()
+
+    found = element.find_elements_by_xpath("//panel[@indexinparent>=2][2]")
+
+    assert [f.name for f in found] == ["p3"], "p2 is the first survivor, p3 the second"
+
+
+def test_geq_is_not_read_as_greater_than_with_a_stray_equals():
+    """The parser splits on the operator, and the order of the alternatives matters.
+
+    A pattern listing `>` before `>=` would leave the `=` in the value, and `>=2`
+    would become `> "=2"` -- which parses, matches nothing, and reports "no element".
+    """
+    from pyjab.common.xpathparser import XpathParser
+
+    parser = XpathParser.__wrapped__()
+    info = parser.get_node_information(parser.split_nodes("//panel[@indexinparent>=2]")[0])
+
+    assert info["attributes"] == [
+        {"name": "indexinparent", "value": "2", "operator": "and", "comparison": ">="}
+    ]
+
+
+def test_equality_still_understands_contains():
+    """Comparisons must not have taken over the `=` path."""
+    element, _ = numbered_panels(3)
+
+    found = element.find_elements_by_xpath("//panel[@name=contains('p1')]")
+
+    assert [f.name for f in found] == ["p1"]
+
+
+def test_comparing_an_integer_attribute_against_a_word_says_so():
+    """Rather than deciding "p" is not a number and matching nothing."""
+    from pyjab.common.exceptions import JABException
+
+    element, _ = numbered_panels(3)
+
+    with pytest.raises(JABException):
+        element.find_elements_by_xpath("//panel[@indexinparent>'two']")

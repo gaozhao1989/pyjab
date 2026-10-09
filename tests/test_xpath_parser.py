@@ -71,7 +71,7 @@ class TestNodeInformation:
 
         assert info["role"] == "panel"
         assert info["attributes"] == [
-            {"name": "name", "value": "'a/b'", "operator": "and"}
+            {"name": "name", "value": "'a/b'", "operator": "and", "comparison": "="}
         ]
 
     def test_attribute_value_keeps_its_quotes(self):
