@@ -397,3 +397,24 @@ def test_the_verdict_is_no_longer_only_inside_main():
     assert list(inspect.signature(tool.reproduction).parameters) == [
         "outcome", "aware_outcome"
     ]
+
+
+def test_the_library_path_is_checked_through_pyjabs_own_api():
+    """The two measurement passes drive _click_mouse directly, so they bypass the
+    conversion. Without a third pass that calls ``element.click(simulate=True)``,
+    nothing in the tool could tell whether the conversion works."""
+    source = (REPO_ROOT / "tools" / "verify_dpi.py").read_text(encoding="utf-8")
+
+    assert "def library_check(driver)" in source
+    assert "disable.click(simulate=True)" in source
+    assert "library_check(driver)" in source, "and it has to be called"
+    assert "the library path (this is the one that tests the conversion)" in source
+
+
+def test_library_check_runs_from_an_aware_thread():
+    """The case that failed before the conversion existed."""
+    source = (REPO_ROOT / "tools" / "verify_dpi.py").read_text(encoding="utf-8")
+    body = source[source.index("def library_check(driver)"):]
+    body = body[:body.index("\ndef ")]
+
+    assert "thread_dpi_awareness(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)" in body

@@ -447,6 +447,48 @@ def decisive_check(driver, scale: float, aware: bool = False) -> dict:
     return outcome
 
 
+def library_check(driver) -> dict:
+    """Click through pyjab's own API, from an aware thread, and see if it lands.
+
+    The two passes above drive ``_click_mouse`` directly, which is what makes them a
+    measurement of the environment rather than of pyjab. That also means they bypass
+    the conversion this tool exists to justify, so neither of them can tell whether
+    the conversion is right.
+
+    This one uses ``element.click(simulate=True)`` and nothing else. Run from an
+    aware thread against an unaware target, it is the case that failed before the
+    conversion existed: if the click lands, the conversion is doing its job on a real
+    scaled display, which is the only place that claim can be checked.
+    """
+    from pyjab.common.states import States
+
+    disable = driver.find_element_by_name(DISABLE_BUTTON)
+    enable = driver.find_element_by_name(ENABLE_BUTTON)
+    middle = driver.find_element_by_name(MIDDLE_BUTTON)
+    result: dict = {}
+
+    def middle_enabled() -> bool:
+        return States.ENABLED in middle.states_en_us
+
+    if not middle_enabled():
+        enable.click()
+        time.sleep(0.5)
+    if not middle_enabled():
+        result["outcome"] = "could not get the middle button enabled; skipped"
+        return result
+
+    driver.win32utils._set_window_foreground(hwnd=disable.hwnd)
+    with thread_dpi_awareness(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2):
+        disable.click(simulate=True)
+    time.sleep(0.5)
+    result["clicked through element.click(simulate=True), from an aware thread"] = (
+        "the click landed" if not middle_enabled() else "nothing happened"
+    )
+    if not middle_enabled():
+        enable.click()
+    return result
+
+
 def reproduction(outcome: dict, aware_outcome: dict) -> str:
     """Whether the two passes together reproduce issue #62, and what to say.
 
@@ -541,6 +583,11 @@ def main() -> int:
         if scale != 1.0:
             print("  This process is unaware, so GetDpiForWindow() above reports 96 by")
             print("  definition -- it is not evidence that the display is at 100%.")
+
+        print("\nthe library path (this is the one that tests the conversion)")
+        library = library_check(driver)
+        for key, value in library.items():
+            print(f"  {key}: {value}")
 
         print("\nthe decisive check, as this process is now (DPI unaware)")
         outcome = decisive_check(driver, scale)

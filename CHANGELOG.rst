@@ -44,7 +44,15 @@ Added
   works.
 
   **Verified by unit test for the arithmetic and the wiring; not yet verified by a
-  click on a scaled display.** ``tools/verify_dpi.py`` reproduces the failing case on
+  click on a scaled display.**
+  ``tools/verify_dpi.py`` also gained a pass that clicks through
+  ``element.click(simulate=True)`` rather than at ``_click_mouse`` directly. The two
+  measurement passes drive the mouse helper, which is what makes them a measurement
+  of the environment rather than of pyjab — and it also means they bypass the
+  conversion. That third pass is the one that can tell whether the conversion is
+  right on a real scaled display.
+
+  ``tools/verify_dpi.py`` reproduces the failing case on
   demand and is how it has to be confirmed.
 
 * **Three methods the documentation used to promise now exist.**
