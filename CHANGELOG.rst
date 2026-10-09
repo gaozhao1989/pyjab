@@ -39,6 +39,25 @@ Added
   bound Java process by pid, which is right for a driver that launched one and wrong for
   a tool asked to look at a window that was already open.
 
+* **``tools/verify_m0.py``, which measures whether JAB actually sees more than UIA.**
+  The whole pyjab-mcp plan rests on the assumption that reading a Java application
+  through Java Access Bridge beats reading it through UIA, and nothing had ever tested
+  it. The script attaches to a window by title, dumps both trees and prints a
+  side-by-side table, then applies the plan's decision table: does each side find the
+  table, read a cell's text, see the tree nodes, and how many *named* elements does each
+  expose.
+
+  Its one important property is that a measurement it could not take is reported as
+  ``UNAVAILABLE (reason)`` and never as a zero. A comparison script that cannot reach
+  UIA would otherwise print "pyjab 40 elements, UIA 0" and look like a decisive win for
+  the thing under test. Any unavailable row makes the conclusion ``INCONCLUSIVE`` and
+  the exit status 1.
+
+  The UIA side is read with a Python UIA client rather than with FlaUI-MCP. That is a
+  fair comparison of semantics -- both read the same tree through the same
+  ``UIAutomationCore`` -- but it does not measure FlaUI-MCP's own rendering or token
+  budget, and the script says so.
+
 Changed
 ~~~~~~~
 
