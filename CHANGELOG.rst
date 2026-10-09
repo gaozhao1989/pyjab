@@ -7,12 +7,12 @@ This project adheres to `Semantic Versioning`_ and `Keep a Changelog`_.
 .. _Semantic Versioning: https://semver.org/
 .. _Keep a Changelog: https://keepachangelog.com/
 
-1.6.3 (2026-10-09)
+1.7.0 (2026-10-09)
 ------------------
 
-Three screenshot methods that the documentation used to promise, and the
-removal of a module nothing called.  See Removed for why that last one is
-here rather than in a minor release.
+Clicks landed in the wrong place on a scaled display, every absolute xpath lookup
+leaked a Java object, and `or` between XPath predicates was evaluated as `and` --
+which found nothing and reported it as the element being absent.
 
 Added
 ~~~~~
@@ -22,46 +22,85 @@ Added
   **calling thread's**; when the two processes scale differently those are different
   spaces, and the click lands elsewhere with nothing reporting an error.
 
-  Measured on a 150% display with an unaware target, before this change:
+Fixed
+~~~~~
 
-  ======================  =========================================
-  calling thread          clicking the point JAB reported
-  ======================  =========================================
-  unaware (pyjab)         **lands** — both ends are logical
-  aware                   **misses**; the point x1.5 lands
-  ======================  =========================================
+* **The run that reproduced #62 ended in a traceback instead of a verdict.**
+  ``main()`` read ``landed_raw`` in the reproduction branch before the line that
+  assigns it, so the one pass whose answer mattered raised ``UnboundLocalError``
+  after printing the numbers — and the numbers were the reproduction.
+* **``tools/verify_dpi.py`` now runs the decisive check twice, and can reproduce
+  #62 on demand.**  A 150% run on a display with an **unaware** target and an
+  **unaware** pyjab reported the JAB position landing — which is the result to
+  expect once the two-process geometry is clear: both ends are in the same
+  virtualised space, so logical coordinates on the way in and logical coordinates
+  on the way out cancel.  That configuration cannot show the bug, and the run said
+  "nothing to fix" while testing only one of the two arrangements that matter.
+* **``tools/verify_dpi.py`` asked for the target's DPI awareness with a process id
+  where the API takes a process handle.**  ``GetProcessDpiAwareness`` is declared
+  ``HRESULT GetProcessDpiAwareness(HANDLE hprocess, PROCESS_DPI_AWARENESS *value)``,
+  and its ``E_INVALIDARG`` is documented as "the handle or pointer passed in is not
+  valid".  Passing the id produced ``-0x7ff8ffa9`` — ``0x80070057``,
+  ``ERROR_INVALID_PARAMETER`` 87 — and the tool printed it as though it were a fact
+  about the target application rather than a bug in itself.  It now calls
+  ``OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, ...)`` first and closes the
+  handle afterwards, and decodes any failure into the unsigned HRESULT, its
+  facility and its code, with ``E_INVALIDARG`` and ``E_ACCESSDENIED`` named.
+* **An aware target was reported as unaware.**  The flag was computed by comparing
+  the *display name* — ``PER_MONITOR_AWARE`` — against the *enum member*,
+  ``PROCESS_PER_MONITOR_DPI_AWARE``.  They differ, so the comparison never matched
+  and every target came back unaware, which is the one answer this must not get
+  wrong: it is the value that decides whether a conversion is needed at all.  It
+  compares the enumeration values now.
+* **``tools/verify_dpi.py`` could not see a scaled display at all.**  It computed the
+  monitor scale from ``GetDpiForWindow()``.  Microsoft documents that call as
+  returning **96** when the window is DPI unaware — "the answer will depend on the
+  DPI awareness mode of the HWND", and the Unaware row is a flat 96.
+  ``GetDpiForMonitor`` is the same: its table gives 96 for ``PROCESS_DPI_UNAWARE``
+  and the display's real DPI only for per-monitor aware callers.
+* **``tools/verify_dpi.py`` could not tell the two explanations apart.**
+  ``GetProcessDpiAwareness()`` was called with ``None``, which asks about *this*
+  process. Issue #62 turns on **two**: the target decides whether the coordinates
+  JAB reports are logical or physical, and pyjab decides whether ``SetCursorPos``
+  receives physical pixels or a space Windows scales for it.
+* **`or` between XPath predicates was silently evaluated as `and`.**  The parser
+  collected every `@name=value` in a predicate and discarded whatever joined them,
+  so the matcher ANDed all of them. `//panel[@name='outer' or @name='second']`
+  found nothing and reported "no element" — which reads as **the element being
+  absent** rather than the locator being wrong, and that is the most expensive way
+  to be wrong. Rejecting the operator would have been better than answering it
+  incorrectly; honouring it is better still.
+* **Every absolute `find_*_by_xpath` lookup leaked a Java object.**
+  `_xpath_search_root()` calls `_get_top_level_object()`, which is a JAB call that
+  hands out a reference, and nothing released it — not on the found path, not on
+  the not-found path. One object per lookup, for the life of the process, in the
+  API a test script calls in a loop. Relative locators were never affected: their
+  root is `self`, which the caller already owns.
+* **`find_elements_by_xpath` had a return contract that depended on the locator.**
+  It checked whether its working list was empty at the *top* of each path segment,
+  so `//push button` returned `[]` while `//push button/label` — the same failure,
+  one segment earlier — raised `JABException`. The rest of the family raises, and
+  `get_children()` is the documented exception; this was neither. It raises now,
+  always.
+* **`find_elements_by_xpath` returns matches in document order.** It ran through
+  `_generate_all_childs`, which yields a node *after* its whole subtree, so
+  `//label` returned an inner label before the outer one containing it.
+* **`find_elements_by_xpath` respects `MAX_SEARCH_DEPTH`.** The traversal it used
+  had no ceiling, so a cyclic accessibility tree would still have run away there
+  after the single-match path was bounded.
+* `_get_elements_by_node`, `_get_children_by_level` and `_get_node_info` are gone.
+  The first had no callers once the above landed and the other two were only
+  reachable through it.
 
-  ``win32utils.physical_point`` reads the target's awareness, the calling thread's
-  awareness and the display's real scale, and converts only when the two differ, in
-  whichever direction is missing. Every site that moves the real mouse goes through
-  ``JABElement._physical_point``, which a test enforces by reading the module.
+1.6.3 (2026-10-09)
+------------------
 
-  The default configuration — an unaware target against an unaware pyjab — is
-  **unchanged**, because that is every setup nobody has reported a problem with, and
-  converting there would break it. Neither is anything converted when the display is
-  at 100%, or when the target's awareness cannot be read: an elevated target cannot
-  be opened, and guessing "unaware" there would move the cursor on a setup that
-  works.
+Three screenshot methods that the documentation used to promise, and the
+removal of a module nothing called.  See Removed for why that last one is
+here rather than in a minor release.
 
-  **Verified on a real 150% display.** From a DPI-aware thread against an unaware
-  target — the case that failed before this — ``element.click(simulate=True)`` now
-  lands. ``tools/verify_dpi.py`` reports it under "the library path", and the two
-  raw passes beside it still reproduce the original failure, which is what makes the
-  pair mean something: the middle one goes through the mouse helper directly and so
-  bypasses the conversion by design.
-
-  The other mixed case — an aware target against an unaware caller — is covered by
-  unit test but was not part of that measurement, because the target on hand is
-  unaware.
-  ``tools/verify_dpi.py`` also gained a pass that clicks through
-  ``element.click(simulate=True)`` rather than at ``_click_mouse`` directly. The two
-  measurement passes drive the mouse helper, which is what makes them a measurement
-  of the environment rather than of pyjab — and it also means they bypass the
-  conversion. That third pass is the one that can tell whether the conversion is
-  right on a real scaled display.
-
-  ``tools/verify_dpi.py`` reproduces the failing case on
-  demand and is how it has to be confirmed.
+Added
+~~~~~
 
 * **Three methods the documentation used to promise now exist.**
   ``get_screenshot_as_png()`` and ``get_screenshot_as_base64()`` on both
@@ -108,156 +147,6 @@ Removed
 
 Fixed
 ~~~~~
-
-* **The run that reproduced #62 ended in a traceback instead of a verdict.**
-  ``main()`` read ``landed_raw`` in the reproduction branch before the line that
-  assigns it, so the one pass whose answer mattered raised ``UnboundLocalError``
-  after printing the numbers — and the numbers were the reproduction.
-
-  The decision is now a function, ``reproduction(outcome, aware_outcome)``, with
-  four inputs and three outcomes, where a test can call it. The test uses the two
-  outcome dictionaries exactly as that run produced them. A source-order assertion
-  guards the remaining reads in ``main()``; it is a poor kind of test and it earns
-  its place here, because the bug was exactly a source-order bug in a function no
-  test could reach.
-
-Fixed
-~~~~~
-
-* **``tools/verify_dpi.py`` now runs the decisive check twice, and can reproduce
-  #62 on demand.**  A 150% run on a display with an **unaware** target and an
-  **unaware** pyjab reported the JAB position landing — which is the result to
-  expect once the two-process geometry is clear: both ends are in the same
-  virtualised space, so logical coordinates on the way in and logical coordinates
-  on the way out cancel.  That configuration cannot show the bug, and the run said
-  "nothing to fix" while testing only one of the two arrangements that matter.
-
-  The second pass issues the same clicks from a thread switched to per-monitor
-  awareness with ``SetThreadDpiAwarenessContext``.  That is the mixed case: the
-  target's coordinates are logical because the target is unaware, while an aware
-  caller's mouse coordinates are taken as physical.  If the unaware pass lands and
-  the aware pass does not, the script reports **#62 reproduced** and says why — two
-  processes in different coordinate spaces, not a property of the display or of the
-  target on its own.
-
-  The switch is undone in a ``finally``, and only the calling thread is affected,
-  so the application is untouched either way.
-
-Fixed
-~~~~~
-
-* **``tools/verify_dpi.py`` asked for the target's DPI awareness with a process id
-  where the API takes a process handle.**  ``GetProcessDpiAwareness`` is declared
-  ``HRESULT GetProcessDpiAwareness(HANDLE hprocess, PROCESS_DPI_AWARENESS *value)``,
-  and its ``E_INVALIDARG`` is documented as "the handle or pointer passed in is not
-  valid".  Passing the id produced ``-0x7ff8ffa9`` — ``0x80070057``,
-  ``ERROR_INVALID_PARAMETER`` 87 — and the tool printed it as though it were a fact
-  about the target application rather than a bug in itself.  It now calls
-  ``OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, ...)`` first and closes the
-  handle afterwards, and decodes any failure into the unsigned HRESULT, its
-  facility and its code, with ``E_INVALIDARG`` and ``E_ACCESSDENIED`` named.
-
-* **An aware target was reported as unaware.**  The flag was computed by comparing
-  the *display name* — ``PER_MONITOR_AWARE`` — against the *enum member*,
-  ``PROCESS_PER_MONITOR_DPI_AWARE``.  They differ, so the comparison never matched
-  and every target came back unaware, which is the one answer this must not get
-  wrong: it is the value that decides whether a conversion is needed at all.  It
-  compares the enumeration values now.
-
-Fixed
-~~~~~
-
-* **``tools/verify_dpi.py`` could not see a scaled display at all.**  It computed the
-  monitor scale from ``GetDpiForWindow()``.  Microsoft documents that call as
-  returning **96** when the window is DPI unaware — "the answer will depend on the
-  DPI awareness mode of the HWND", and the Unaware row is a flat 96.
-  ``GetDpiForMonitor`` is the same: its table gives 96 for ``PROCESS_DPI_UNAWARE``
-  and the display's real DPI only for per-monitor aware callers.
-
-  pyjab declares no DPI awareness, so the process is unaware, so the reading was
-  **96 on every machine** and the scale was **1.0 everywhere**.  The scaled-position
-  half of the decisive check therefore never ran, and the script reported "nothing
-  to fix" while having tested only one of its two positions.
-
-  It now reads the display's real DPI through ``SetThreadDpiAwarenessContext``,
-  which changes the calling thread only, and hands the thread back as it found it —
-  the "sub-process DPI awareness" pattern from Microsoft's mixed-mode DPI guidance.
-  ``GetDpiForWindow()`` is still reported, labelled as what this process can see,
-  which is the number ``SetCursorPos`` will actually be interpreted against.
-
-Fixed
-~~~~~
-
-* **``tools/verify_dpi.py`` could not tell the two explanations apart.**
-  ``GetProcessDpiAwareness()`` was called with ``None``, which asks about *this*
-  process. Issue #62 turns on **two**: the target decides whether the coordinates
-  JAB reports are logical or physical, and pyjab decides whether ``SetCursorPos``
-  receives physical pixels or a space Windows scales for it.
-
-  So when the script reported "the JAB position is already right here", that had
-  two possible causes that look identical — the display is at 100%, or the
-  application is DPI aware and its coordinates were physical all along — and the
-  script had no way to say which. It now reads ``GetProcessDpiAwareness(pid)`` for
-  the target too, and the verdict names the cause. On a scaled display with an
-  unaware target it says so explicitly; at 100% it says the run proves nothing
-  about #62.
-
-Fixed
-~~~~~
-
-* **`or` between XPath predicates was silently evaluated as `and`.**  The parser
-  collected every `@name=value` in a predicate and discarded whatever joined them,
-  so the matcher ANDed all of them. `//panel[@name='outer' or @name='second']`
-  found nothing and reported "no element" — which reads as **the element being
-  absent** rather than the locator being wrong, and that is the most expensive way
-  to be wrong. Rejecting the operator would have been better than answering it
-  incorrectly; honouring it is better still.
-
-  `and` binds tighter than `or`, as it does in XPath: the parser now records the
-  operator joining each predicate to the previous one, and the matcher splits the
-  list at every `or`, ANDs within each group and ORs across them. So
-  `[@a and @b or @c]` is `(a and b) or c`.
-
-  The other operators on the same checklist are unaffected: comparisons, `!=`,
-  unions (`|`) and `[n]` positional predicates are **rejected with a parse error**
-  rather than answered, which is the behaviour worth having.
-
-* **Every absolute `find_*_by_xpath` lookup leaked a Java object.**
-  `_xpath_search_root()` calls `_get_top_level_object()`, which is a JAB call that
-  hands out a reference, and nothing released it — not on the found path, not on
-  the not-found path. One object per lookup, for the life of the process, in the
-  API a test script calls in a loop. Relative locators were never affected: their
-  root is `self`, which the caller already owns.
-
-  Found by a test asserting the reference count before and after, which is the
-  same shape as issue #43 ("gets slower until it stalls, with CPU and memory
-  normal"). **That is a hypothesis and not a diagnosis** — one leaked object per
-  lookup is consistent with the report and does not by itself explain it.
-
-* **`find_elements_by_xpath` had a return contract that depended on the locator.**
-  It checked whether its working list was empty at the *top* of each path segment,
-  so `//push button` returned `[]` while `//push button/label` — the same failure,
-  one segment earlier — raised `JABException`. The rest of the family raises, and
-  `get_children()` is the documented exception; this was neither. It raises now,
-  always.
-
-* **`find_elements_by_xpath` returns matches in document order.** It ran through
-  `_generate_all_childs`, which yields a node *after* its whole subtree, so
-  `//label` returned an inner label before the outer one containing it.
-
-* **`find_elements_by_xpath` respects `MAX_SEARCH_DEPTH`.** The traversal it used
-  had no ceiling, so a cyclic accessibility tree would still have run away there
-  after the single-match path was bounded.
-
-  **The note that prompted this said the method "does not get the pruning that
-  `find_element_by_xpath` now has". Measured, that was wrong** — the old traversal
-  pruned by path too, and the cost is the same: 1513 calls against 1555 on a
-  forty-panel window. The gains are the three above, and the changelog says so
-  rather than repeating a claim the measurement does not support.
-
-* `_get_elements_by_node`, `_get_children_by_level` and `_get_node_info` are gone.
-  The first had no callers once the above landed and the other two were only
-  reachable through it.
 
 * **``tools/verify_dpi.py`` could not finish, on the one machine that can run it.**
   It reached ``driver.win32_utils``, and ``JABDriver`` names that ``win32utils``
