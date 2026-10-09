@@ -106,6 +106,43 @@ def describe_process_dpi() -> dict:
     return facts
 
 
+def describe_target_dpi(pid: int) -> dict:
+    """What the *target* JVM declares, which is the half that decides this.
+
+    Issue #62 turns on two processes, not one: the target decides whether the
+    coordinates JAB reports are logical or physical, and pyjab decides whether
+    ``SetCursorPos`` receives physical pixels or a space Windows scales for it.
+    Only the target's answer tells you whether a conversion is needed at all --
+    which is why guessing has a real chance of moving a click that used to land
+    correctly.
+
+    This read was missing. Without it, "the JAB position is already right here" has
+    two possible causes that look identical -- the display is at 100%, or the
+    application is DPI aware and its coordinates were physical all along -- and the
+    script could not tell them apart.
+    """
+    facts = {}
+    try:
+        awareness = ctypes.c_int()
+        hresult = ctypes.windll.shcore.GetProcessDpiAwareness(
+            ctypes.c_void_p(pid), ctypes.byref(awareness)
+        )
+        if hresult == 0:
+            facts["GetProcessDpiAwareness(pid)"] = DPI_AWARENESS.get(
+                awareness.value, f"unknown ({awareness.value})"
+            )
+            facts["_aware"] = DPI_AWARENESS.get(awareness.value) in (
+                "PROCESS_SYSTEM_DPI_AWARE", "PROCESS_PER_MONITOR_DPI_AWARE"
+            )
+        else:
+            facts["GetProcessDpiAwareness(pid)"] = f"failed (HRESULT {hresult:#x})"
+            facts["_aware"] = None
+    except Exception as exc:  # pragma: no cover - platform dependent
+        facts["GetProcessDpiAwareness(pid)"] = f"unavailable ({exc})"
+        facts["_aware"] = None
+    return facts
+
+
 def describe_window(hwnd: int) -> dict:
     """The window's DPI, and its rect as Win32 sees it."""
     user32 = ctypes.windll.user32
@@ -268,6 +305,12 @@ def main() -> int:
         for key, value in process_facts.items():
             print(f"  {key}: {value}")
 
+        print("\nthe target application's DPI awareness (this is the half that decides)")
+        target_facts = describe_target_dpi(driver.pid)
+        target_aware = target_facts.pop("_aware", None)
+        for key, value in target_facts.items():
+            print(f"  {key}: {value}")
+
         print("\nthe window")
         measurement = measure(driver)
         for key in ("jab frame bounds",):
@@ -299,9 +342,24 @@ def main() -> int:
 
         if landed_raw:
             print("  The JAB position is the right one on this display.")
-            if scale != 1.0:
-                print(f"  Note the scale is {scale:g}, so DPI matters here -- but this")
-                print("  process's awareness already makes the coordinates work out.")
+            if scale == 1.0:
+                print("  The scale is 1.0, so there is nothing here for DPI to get")
+                print("  wrong. To test issue #62 this has to run on a display set to")
+                print("  125% or 150%.")
+            elif target_aware is True:
+                print(f"  The scale is {scale:g} and the target declares itself DPI")
+                print("  aware, so the coordinates JAB reports were already physical.")
+                print("  That is the reason this case works, and it is why converting")
+                print("  unconditionally would move a click that lands correctly now.")
+            elif target_aware is False:
+                print(f"  The scale is {scale:g} and the target is NOT DPI aware, so its")
+                print("  coordinates are logical -- and the JAB position still landed.")
+                print("  That is unexpected and worth reporting: it means the conversion")
+                print("  issue #62 asks for is not needed even in this configuration.")
+            else:
+                print(f"  The scale is {scale:g}, so DPI matters here. Could not read")
+                print("  the target's awareness; that value is the one that would say")
+                print("  whether the coordinates were logical or physical.")
             print("  Nothing to fix for this configuration. Thank you -- knowing this")
             print("  case works is as useful as knowing the other one does not.")
         elif landed_scaled:
