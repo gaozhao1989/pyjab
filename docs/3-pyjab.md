@@ -213,6 +213,25 @@ exposes no accessibility action for either, so unlike `click()` they have no
 non-simulated form and they need the element to report usable bounds. Both leave
 the window in the foreground first.
 
+### When nothing matches
+
+`find_element*` and `find_elements*` both **raise `JABException`**, with a message
+naming the locator:
+
+```python
+driver.find_element_by_name("Save")     # raises if there is no Save button
+driver.find_elements_by_role("button")  # raises if there are no buttons at all
+```
+
+That is Selenium's `find_element` behaviour, and it is deliberately not Selenium's
+`find_elements` behaviour — an empty list and a locator that matched nothing look
+the same at the call site, and the second one is nearly always the bug. Use
+`get_children()` when an empty answer is ordinary:
+
+```python
+element.get_children()                  # [] when there are none; never raises
+```
+
 ### Searching inside an element
 
 Anything you can do from the driver, you can do from an element — the search is
