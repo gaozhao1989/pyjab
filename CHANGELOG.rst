@@ -10,6 +10,27 @@ This project adheres to `Semantic Versioning`_ and `Keep a Changelog`_.
 Unreleased
 ----------
 
+Changed
+~~~~~~~
+
+* **``JABDriver.find_element_by_name`` and seven siblings no longer return the window
+  itself.** Searching for the root's own name, role, description or states returned
+  ``driver.root_element``; the same call on a ``JABElement`` raised. Two defensible
+  behaviours, and having both made the result impossible to release correctly: the
+  docstring on every one of these methods says the caller owns what comes back, and the
+  root is not the caller's -- the driver holds it for its lifetime.
+
+  ``JABDriver.find_elements_by_name`` and its three siblings were quieter about it.
+  They returned ``[root]``, reporting the window as one of its own elements, which it is
+  not: a window is not its own descendant.
+
+  The driver's versions now delegate, so both objects answer the same way. The root is
+  still reachable, as ``driver.root_element``, which says what it is rather than leaving
+  it to be inferred from a search.
+
+  This is a behaviour change for anyone who relied on the old result. The eight methods
+  were not covered by a test, and none failed when the special cases were removed.
+
 Fixed
 ~~~~~
 

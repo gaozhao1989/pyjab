@@ -344,39 +344,25 @@ class JABDriver(object):
         """
         Find an JABElement given a name locator.
         """
-        if value == self.root_element.name:
-            return self.root_element
-        else:
-            return self.root_element.find_element_by_name(value=value, visible=visible)
+        return self.root_element.find_element_by_name(value=value, visible=visible)
 
     def find_element_by_description(self, value: str, visible: bool = False) -> JABElement:
         """
         Find an JABElement given a description locator.
         """
-        if value == self.root_element.description:
-            return self.root_element
-        else:
-            return self.root_element.find_element_by_description(value=value, visible=visible)
+        return self.root_element.find_element_by_description(value=value, visible=visible)
 
     def find_element_by_role(self, value: str, visible: bool = False) -> JABElement:
         """
         Find an JABElement given a role locator.
         """
-        if value == self.root_element.role:
-            return self.root_element
-        else:
-            return self.root_element.find_element_by_role(value=value, visible=visible)
+        return self.root_element.find_element_by_role(value=value, visible=visible)
 
     def find_element_by_states(self, value: str, visible: bool = False) -> JABElement:
         """
         Find an JABElement given a state locator.
         """
-        if value == self.root_element.states:
-            return self.root_element
-        else:
-            return self.root_element.find_element_by_states(
-                value=value, visible=visible
-            )
+        return self.root_element.find_element_by_states(value=value, visible=visible)
 
     def find_element_by_object_depth(
             self, value: int, visible: bool = False
@@ -449,13 +435,7 @@ class JABDriver(object):
         """
         Find list of JABElement given a name locator.
         """
-        jabelements = []
-        if value == self.root_element.name:
-            jabelements.append(self.root_element)
-        jabelements.extend(
-            self.root_element.find_elements_by_name(value=value, visible=visible)
-        )
-        return jabelements
+        return self.root_element.find_elements_by_name(value=value, visible=visible)
 
     def find_elements_by_description(
             self, value: str, visible: bool = False
@@ -463,13 +443,7 @@ class JABDriver(object):
         """
         Find list of JABElement given a description locator.
         """
-        jabelements = []
-        if value == self.root_element.description:
-            jabelements.append(self.root_element)
-        jabelements.extend(
-            self.root_element.find_elements_by_description(value=value, visible=visible)
-        )
-        return jabelements
+        return self.root_element.find_elements_by_description(value=value, visible=visible)
 
     def find_elements_by_role(
             self, value: str, visible: bool = False
@@ -477,13 +451,7 @@ class JABDriver(object):
         """
         Find list of JABElement given a role locator.
         """
-        jabelements = []
-        if value == self.root_element.role:
-            jabelements.append(self.root_element)
-        jabelements.extend(
-            self.root_element.find_elements_by_role(value=value, visible=visible)
-        )
-        return jabelements
+        return self.root_element.find_elements_by_role(value=value, visible=visible)
 
     def find_elements_by_states(
             self, value: str, visible: bool = False
@@ -491,13 +459,7 @@ class JABDriver(object):
         """
         Find list of JABElement given a state locator.
         """
-        jabelements = []
-        if value == self.root_element.states:
-            jabelements.append(self.root_element)
-        jabelements.extend(
-            self.root_element.find_elements_by_states(value=value, visible=visible)
-        )
-        return jabelements
+        return self.root_element.find_elements_by_states(value=value, visible=visible)
 
     def find_elements_by_object_depth(
             self, value: int, visible: bool = False
