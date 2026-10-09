@@ -300,3 +300,33 @@ def test_the_package_itself_is_clean():
             failures.append(f"{path.relative_to(REPO_ROOT)}:{number} {what} -- {why}")
 
     assert not failures, "\n".join(failures)
+
+
+# ---------------------------------------------------------------------------
+# Things that were removed on purpose
+# ---------------------------------------------------------------------------
+
+def test_shortcutkeys_is_gone():
+    """Removed in the next release, deliberately, and this is the record.
+
+    ``pyjab/common/shortcutkeys.py`` had 37 methods and **zero callers** anywhere
+    in the package, the tests, the docs or the tooling.  It was a list of Oracle
+    *Forms* shortcuts -- a different product from Swing/AWT, and it said so in its
+    own comment -- left over from somewhere else.
+
+    It also could not be trusted if anyone had wired it up: the combo keys used
+    ``press_key``, which presses and releases, so ``previous_field`` sent
+    shift-release then tab rather than shift+tab.  The correct form is used
+    elsewhere in the same file, so the intent was clear and the code was wrong.
+
+    Being importable made removing it a public API change -- a minor bump.
+
+    If this test fails, someone has brought it back. That is allowed; delete this
+    and say why in the changelog.
+    """
+    import importlib
+
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("pyjab.common.shortcutkeys")
+
+    assert not (REPO_ROOT / "pyjab" / "common" / "shortcutkeys.py").exists()

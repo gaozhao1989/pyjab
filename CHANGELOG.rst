@@ -10,6 +10,24 @@ This project adheres to `Semantic Versioning`_ and `Keep a Changelog`_.
 Unreleased
 ----------
 
+Removed
+~~~~~~~
+
+* **``pyjab.common.shortcutkeys``.**  164 lines, 37 methods, and **zero callers**
+  anywhere -- not in the package, the tests, the docs or the tooling.  It was a
+  list of Oracle *Forms* keyboard shortcuts, which is a different product from
+  Swing/AWT; the file's own comment said so.  Left over from somewhere else, and
+  never reachable from anything pyjab does.
+
+  It also could not have worked if something had used it: the combination keys
+  called ``press_key``, which presses *and releases*, so ``previous_field`` sent
+  shift-release followed by tab rather than shift+tab.  The correct call is used
+  elsewhere in the same file.
+
+  Being importable made this a public API removal, so the next release is a
+  **minor** version, not a patch.  It is in the git history for anyone who wants
+  it; nothing in pyjab calls it.
+
 Added
 ~~~~~
 
