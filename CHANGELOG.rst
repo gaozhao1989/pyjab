@@ -13,6 +13,30 @@ Unreleased
 Fixed
 ~~~~~
 
+* **The XPath documentation claimed a feature that does not exist, and denied two
+  that do.**  ``docs/3-pyjab.md`` listed ``[n]`` positional predicates as
+  supported.  They are not, and never were: ``get_node_attributes`` recognises
+  only ``@name=value``, so a bare ``[1]`` raises.  The test suite knew —
+  ``tests/test_xpath_parser.py`` lists ``panel[1]`` among the nodes that must be
+  rejected — and the manual said the opposite, for long enough that the tracking
+  issue for it recorded it as done.
+
+  The same paragraph called the ``/`` versus ``//`` and ``.`` axes unsupported.
+  They are supported and the difference matters: a locator with no leading ``.``
+  means the whole window, and ``.//`` means only inside the element it was issued
+  from.  Only ``..``, the parent axis, is missing.
+
+  A test now reads the examples out of the documentation and asks the parser about
+  each one (``tests/test_xpath_syntax_docs.py``), which is the connection that was
+  absent.  It cannot say whether a locator will match anything — that depends on
+  the application — but it can say whether the syntax in the manual is syntax
+  pyjab accepts, and that is the half that was wrong.
+
+  Also documented while correcting it: ``or`` and ``[n]`` are not rejected.  They
+  parse, and then answer wrongly or find nothing, so a locator using them fails as
+  "not found" rather than as a syntax error — which is the more expensive way to
+  be wrong, because it looks like the element is absent.
+
 * **The documented sign-off command no longer fails on this repository's own
   history.**  ``CONTRIBUTING.rst`` tells a contributor to run
   ``python tools/check_dco.py --base origin/master``, and the obvious way to try
