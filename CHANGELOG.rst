@@ -60,6 +60,28 @@ Changed
   This is a behaviour change for anyone who relied on the old result. The eight methods
   were not covered by a test, and none failed when the special cases were removed.
 
+Changed
+~~~~~~~
+
+* **The two XPath traversals are one traversal.** ``_search_path`` returned the first
+  match and ``_search_path_all`` collected every match, and they were two
+  implementations of the same walk -- 53% identical, differing only in whether a match
+  ends the search. The part that was written twice is the ownership bookkeeping: which
+  of the references a walk creates belong to the caller and which to the search, each
+  released exactly once. That rule is subtle enough that the one leak found in this code
+  was a missed case of it, and two copies is how a third case goes unnoticed.
+
+  ``_search_path`` now takes the collection as a parameter and does both. No behaviour
+  change: the same locators return the same elements and the same number of bridge calls
+  before and after, checked over ten locators in both modes.
+
+  ``tests/test_xpath_ownership.py`` is new and is the reason that claim is checkable
+  rather than asserted. It runs a battery of nineteen locators -- predicates, positions,
+  comparison, unions, the parent axis, matches at several depths, and paths that fail at
+  each step -- through both modes, and checks after every one that the only references
+  still outstanding are the elements the caller was given. Nineteen cases in each mode,
+  plus a check that the two modes agree about what matches.
+
 Fixed
 ~~~~~
 

@@ -1945,30 +1945,44 @@ class JABElement(object):
             visible: bool,
             examined: list,
             depth: int = 0,
+            found: Optional[list] = None,
     ) -> Optional[JABElement]:
-        """First element matching ``nodes[index:]`` under *parent*, or None.
+        """Walk ``nodes[index:]`` under *parent*, in one of two modes.
 
-        The path prunes the walk. The first node may match at any depth, but a
-        later node is a direct child of the previous match -- so once a node has
-        matched, only its own subtree is considered rather than the whole tree
-        again. When the rest of the path does not fit under a match, the search
-        continues with the next candidate instead of giving up, which is what the
-        previous implementation did: it took the first role-and-attribute match
-        and raised if the remainder of the path was not underneath it.
+        *found* is None to return the first match, or a list to append every match to.
+        Both modes prune the walk the same way and both answer for the same references;
+        they differ only in whether a match ends the search. They were two functions
+        until the ownership bookkeeping -- the part that is hard to get right -- was
+        written out twice, which is how a leak gets in.
 
-        Ownership: the returned element belongs to the caller. Everything else
-        created here is appended to *examined* and released by the caller once
-        the whole search is over.
+        The path prunes the walk: **the first node may match at any depth, and every
+        node after it is a direct child of the previous match.** Once a node has
+        matched, only its own subtree is considered rather than the whole tree again.
+        When the rest of the path does not fit under a match, the search continues with
+        the next candidate instead of giving up, which is what the implementation before
+        1.4.0 did: it took the first role-and-attribute match and raised if the
+        remainder of the path was not underneath it.
 
-        That deferral is not laziness. A node that matches the first path segment
-        gets enumerated twice when the rest of the path does not fit under it --
-        once looking for the next segment, once looking for a deeper match of
-        this one -- and releasing during the first pass would leave the second
-        pass reading handles that are already gone. Java Access Bridge hands out
-        a fresh reference on every call, so both passes are legal as long as
-        every reference is released, and releasing them together at the end is
-        what makes that true.
+        Ownership, in both modes: anything that ends up in *found* belongs to the
+        caller, and everything else created here is appended to *examined* and released
+        by the caller once the whole search is over -- exactly one of the two, exactly
+        once.
+
+        That deferral is not laziness. A node matching the first path segment gets
+        enumerated twice when the rest of the path does not fit under it -- once looking
+        for the next segment, once looking for a deeper match of this one -- and
+        releasing during the first pass would leave the second pass reading handles that
+        are already gone. Java Access Bridge hands out a fresh reference on every call,
+        so both passes are legal as long as every reference is released, and releasing
+        them together at the end is what makes that true.
+
+        Listing every match used to run through ``_get_elements_by_node``, a level-by-
+        level traversal that tested every node for every path segment, so a path naming
+        an early control cost the whole tree: 33 calls for ``find_element_by_xpath``
+        against 1555 for the same locator, on a window with forty panels.
         """
+        collecting = found is not None
+
         if depth >= MAX_SEARCH_DEPTH:
             # See MAX_SEARCH_DEPTH: the tree is not guaranteed to be one, and an
             # unbounded walk of a cyclic one is a hang rather than an error.
@@ -1996,13 +2010,16 @@ class JABElement(object):
                 return None
             ancestor = JABElement(self.bridge, self.hwnd, self.vmid, ancestor_context)
             if last:
-                return ancestor
-            found = self._search_path(nodes, index + 1, ancestor, visible, examined,
-                                      depth + 1)
+                if not collecting:
+                    return ancestor
+                found.append(ancestor)
+                return None
+            result = self._search_path(nodes, index + 1, ancestor, visible, examined,
+                                       depth + 1, found)
             # The ancestor came from a JAB call and belongs to the search unless it is
-            # the answer; see the ownership note above _search_path.
+            # the answer; see the ownership note above.
             examined.append(ancestor)
-            return found
+            return result
 
         predicates = info.get("predicates") or []
 
@@ -2029,162 +2046,53 @@ class JABElement(object):
                     return False
             return True
 
-        # A path step after the first means "child of the previous match"; the
-        # first may match at any depth.
         if index > 0:
+            # A step after the first means "direct child of the previous match".
             for child in self._generate_childs_from_element(
                     jabelement=parent, visible=visible
             ):
                 if matches(child):
                     if last:
-                        return child
-                    found = self._search_path(
-                        nodes, index + 1, child, visible, examined, depth + 1
-                    )
-                    if found is not None:
+                        if not collecting:
+                            return child
+                        found.append(child)
+                        # Recorded, so it is the caller's and not the search's.
+                        continue
+                    result = self._search_path(nodes, index + 1, child, visible,
+                                               examined, depth + 1, found)
+                    if result is not None:
                         examined.append(child)
-                        return found
+                        return result
                 examined.append(child)
             return None
 
+        # The first step may match at any depth, and when collecting, more than once.
         for child in self._generate_childs_from_element(
                 jabelement=parent, visible=visible
         ):
+            recorded = False
             if matches(child):
                 if last:
-                    return child
-                found = self._search_path(nodes, 1, child, visible, examined,
-                                          depth + 1)
-                if found is not None:
-                    examined.append(child)
-                    return found
-            found = self._search_path(nodes, 0, child, visible, examined,
-                                      depth + 1)
-            if found is not None:
-                examined.append(child)
-                return found
-            examined.append(child)
-        return None
-
-    def _search_path_all(
-            self,
-            nodes: list,
-            index: int,
-            parent: JABElement,
-            visible: bool,
-            examined: list,
-            found: list,
-            depth: int = 0,
-    ) -> None:
-        """Append every element matching ``nodes[index:]`` under *parent*.
-
-        The same walk as :meth:`_search_path` and the same pruning -- which is the
-        reason it exists.  ``find_elements_by_xpath`` used to run through
-        ``_get_elements_by_node``, a level-by-level traversal that tests every node
-        for every path segment, so a path naming an early control cost the whole
-        tree: 33 calls for ``find_element_by_xpath`` against 1555 for the same
-        locator here, on a window with forty panels.  Both walk the same tree; only
-        one of them knows that the first segment narrows the rest.
-
-        It differs from :meth:`_search_path` in not stopping: listing every match is
-        the point, so a match is recorded and the walk continues underneath it.
-
-        Ownership is the same rule and it is easy to get wrong, which is why the
-        fake bridge counts.  Anything appended to *found* belongs to the caller;
-        everything else goes to *examined* and is released by the caller once the
-        whole search is over.  A child can be enumerated twice -- once looking for
-        the next segment, once looking for a deeper match of this one -- and both
-        references have to be released, so deferring them all to the end is what
-        makes that true rather than careful bookkeeping in two places.
-        """
-        if depth >= MAX_SEARCH_DEPTH:
-            self.logger.warning(
-                "xpath lookup stopped at depth %s; the accessibility tree at this "
-                "point is deeper than MAX_SEARCH_DEPTH (%s), or it contains a cycle",
-                depth,
-                MAX_SEARCH_DEPTH,
-            )
-            return
-
-        info = self.xpath_parser.get_node_information(nodes[index])
-        last = index == len(nodes) - 1
-        role = info.get("role")
-
-        if role == PARENT:
-            # `..`, short for `parent::node()`: exactly one node, or none if the
-            # context is already the top. It steps upwards rather than fanning out,
-            # which is why it is handled here and not in the child loop further down.
-            ancestor_context = self._get_accessible_parent_from_context(
-                parent.accessible_context
-            )
-            if not ancestor_context:
-                return
-            ancestor = JABElement(self.bridge, self.hwnd, self.vmid, ancestor_context)
-            if last:
-                found.append(ancestor)
-                return
-            self._search_path_all(nodes, index + 1, ancestor, visible, examined,
-                                  found, depth + 1)
-            examined.append(ancestor)
-            return
-
-        predicates = info.get("predicates") or []
-
-        # One counter per step, shared by every candidate this step is offered --
-        # which is what makes a position mean "the nth candidate of this parent".
-        # XPath counts within the node-set the previous predicates left behind, so a
-        # candidate that fails an earlier predicate does not advance the count.
-        position = [0]
-
-        def matches(candidate) -> bool:
-            if role not in ("*", candidate.role_en_us):
-                return False
-            for predicate in predicates:
-                if "attributes" in predicate:
-                    if not self._is_match_attributes(predicate["attributes"], candidate):
-                        return False
-                    continue
-                # A bare position, 1-based. Counted here rather than in the caller so
-                # that `[2][@name='x']` means "the second child, if it is named x" and
-                # `[@name='x'][2]` means "the second of those named x" -- two different
-                # questions that a flat attribute list cannot tell apart.
-                position[0] += 1
-                if position[0] != predicate["position"]:
-                    return False
-            return True
-
-        # A path step after the first means "child of the previous match"; the
-        # first may match at any depth, and may match more than once.
-        if index > 0:
-            for child in self._generate_childs_from_element(
-                    jabelement=parent, visible=visible
-            ):
-                if matches(child):
-                    if last:
-                        found.append(child)
-                        continue
-                    self._search_path_all(nodes, index + 1, child, visible,
-                                          examined, found, depth + 1)
-                examined.append(child)
-            return
-
-        for child in self._generate_childs_from_element(
-                jabelement=parent, visible=visible
-        ):
-            kept = False
-            if matches(child):
-                if last:
+                    if not collecting:
+                        return child
                     found.append(child)
-                    kept = True
+                    recorded = True
                 else:
-                    self._search_path_all(nodes, 1, child, visible, examined,
-                                          found, depth + 1)
+                    result = self._search_path(nodes, 1, child, visible, examined,
+                                               depth + 1, found)
+                    if result is not None:
+                        examined.append(child)
+                        return result
             # Match or not, this node may have descendants that match the first
             # segment -- `//label` matches at every depth, not only the shallowest.
-            self._search_path_all(nodes, 0, child, visible, examined, found,
-                                  depth + 1)
-            if not kept:
+            result = self._search_path(nodes, 0, child, visible, examined,
+                                       depth + 1, found)
+            if result is not None:
                 examined.append(child)
+                return result
+            if not recorded:
+                examined.append(child)
+        return None
 
     def find_element(
             self, by: str = By.NAME, value: Any = None, visible: bool = False
@@ -2429,10 +2337,10 @@ class JABElement(object):
         examined = []
         found = []
         try:
-            self._search_path_all(nodes, 0, root, visible, examined, found)
+            self._search_path(nodes, 0, root, visible, examined, found=found)
         finally:
             # Everything the walk created and did not keep belongs to the search,
-            # not to the caller -- see _search_path_all.
+            # not to the caller -- see _search_path.
             for element in examined:
                 self.release_jabelement(element)
             if not relative:
