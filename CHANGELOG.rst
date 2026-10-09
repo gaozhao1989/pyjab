@@ -58,6 +58,36 @@ Added
   ``UIAutomationCore`` -- but it does not measure FlaUI-MCP's own rendering or token
   budget, and the script says so.
 
+* **``tools/check_jab_object_sites.py``, which makes the object-lifetime audit
+  mechanical.** Java Access Bridge hands out a reference on every call that returns an
+  object, and it has to be released exactly once. Two leaks have been found in this
+  codebase that way and neither was found by reading.
+
+  The set of calls that hand out a reference is derived from ``SIGNATURES`` in
+  ``pyjab/jabfixedfunc.py`` -- a symbol qualifies if its result type is ``JOBJECT64`` or
+  an argument is ``POINTER(JOBJECT64)`` -- so a symbol added to that table is covered
+  without anyone remembering. There are seven call sites, and each has a recorded
+  destination in the checker. Adding one fails CI until somebody writes down where the
+  reference goes.
+
+  What it does **not** do is prove reachability: whether a returned reference is released
+  correctly depends on the caller, which is not decidable by reading a call site. The
+  disposition is prose because it is a judgement. The set is enforced because it is not.
+
+Fixed
+~~~~~
+
+* **A second Java object leak, in ``JABDriver``'s vmid construction path.**
+  ``init_jab()`` calls ``getTopLevelObject`` to turn a vmid and a context into an hwnd,
+  and never released the object it was handed. One Java object per driver built that way
+  -- ``JABDriver(vmid=..., accessible_context=...)`` rather than by title or hwnd -- so it
+  is far quieter than the per-lookup leak fixed in 1.7.0, and it had gone unnoticed.
+
+  Found by a new check rather than by reading, which is the part worth recording: a hand
+  inventory of the calls that hand out a Java object **missed this call twice**, because
+  ``init_jab`` also calls ``getAccessibleContextFromHWND``'s wrapper and grouping by
+  enclosing function hid the second one.
+
 Changed
 ~~~~~~~
 

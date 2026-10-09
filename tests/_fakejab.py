@@ -199,6 +199,16 @@ class CountingBridge:
             return JOBJECT64(0)
         return JOBJECT64(self._take(children[index].handle))
 
+    def Windows_run(self):
+        """Arms the bridge. A no-op here, counted so the cost stays visible.
+
+        ``JABDriver.init_jab`` calls it before anything else. On Windows it is what
+        attaches the COM event source to the calling thread, and this fake delivers no
+        events, so there is nothing to arm.
+        """
+        self.calls["Windows_run"] += 1
+        return None
+
     def getTopLevelObject(self, vmid, accessible_context):
         self.calls["getTopLevelObject"] += 1
         return JOBJECT64(self._take(self.root.handle))
