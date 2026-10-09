@@ -293,3 +293,109 @@ def test_an_unresolvable_range_says_what_to_do_about_it(tmp_path):
     # diagnosable -- but it is no longer the whole of the output.
     assert "git said:" in result.stdout
     assert result.stdout.index("could not resolve") < result.stdout.index("git said:")
+
+
+# ---------------------------------------------------------------------------
+# Commits that predate the requirement
+# ---------------------------------------------------------------------------
+
+def _has_full_history() -> bool:
+    """Whether this clone contains the commit the requirement starts from.
+
+    CI checks out with ``actions/checkout``'s default depth of 1, so the baseline
+    commit and the tags are simply absent there.  That is not a defect in either
+    place: ``check_dco.py`` exempts nothing when it cannot resolve the baseline,
+    which is the correct behaviour for a fork branch, and a test that needs the
+    history has to say so rather than fail.
+
+    Found the hard way -- the first version of these tests passed locally and
+    failed all nine CI jobs.
+    """
+    return subprocess.run(
+        ["git", "rev-parse", "--verify", "--quiet",
+         dco.REQUIRED_FROM + "^{commit}"],
+        cwd=REPO_ROOT, capture_output=True, text=True,
+    ).stdout.strip() != ""
+
+
+needs_history = pytest.mark.skipif(
+    not _has_full_history(),
+    reason="this clone has no history beyond the checked-out commit "
+           "(actions/checkout defaults to depth 1), so the baseline commit and "
+           "the v1.5.0 tag are not present",
+)
+
+
+
+# ---------------------------------------------------------------------------
+
+@needs_history
+def test_a_commit_before_the_rule_is_not_a_failure():
+    """The documented command has to work on the repository it documents.
+
+    ``--base v1.5.0`` and anything else reaching back into master used to report
+    nine commits as missing a sign-off.  They are all commits pushed directly
+    before this check existed, so nothing was wrong with them and nothing could
+    be.  Reporting them as failures made the command look broken to exactly the
+    person being asked to trust it.
+    """
+    sha = dco.REQUIRED_FROM
+
+    assert dco.before_the_rule(dco.git("rev-parse", f"{sha}^").strip())
+
+
+@needs_history
+def test_the_commit_that_introduced_the_rule_is_not_exempt():
+    """It is the boundary, so it is the first commit the requirement covers.
+
+    Getting this off by one would either fail the commit that introduced the
+    check or exempt it, and the latter would quietly stop checking the first
+    commit anyone made under the new rule.
+    """
+    assert not dco.before_the_rule(dco.REQUIRED_FROM)
+
+
+def test_a_commit_after_the_rule_is_not_exempt():
+    assert not dco.before_the_rule(dco.git("rev-parse", "HEAD").strip())
+
+
+@needs_history
+def test_reaching_back_past_the_rule_still_passes(tmp_path):
+    """The end-to-end shape of the reported problem: this command, this repo."""
+    result = subprocess.run(
+        [sys.executable, str(REPO_ROOT / "tools" / "check_dco.py"),
+         "--range", f"{dco.REQUIRED_FROM}..HEAD"],
+        cwd=REPO_ROOT, capture_output=True, text=True,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "before-rule" not in result.stdout, (
+        "the range starts at the rule, so nothing in it should be exempt"
+    )
+
+
+@needs_history
+def test_the_whole_range_reports_the_exempt_ones_rather_than_hiding_them():
+    """They have to be visible: silent skipping is how a rule stops being read."""
+    result = subprocess.run(
+        [sys.executable, str(REPO_ROOT / "tools" / "check_dco.py"),
+         "--range", f"v1.5.0..{dco.REQUIRED_FROM}"],
+        cwd=REPO_ROOT, capture_output=True, text=True,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "before-rule" in result.stdout
+    assert "MISSING" not in result.stdout
+
+
+def test_an_unresolvable_baseline_exempts_nothing(monkeypatch):
+    """Failing open, in the right direction.
+
+    If the baseline is not in this clone -- a fork, an unrelated checkout -- then
+    checking everything is correct.  The cost of a false exemption is an unsigned
+    commit going unremarked; the cost of a false failure is that people stop
+    running the check.
+    """
+    monkeypatch.setattr(dco, "REQUIRED_FROM", "0" * 40)
+
+    assert not dco.before_the_rule(dco.git("rev-parse", "HEAD").strip())
