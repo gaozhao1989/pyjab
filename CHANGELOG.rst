@@ -7,8 +7,14 @@ This project adheres to `Semantic Versioning`_ and `Keep a Changelog`_.
 .. _Semantic Versioning: https://semver.org/
 .. _Keep a Changelog: https://keepachangelog.com/
 
-Unreleased
-----------
+1.8.0 (2026-10-09)
+------------------
+
+The XPath subset the tracking issue asked for, completed: positional
+predicates and ordered evaluation, comparison operators, unions, and the
+parent axis.  Plus two changes that came out of it -- no result is returned
+twice, and the new locators are exercised against the real application's
+accessibility tree rather than only against trees built to suit them.
 
 Added
 ~~~~~
