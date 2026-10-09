@@ -31,7 +31,7 @@ from pyjab.common.by import By
 from pyjab.common.exceptions import JABException
 from pyjab.common.types import jint, JOBJECT64
 from pyjab.common.win32utils import Win32Utils, physical_point
-from pyjab.common.xpathparser import XpathParser
+from pyjab.common.xpathparser import PARENT, XpathParser
 from pyjab.accessibleinfo import (
     AccessibleActions,
     AccessibleActionsToDo,
@@ -930,6 +930,29 @@ class JABElement(object):
         self.win32_utils._set_window_foreground(hwnd=self.hwnd)
         position_x, position_y = self._physical_point(*self._click_point())
         self.win32_utils._click_mouse(x=position_x, y=position_y, button="right")
+
+    def _without_duplicates(self, elements: list) -> list:
+        """One entry per node, releasing the repeats.
+
+        XPath defines a node-set as "an unordered collection of nodes without
+        duplicates", and a path can reach the same node twice: `//panel/..` reaches
+        a parent once per child, and two branches of a union can overlap. Both are
+        ordinary, and both have to collapse here.
+
+        The repeat is *released*, not dropped. The caller owns one reference to each
+        element it is handed, so a second reference to the same node would be
+        released twice -- use-after-free, which tests/_fakejab.py treats as an error
+        rather than letting it pass.
+        """
+        kept: list = []
+        for element in elements:
+            if any(self._is_same_object(element.accessible_context,
+                                        other.accessible_context)
+                   for other in kept):
+                self.release_jabelement(element)
+                continue
+            kept.append(element)
+        return kept
 
     def _physical_point(self, x: int, y: int) -> tuple:
         """JAB's point for this element, in the coordinates the mouse API wants.
@@ -1961,6 +1984,26 @@ class JABElement(object):
         info = self.xpath_parser.get_node_information(nodes[index])
         last = index == len(nodes) - 1
         role = info.get("role")
+
+        if role == PARENT:
+            # `..`, short for `parent::node()`: exactly one node, or none if the
+            # context is already the top. It steps upwards rather than fanning out,
+            # which is why it is handled here and not in the child loop further down.
+            ancestor_context = self._get_accessible_parent_from_context(
+                parent.accessible_context
+            )
+            if not ancestor_context:
+                return None
+            ancestor = JABElement(self.bridge, self.hwnd, self.vmid, ancestor_context)
+            if last:
+                return ancestor
+            found = self._search_path(nodes, index + 1, ancestor, visible, examined,
+                                      depth + 1)
+            # The ancestor came from a JAB call and belongs to the search unless it is
+            # the answer; see the ownership note above _search_path.
+            examined.append(ancestor)
+            return found
+
         predicates = info.get("predicates") or []
 
         # One counter per step, shared by every candidate this step is offered --
@@ -2066,6 +2109,25 @@ class JABElement(object):
         info = self.xpath_parser.get_node_information(nodes[index])
         last = index == len(nodes) - 1
         role = info.get("role")
+
+        if role == PARENT:
+            # `..`, short for `parent::node()`: exactly one node, or none if the
+            # context is already the top. It steps upwards rather than fanning out,
+            # which is why it is handled here and not in the child loop further down.
+            ancestor_context = self._get_accessible_parent_from_context(
+                parent.accessible_context
+            )
+            if not ancestor_context:
+                return
+            ancestor = JABElement(self.bridge, self.hwnd, self.vmid, ancestor_context)
+            if last:
+                found.append(ancestor)
+                return
+            self._search_path_all(nodes, index + 1, ancestor, visible, examined,
+                                  found, depth + 1)
+            examined.append(ancestor)
+            return
+
         predicates = info.get("predicates") or []
 
         # One counter per step, shared by every candidate this step is offered --
@@ -2354,23 +2416,12 @@ class JABElement(object):
             merged: list = []
             for branch in branches:
                 try:
-                    produced = self.find_elements_by_xpath(branch, visible=visible)
+                    merged.extend(self.find_elements_by_xpath(branch, visible=visible))
                 except JABException:
                     continue
-                for element in produced:
-                    # XPath says a node-set has no duplicates, so a node reached by
-                    # two branches appears once. The repeat is released here rather
-                    # than handed to the caller, because the caller owns one
-                    # reference to it and releasing it twice is use-after-free.
-                    if any(self._is_same_object(element.accessible_context,
-                                                kept.accessible_context)
-                           for kept in merged):
-                        self.release_jabelement(element)
-                        continue
-                    merged.append(element)
             if not merged:
                 raise JABException(f"no JABElement found by xpath '{value}'")
-            return merged
+            return self._without_duplicates(merged)
 
         relative = value.startswith(".")
         nodes = self.xpath_parser.split_nodes(value[1:] if relative else value)
@@ -2390,7 +2441,7 @@ class JABElement(object):
                 self.release_jabelement(root)
         if not found:
             raise JABException(f"no JABElement found by xpath '{value}'")
-        return found
+        return self._without_duplicates(found)
 
     def find_elements(
             self, by: str = By.NAME, value: Union[list, str, int] = None, visible: bool = False

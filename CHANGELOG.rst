@@ -13,6 +13,22 @@ Unreleased
 Added
 ~~~~~
 
+* **The parent axis, `..`.**  `//label/..` is the parent of every label, and a step
+  after it is a child of that parent: `//label/../panel` is the panel children of
+  each label's parent, not every panel below it. `//panel/../..` walks up twice.
+
+  **Results are no longer returned twice.** XPath defines a node-set as "an unordered
+  collection of nodes without duplicates", and `//panel/..` reaches the same parent
+  once per child. No earlier path could produce a duplicate -- `//a/b` yields a
+  distinct `b` each time -- so this was reachable only from the union work and now
+  from `..`. The collapse is in one place for both, and the repeat is **released**
+  rather than dropped, because the caller owns one reference to each element it is
+  handed.
+
+  An ancestor from `getAccessibleParentFromContext` is a reference like any other and
+  is released exactly once; `..` past the top of the tree yields nothing rather than
+  an error.
+
 * **Unions: `|`.**  `//push button | //label` searches both sides.
   `find_elements_by_xpath` returns each match **once**, because XPath defines a
   node-set as having no duplicates; the repeat is released rather than handed to the

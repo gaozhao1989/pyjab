@@ -189,11 +189,22 @@ matches**, tried in the order written. That is not the same as "first in documen
 order", which is what XPath would say for a set; it is what a first-match API can
 honestly offer, so it is stated rather than implied.
 
+**The parent axis.** `..` steps up one level, and a step after it is a child of the
+result, as in XPath:
+
+```python
+//label/..                 # the parent of every label
+//label/../panel           # the panel children of each of those parents
+//panel/../..              # two levels up
+```
+
+A result is never returned twice. XPath defines a node-set as having **no
+duplicates**, and `//panel/..` reaches the same parent once per child.
+
 `[0]`, `[position()=2]` and `[last()]` are rejected with a parse error — the first
-because positions are 1-based, the others because they need an expression evaluator.
-Going the other way — `..` for the parent — is **not** supported, and is rejected
-rather than answered, which is the point: a locator that cannot work should say so,
-not report that the element is missing.
+because positions are 1-based, the others because they need an expression evaluator,
+and are rejected rather than answered: a locator that cannot work should say so, not
+report that the element is missing.
 
 ## JABElement
 
