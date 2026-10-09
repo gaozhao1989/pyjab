@@ -143,17 +143,93 @@ def describe_target_dpi(pid: int) -> dict:
     return facts
 
 
+#: Pseudo-handles for SetThreadDpiAwarenessContext.  Passing -4 selects per-monitor
+#: v2 for the calling thread only, which is what makes the real display DPI
+#: readable from a process that is itself unaware.
+DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = -4
+MDT_EFFECTIVE_DPI = 0
+MONITOR_DEFAULTTONEAREST = 2
+
+
+def display_dpi(hwnd: int) -> dict:
+    """The display's real DPI, read from a thread that is temporarily aware.
+
+    Both ``GetDpiForWindow`` and ``GetDpiForMonitor`` answer **96** when the calling
+    process is DPI unaware -- Microsoft documents this for each of them, and it
+    says "DPI awareness" rather than "the display" in the return table.  So an
+    unaware process cannot see a 150% display by asking either one, and this script
+    previously computed its scale from ``GetDpiForWindow()`` and therefore reported
+    1.0 on every machine where pyjab is unaware -- which is every machine, since
+    pyjab declares no awareness at all.
+
+    The value that matters is the display's real DPI, and the only way to get it
+    from an unaware process is to become aware for the length of the call.
+    ``SetThreadDpiAwarenessContext`` changes the calling thread only, so this reads
+    the answer and hands the thread back exactly as it found it.  That is the
+    "sub-process DPI awareness" pattern from Microsoft's mixed-mode DPI guidance.
+
+    See https://learn.microsoft.com/en-us/windows/win32/hidpi/high-dpi-improvements-for-desktop-applications
+    """
+    user32 = ctypes.windll.user32
+    facts: dict = {}
+
+    try:
+        monitor = user32.MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST)
+    except Exception as exc:  # pragma: no cover - platform dependent
+        return {"display DPI": f"unavailable ({exc})"}
+
+    previous = None
+    try:
+        previous = user32.GetThreadDpiAwarenessContext()
+        user32.SetThreadDpiAwarenessContext(
+            ctypes.c_void_p(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)
+        )
+    except Exception as exc:  # pragma: no cover - Windows 10 1607 and older
+        facts["display DPI"] = f"unavailable ({exc})"
+        return facts
+
+    try:
+        dpi_x, dpi_y = ctypes.c_uint(), ctypes.c_uint()
+        hresult = ctypes.windll.shcore.GetDpiForMonitor(
+            ctypes.c_void_p(monitor), MDT_EFFECTIVE_DPI,
+            ctypes.byref(dpi_x), ctypes.byref(dpi_y),
+        )
+        if hresult == 0:
+            facts["display DPI"] = dpi_x.value
+            facts["display scale"] = f"{dpi_x.value / 96.0:.4f}"
+        else:
+            facts["display DPI"] = f"failed (HRESULT {hresult:#x})"
+    except Exception as exc:  # pragma: no cover - platform dependent
+        facts["display DPI"] = f"unavailable ({exc})"
+    finally:
+        try:
+            user32.SetThreadDpiAwarenessContext(previous)
+        except Exception:  # pragma: no cover - restoring must not raise
+            pass
+
+    return facts
+
+
 def describe_window(hwnd: int) -> dict:
-    """The window's DPI, and its rect as Win32 sees it."""
+    """The window's rect as Win32 sees it, and what this process can see of the DPI.
+
+    Everything here answers in the calling process's own DPI context, which is the
+    point: these are the coordinates and the scale that ``SetCursorPos`` will use.
+    ``display_dpi`` separately reports the display's real DPI, which is not the
+    same number and is not visible from here.
+    """
     user32 = ctypes.windll.user32
     facts: dict = {}
 
     try:
         dpi = user32.GetDpiForWindow(hwnd)
+        # 96 for an unaware window by definition, not because the display is at 100%.
         facts["GetDpiForWindow()"] = dpi
-        facts["implied scale"] = f"{dpi / 96.0:.4f}"
+        facts["implied scale as this process sees it"] = f"{dpi / 96.0:.4f}"
     except Exception as exc:  # pragma: no cover - Windows 10 1607 and older
         facts["GetDpiForWindow()"] = f"unavailable ({exc})"
+
+    facts.update(display_dpi(hwnd))
 
     class RECT(ctypes.Structure):
         _fields_ = [
@@ -320,11 +396,20 @@ def main() -> int:
         for key in ("width ratio (win32 / JAB)", "height ratio (win32 / JAB)"):
             if key in measurement:
                 print(f"  {key}: {measurement[key]}")
+        print("\nwhat this process can see of the display")
+        for key in ("GetDpiForWindow()", "implied scale as this process sees it"):
+            if key in measurement["win32"]:
+                print(f"  {key}: {measurement['win32'][key]}")
 
-        scale = measurement["win32"].get("GetDpiForWindow()", 96) / 96.0
-        if isinstance(scale, str) or not scale:
-            scale = 1.0
-        print(f"\nmonitor scale from GetDpiForWindow: {scale:g}")
+        # The display's real scale, not the one this unaware process is allowed to
+        # see -- see display_dpi(). Reading it from GetDpiForWindow() made this 1.0
+        # on every machine, so the scaled-position half of the check never ran.
+        display = measurement["win32"].get("display DPI", 96)
+        scale = display / 96.0 if isinstance(display, (int, float)) and display else 1.0
+        print(f"\ndisplay scale, read from a temporarily aware thread: {scale:g}")
+        if scale != 1.0:
+            print("  This process is unaware, so GetDpiForWindow() above reports 96 by")
+            print("  definition -- it is not evidence that the display is at 100%.")
 
         print("\nthe decisive check")
         outcome = decisive_check(driver, scale)

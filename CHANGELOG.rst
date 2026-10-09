@@ -63,6 +63,27 @@ Removed
 Fixed
 ~~~~~
 
+* **``tools/verify_dpi.py`` could not see a scaled display at all.**  It computed the
+  monitor scale from ``GetDpiForWindow()``.  Microsoft documents that call as
+  returning **96** when the window is DPI unaware — "the answer will depend on the
+  DPI awareness mode of the HWND", and the Unaware row is a flat 96.
+  ``GetDpiForMonitor`` is the same: its table gives 96 for ``PROCESS_DPI_UNAWARE``
+  and the display's real DPI only for per-monitor aware callers.
+
+  pyjab declares no DPI awareness, so the process is unaware, so the reading was
+  **96 on every machine** and the scale was **1.0 everywhere**.  The scaled-position
+  half of the decisive check therefore never ran, and the script reported "nothing
+  to fix" while having tested only one of its two positions.
+
+  It now reads the display's real DPI through ``SetThreadDpiAwarenessContext``,
+  which changes the calling thread only, and hands the thread back as it found it —
+  the "sub-process DPI awareness" pattern from Microsoft's mixed-mode DPI guidance.
+  ``GetDpiForWindow()`` is still reported, labelled as what this process can see,
+  which is the number ``SetCursorPos`` will actually be interpreted against.
+
+Fixed
+~~~~~
+
 * **``tools/verify_dpi.py`` could not tell the two explanations apart.**
   ``GetProcessDpiAwareness()`` was called with ``None``, which asks about *this*
   process. Issue #62 turns on **two**: the target decides whether the coordinates
