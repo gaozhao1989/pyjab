@@ -274,6 +274,14 @@ jobs:
       - name: Check that every documented API exists
         run: python tools/check_documented_api.py
 
+      # The check this exists for was found by hand at the 1.7.0 release: entries
+      # added after v1.6.3 went into the 1.6.3 section, so the repository described a
+      # release the sdist did not match. Comparing against the tag is the obvious
+      # fix and does not work here -- actions/checkout is depth 1, with no tags --
+      # so the expected values live in tools/released_changelog_sections.json.
+      - name: A released changelog section must not change
+        run: python tools/check_changelog_immutable.py
+
   # ---------------------------------------------------------------------------
   # Build the distributions and validate the metadata, so a broken release is
   # caught on the PR rather than at tag time.
