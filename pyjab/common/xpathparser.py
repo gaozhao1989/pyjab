@@ -12,6 +12,34 @@ class XpathParser(object):
         self.logger = Logger("pyjab")
 
     @staticmethod
+    def split_union(xpath: str) -> list:
+        """Split an xpath on `|`, the union operator, outside quotes.
+
+        A union is a node-set in XPath -- "an unordered collection of nodes without
+        duplicates" -- so the callers have to merge what the branches return rather
+        than leaving the duplicates in. A `|` inside a quoted attribute value is part
+        of the value, which is the same rule `split_nodes` applies to `/`.
+        """
+        branches = []
+        current = []
+        quote = ""
+        for char in xpath:
+            if quote:
+                if char == quote:
+                    quote = ""
+                current.append(char)
+            elif char in "\"'":
+                quote = char
+                current.append(char)
+            elif char == "|":
+                branches.append("".join(current).strip())
+                current = []
+            else:
+                current.append(char)
+        branches.append("".join(current).strip())
+        return [b for b in branches if b]
+
+    @staticmethod
     def split_nodes(xpath: str) -> list:
         """Split an xpath into its node path.
 

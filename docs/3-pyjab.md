@@ -176,11 +176,24 @@ Everything else is compared as a **string**, which is what XPath does with strin
 `[@name < 'p2']` is lexicographic, and `p10` sorts before `p2`. `contains()` remains
 available with `=` only.
 
+**Unions.** `|` searches both sides:
+
+```python
+//push button | //label
+//internal frame[@name='A'] | //internal frame[@name='B']
+```
+
+`find_elements_by_xpath` returns each match **once** — XPath defines a node-set as
+having no duplicates — and `find_element_by_xpath` takes the **first branch that
+matches**, tried in the order written. That is not the same as "first in document
+order", which is what XPath would say for a set; it is what a first-match API can
+honestly offer, so it is stated rather than implied.
+
 `[0]`, `[position()=2]` and `[last()]` are rejected with a parse error — the first
 because positions are 1-based, the others because they need an expression evaluator.
-Going the other way — `..` for the parent — and unions (`|`) are **not** supported.
-Those are rejected rather than answered, which is the point: a locator that cannot
-work should say so, not report that the element is missing.
+Going the other way — `..` for the parent — is **not** supported, and is rejected
+rather than answered, which is the point: a locator that cannot work should say so,
+not report that the element is missing.
 
 ## JABElement
 

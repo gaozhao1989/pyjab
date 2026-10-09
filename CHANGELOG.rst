@@ -13,6 +13,15 @@ Unreleased
 Added
 ~~~~~
 
+* **Unions: `|`.**  `//push button | //label` searches both sides.
+  `find_elements_by_xpath` returns each match **once**, because XPath defines a
+  node-set as having no duplicates; the repeat is released rather than handed to the
+  caller, who would then release it twice. `find_element_by_xpath` takes the **first
+  branch that matches**, in the order written -- which is not "first in document
+  order", and is documented as the difference rather than glossed over. A `|` inside
+  a quoted attribute value is part of the value, the same rule `split_nodes` applies
+  to `/`.
+
 * **Comparison operators: `!=`, `<`, `<=`, `>` and `>=`.**  An attribute the element
   reports as an integer is compared **numerically**, so `[@indexinparent > 9]` finds
   index 10 -- compared as strings, `"10"` sorts before `"9"` and the answer would be
