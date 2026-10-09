@@ -74,6 +74,27 @@ Added
   correctly depends on the caller, which is not decidable by reading a call site. The
   disposition is prose because it is a judgement. The set is enforced because it is not.
 
+* **``tools/soak.py``, which measures whether the library gets slower over hours.**
+  The roadmap's acceptance criterion for issue #43 is "two hours continuous without
+  degradation" and there was no way to check it: no script, no number, nothing to
+  compare against.
+
+  It attaches once, runs a fixed workload against the same window, and samples the
+  workload's duration and the Java process's resident memory. Then it compares the first
+  quarter of the latency samples with the last, as medians rather than endpoints -- one
+  GC pause at minute three must not decide the answer -- and reports the least-squares
+  slope alongside the ratio, because the two answer different questions: how much worse
+  it ended up, and how steadily.
+
+  It measures **the symptom, not a diagnosis**. #43 reads "gets slower until it stalls",
+  and a rising curve has several possible causes; the script does not distinguish them
+  and says so in its output, in both directions. A stable run is explicitly **not** a
+  proof that nothing leaks -- two hours catches a leak costing milliseconds a minute, not
+  one costing a byte a lookup.
+
+  It attaches rather than launching, so it never terminates the application it is
+  measuring.
+
 Fixed
 ~~~~~
 
