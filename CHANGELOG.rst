@@ -95,6 +95,21 @@ Added
   It attaches rather than launching, so it never terminates the application it is
   measuring.
 
+* **``SUPPORT.md``: what is free, what is not, and what to include in a report.** The
+  README said where to write and nothing about what happens next. This sets out the two
+  channels, the things that are deliberately not free -- integration work, a response
+  time commitment, custom development, anything under an NDA -- and, most usefully, the
+  five things a bug report needs. Almost every report that cannot be acted on is missing
+  the same ones.
+
+  It also says the free channel is best effort with **no response time promised**, which
+  is true and which the README implied nothing about either way. It is a one-person
+  project; an invented service level would be worse than none.
+
+  The bug report checklist points at ``pyjab-inspect``, since a control that cannot be
+  found is the most common report and ``find`` reports which step of the locator stopped
+  matching.
+
 Fixed
 ~~~~~
 
