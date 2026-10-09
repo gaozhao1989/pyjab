@@ -201,3 +201,104 @@ def test_the_scale_no_longer_comes_from_the_unaware_reading():
         "an unaware process cannot read a scaled display without switching context"
     )
     assert "GetThreadDpiAwarenessContext" in source, "and it has to switch back"
+
+
+# ---------------------------------------------------------------------------
+# The aware-thread experiment
+# ---------------------------------------------------------------------------
+
+class _Callable:
+    """A stand-in that tolerates ctypes assigning argtypes and restype to it.
+
+    The tool declares those, because without them ctypes truncates a 64-bit handle
+    to 32 bits -- see AGENTS.md 2.8. A plain bound method refuses the assignment, so
+    the fake has to be an object that accepts attributes and can be called.
+    """
+
+    def __init__(self, function):
+        self._function = function
+        self.argtypes = None
+        self.restype = None
+
+    def __call__(self, *args):
+        return self._function(*args)
+
+
+class AwarenessRecorder:
+    """A user32 that records SetThreadDpiAwarenessContext and hands back a handle."""
+
+    def __init__(self, previous=99):
+        self.previous = previous
+        self.set_calls = []
+        self.GetThreadDpiAwarenessContext = _Callable(lambda: self.previous)
+        self.SetThreadDpiAwarenessContext = _Callable(self._set)
+
+    def _set(self, context):
+        self.set_calls.append(context)
+        return True
+
+
+def test_the_experiment_puts_the_awareness_back(fake_windll):
+    """Not restoring it would leave the rest of the run in a different context.
+
+    Everything after this point -- including the verdict -- reads coordinates, so
+    leaving the thread aware would make the second half of the output describe a
+    process that no longer exists.
+    """
+    recorder = AwarenessRecorder(previous=99)
+
+    class Windll:
+        user32 = recorder
+
+    fake_windll(Windll())
+
+    with tool.thread_dpi_awareness(tool.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2):
+        pass
+
+    assert len(recorder.set_calls) == 2, recorder.set_calls
+    # c_void_p(-4).value is the unsigned 64-bit form, which is what the API wants.
+    expected = ctypes.c_void_p(tool.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2).value
+    assert recorder.set_calls[0].value == expected
+    assert recorder.set_calls[-1].value == 99, "the previous context has to come back"
+
+
+def test_the_experiment_restores_even_when_the_body_raises(fake_windll):
+    recorder = AwarenessRecorder(previous=7)
+
+    class Windll:
+        user32 = recorder
+
+    fake_windll(Windll())
+
+    with pytest.raises(ValueError):
+        with tool.thread_dpi_awareness(tool.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2):
+            raise ValueError("the click blew up")
+
+    assert recorder.set_calls[-1].value == 7
+
+
+def test_the_decisive_check_can_be_run_either_way():
+    """The parameter that makes the reproduction possible."""
+    import inspect
+
+    signature = inspect.signature(tool.decisive_check)
+
+    assert "aware" in signature.parameters
+    assert signature.parameters["aware"].default is False, (
+        "the unaware run is the default; the aware one is the experiment"
+    )
+
+
+def test_the_verdict_can_recognise_the_reproduction():
+    """The branch that turns two runs into an answer, checked by reading it.
+
+    It cannot be exercised without Windows, so what is pinned is that it exists and
+    that it distinguishes "aware misses" from "aware never ran" -- reporting #62
+    reproduced because a second run failed for an unrelated reason would be the
+    worst outcome this script could produce.
+    """
+    source = (REPO_ROOT / "tools" / "verify_dpi.py").read_text(encoding="utf-8")
+
+    assert "#62 REPRODUCED" in source
+    assert "decisive_check(driver, scale, aware=True)" in source
+    assert "aware_scaled" in source, "the scaled-position outcome is part of the call"

@@ -38,6 +38,7 @@ fix it -- please paste them into issue #62.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import ctypes
 import os
 import shutil
@@ -234,6 +235,9 @@ def display_dpi(hwnd: int) -> dict:
 
     previous = None
     try:
+        user32.GetThreadDpiAwarenessContext.restype = ctypes.c_void_p
+        user32.SetThreadDpiAwarenessContext.argtypes = [ctypes.c_void_p]
+        user32.SetThreadDpiAwarenessContext.restype = ctypes.c_void_p
         previous = user32.GetThreadDpiAwarenessContext()
         user32.SetThreadDpiAwarenessContext(
             ctypes.c_void_p(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)
@@ -257,7 +261,7 @@ def display_dpi(hwnd: int) -> dict:
         facts["display DPI"] = f"unavailable ({exc})"
     finally:
         try:
-            user32.SetThreadDpiAwarenessContext(previous)
+            user32.SetThreadDpiAwarenessContext(ctypes.c_void_p(previous))
         except Exception:  # pragma: no cover - restoring must not raise
             pass
 
@@ -358,7 +362,34 @@ def measure(driver) -> dict:
     return result
 
 
-def decisive_check(driver, scale: float) -> dict:
+@contextlib.contextmanager
+def thread_dpi_awareness(context: int):
+    """Run a block with this thread's DPI awareness switched, then put it back.
+
+    Only the calling thread is affected, so the application is untouched and the
+    switch is undone in a finally. This is what lets one run reproduce issue #62 on
+    demand: an unaware process has its mouse coordinates virtualised, so clicking at
+    a logical position lands; the same click issued from an aware thread is taken as
+    physical, and then it does not.
+    """
+    user32 = ctypes.windll.user32
+    # Signatures declared, per AGENTS.md 2.8: without restype ctypes assumes c_int
+    # and truncates the returned handle to 32 bits, and without argtypes it masks
+    # the argument the same way. The pseudo-handles are small negatives so it
+    # happens to work, and "happens to work" is how the next one is written.
+    user32.GetThreadDpiAwarenessContext.restype = ctypes.c_void_p
+    user32.SetThreadDpiAwarenessContext.argtypes = [ctypes.c_void_p]
+    user32.SetThreadDpiAwarenessContext.restype = ctypes.c_void_p
+
+    previous = user32.GetThreadDpiAwarenessContext()
+    user32.SetThreadDpiAwarenessContext(ctypes.c_void_p(context))
+    try:
+        yield
+    finally:
+        user32.SetThreadDpiAwarenessContext(ctypes.c_void_p(previous))
+
+
+def decisive_check(driver, scale: float, aware: bool = False) -> dict:
     """Click the coupled button and see whether the click landed.
 
     Returns which coordinate space the click had to be in for the state to change.
@@ -389,7 +420,13 @@ def decisive_check(driver, scale: float) -> dict:
         # can run this, at the point of the decisive click, after the JDK had
         # compiled and the measurements had been taken.
         driver.win32utils._set_window_foreground(hwnd=disable.hwnd)
-        driver.win32utils._click_mouse(x=x, y=y)
+        # Everything below this line is issued from the thread whose awareness the
+        # caller asked for; SetCursorPos is interpreted in that context.
+        if aware:
+            with thread_dpi_awareness(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2):
+                driver.win32utils._click_mouse(x=x, y=y)
+        else:
+            driver.win32utils._click_mouse(x=x, y=y)
         time.sleep(0.5)
         changed = not middle_enabled()
         outcome[label] = "the click landed" if changed else "nothing happened"
@@ -465,14 +502,39 @@ def main() -> int:
             print("  This process is unaware, so GetDpiForWindow() above reports 96 by")
             print("  definition -- it is not evidence that the display is at 100%.")
 
-        print("\nthe decisive check")
+        print("\nthe decisive check, as this process is now (DPI unaware)")
         outcome = decisive_check(driver, scale)
         for key, value in outcome.items():
+            print(f"  {key}: {value}")
+
+        # The same clicks again, from a thread that IS DPI aware. This is the half
+        # that reproduces issue #62: the target's coordinates are logical because
+        # the target is unaware, and an aware caller has its mouse coordinates
+        # taken as physical, so the two stop agreeing.
+        print("\nthe same check from a DPI-aware thread (issue #62's configuration)")
+        aware_outcome = decisive_check(driver, scale, aware=True)
+        for key, value in aware_outcome.items():
             print(f"  {key}: {value}")
 
         print("\n" + "=" * 68)
         print("VERDICT")
         print("=" * 68)
+        aware_raw = aware_outcome.get("clicked at the JAB position") == "the click landed"
+        aware_scaled = any(
+            key.startswith("clicked at the JAB position x")
+            and value == "the click landed"
+            for key, value in aware_outcome.items()
+        )
+
+        if landed_raw and not aware_raw:
+            print("  #62 REPRODUCED, and the shape of it is now clear:")
+            print("  unaware, the JAB position lands; DPI aware, it does not"
+                  + (" and the scaled position does." if aware_scaled else "."))
+            print("  So the mismatch is not about the display or the target alone --")
+            print("  it is about the two processes being in different coordinate")
+            print("  spaces. Please paste everything above into #62.")
+            return 1
+
         landed_raw = outcome.get("clicked at the JAB position") == "the click landed"
         landed_scaled = any(
             key.startswith("clicked at the JAB position x") and value == "the click landed"
