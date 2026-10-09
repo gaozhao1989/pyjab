@@ -302,3 +302,98 @@ def test_the_verdict_can_recognise_the_reproduction():
     assert "#62 REPRODUCED" in source
     assert "decisive_check(driver, scale, aware=True)" in source
     assert "aware_scaled" in source, "the scaled-position outcome is part of the call"
+
+
+# ---------------------------------------------------------------------------
+# The reproduction verdict
+# ---------------------------------------------------------------------------
+
+#: The two outcomes exactly as the 150% run produced them, which is the run that
+#: reproduced #62 and then crashed printing the verdict.
+UNAWARE_RUN = {
+    "JAB position (as reported)": (278, 109),
+    "clicked at the JAB position": "the click landed",
+}
+
+AWARE_RUN = {
+    "JAB position (as reported)": (278, 109),
+    "clicked at the JAB position": "nothing happened",
+    "scaled position": (417, 164),
+    "clicked at the JAB position x1.5": "the click landed",
+}
+
+
+def test_the_150_percent_run_is_recognised_as_the_reproduction():
+    """The crash, and the result, from the same run.
+
+    The verdict branch was written inside main() and read ``landed_raw`` before the
+    line that assigned it, so the one run that reproduced #62 ended in
+    ``UnboundLocalError`` instead of an answer. Nothing could call it, so nothing
+    caught it. This is the same input, now callable.
+    """
+    lines = tool.reproduction(UNAWARE_RUN, AWARE_RUN)
+
+    assert lines, "this is the reproduction; it has to say so"
+    assert "#62 REPRODUCED" in lines[0]
+    assert any("scaled by the display scale" in line for line in lines)
+
+
+def test_it_says_the_scaled_position_landed():
+    lines = tool.reproduction(UNAWARE_RUN, AWARE_RUN)
+
+    assert any("scaled" in line and "does" in line for line in lines)
+
+
+def test_a_scaled_attempt_that_also_failed_is_flagged():
+    """Because then the numbers above need reading before anything is concluded."""
+    aware = dict(AWARE_RUN)
+    aware["clicked at the JAB position x1.5"] = "nothing happened"
+
+    lines = tool.reproduction(UNAWARE_RUN, aware)
+
+    assert any("read the numbers above" in line for line in lines)
+
+
+def test_both_landing_is_not_a_reproduction():
+    """The run before this one, on the same display.
+
+    Both passes landing means the geometry is fine here and #62 needs another
+    explanation -- reporting a reproduction then would be the worst output this
+    script could produce.
+    """
+    aware = dict(AWARE_RUN)
+    aware["clicked at the JAB position"] = "the click landed"
+
+    assert tool.reproduction(UNAWARE_RUN, aware) == []
+
+
+def test_neither_landing_is_not_a_reproduction():
+    unaware = dict(UNAWARE_RUN)
+    unaware["clicked at the JAB position"] = "nothing happened"
+
+    assert tool.reproduction(unaware, AWARE_RUN) == []
+
+
+def test_the_verdict_assigns_before_it_reads():
+    """The UnboundLocalError, pinned by reading the order in main().
+
+    A source-order assertion is a poor test and this one earns its place: the bug
+    was exactly a source-order bug in a function no test could reach, and the
+    extracted function above is the real fix.
+    """
+    source = (REPO_ROOT / "tools" / "verify_dpi.py").read_text(encoding="utf-8")
+    body = source[source.index("def main() -> int:"):]
+
+    assert body.index("landed_raw = outcome.get") < body.index("reproduction(outcome"), (
+        "reproduction() reads the unaware outcome; it has to be assigned first"
+    )
+
+
+def test_the_verdict_is_no_longer_only_inside_main():
+    """So that the next edit to it can be called from a test at all."""
+    import inspect
+
+    assert callable(tool.reproduction)
+    assert list(inspect.signature(tool.reproduction).parameters) == [
+        "outcome", "aware_outcome"
+    ]

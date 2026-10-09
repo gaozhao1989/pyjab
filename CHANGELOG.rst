@@ -63,6 +63,21 @@ Removed
 Fixed
 ~~~~~
 
+* **The run that reproduced #62 ended in a traceback instead of a verdict.**
+  ``main()`` read ``landed_raw`` in the reproduction branch before the line that
+  assigns it, so the one pass whose answer mattered raised ``UnboundLocalError``
+  after printing the numbers — and the numbers were the reproduction.
+
+  The decision is now a function, ``reproduction(outcome, aware_outcome)``, with
+  four inputs and three outcomes, where a test can call it. The test uses the two
+  outcome dictionaries exactly as that run produced them. A source-order assertion
+  guards the remaining reads in ``main()``; it is a poor kind of test and it earns
+  its place here, because the bug was exactly a source-order bug in a function no
+  test could reach.
+
+Fixed
+~~~~~
+
 * **``tools/verify_dpi.py`` now runs the decisive check twice, and can reproduce
   #62 on demand.**  A 150% run on a display with an **unaware** target and an
   **unaware** pyjab reported the JAB position landing — which is the result to
