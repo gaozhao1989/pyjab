@@ -155,6 +155,14 @@ def test_the_workload_exercises_more_than_one_traversal():
 
 
 def test_it_refuses_to_run_off_windows(capsys, monkeypatch):
+    """The platform is forced rather than assumed.
+
+    The first version of this test did not force it, so it passed on macOS and Linux and
+    failed on Windows -- where ``main()`` went on to attach to a window that does not
+    exist. A test about the non-Windows path has to say which platform it is testing.
+    """
+    monkeypatch.setattr(sys, "platform", "darwin")
     monkeypatch.setattr(sys, "argv", ["soak.py", "--title", "X", "--minutes", "0.1"])
+
     assert soak.main() == 2
     assert "needs Windows" in capsys.readouterr().err
