@@ -369,11 +369,57 @@ That promise is where "do not break public API in a patch" comes from.
 Releases
 --------
 
-Releases are cut from ``master``. The process is:
+Releases are cut from ``master``. A version that has reached PyPI can never be
+withdrawn or overwritten, so everything that can fail is checked before the tag is
+pushed.
 
-1. bump ``__version__`` in ``pyjab/__init__.py``;
-2. add an entry to ``CHANGELOG.rst``;
-3. tag and push:
+Pre-flight
+~~~~~~~~~~
+
+Do not tag until each of these is what it should be.
+
+``master`` is clean and pushed, and ``__version__`` in ``pyjab/__init__.py`` is the
+new version **in double quotes** -- ``release.yml`` reads it with a regex that
+requires them.
+
+``CHANGELOG.rst`` has an entry for it, dated in **UTC**. The 1.6.2 entry used a local
+date and was a day ahead of the tag.
+
+The released sections are untouched:
+
+.. code-block:: console
+
+   $ python tools/check_changelog_immutable.py
+
+Nothing is already published under that number. All three must come back empty or
+404:
+
+.. code-block:: console
+
+   $ curl -s -o /dev/null -w '%{http_code}\n' https://pypi.org/pypi/pyjab/VERSION/json
+   $ gh release view vVERSION --repo gaozhao1989/pyjab
+   $ git tag -l vVERSION
+
+And the checks that run anywhere pass:
+
+.. code-block:: console
+
+   $ python -m pytest tests/
+   $ python tools/check_documented_api.py
+   $ python tools/check_license_consistency.py
+   $ python tools/check_changelog_immutable.py
+
+The other guards need Windows, a DLL or an extra tool, so CI is the authority for
+them; they are listed under `What CI runs`_ above.
+
+Then
+~~~~
+
+1. bump the version, write the changelog entry, and open a pull request. The bump is
+   reviewed like anything else, and **CI has to be green before it merges** -- the
+   required checks on ``master`` are named after the jobs, so a red one blocks the
+   merge rather than being noticed later;
+2. tag the merged commit and push the tag:
 
    .. code-block:: console
 
@@ -383,6 +429,44 @@ Releases are cut from ``master``. The process is:
 ``.github/workflows/release.yml`` then verifies that the tag matches
 ``__version__``, builds, publishes to PyPI via Trusted Publishing, and creates a
 GitHub release.
+
+After the tag
+~~~~~~~~~~~~~
+
+Freeze the new section so that nothing can edit it later without CI saying so:
+
+.. code-block:: console
+
+   $ python tools/check_changelog_immutable.py --record VERSION
+
+It reads the section **out of the tag**, not the working copy, so what gets frozen is
+what shipped. That is why it is a separate commit *after* the release: the tag has to
+exist first. Commit the changed ``tools/released_changelog_sections.json``.
+
+Then confirm what was actually published, by installing it:
+
+.. code-block:: console
+
+   $ python -m venv /tmp/check
+   $ /tmp/check/bin/python -m pip install "pyjab==VERSION"
+   $ /tmp/check/bin/python -c "import pyjab; print(pyjab.__version__)"
+
+If the tag is wrong
+~~~~~~~~~~~~~~~~~~~
+
+**A version that has reached PyPI is immutable.** Never move its tag: the tag is what
+the sdist was built from, and pointing it somewhere else makes this repository
+describe a release that never happened. The changelog guard exists for the same
+reason and will fail if a released section is edited.
+
+If a tag was pushed but **nothing was published**, it can be moved -- but the ``v*``
+tags are covered by a repository ruleset, so that takes a deliberate unlock and
+re-lock, and the procedure is in the maintainer's local release notes rather than
+here. This file is published, and a how-to for disabling a protection is a how-to for
+disabling a protection.
+
+If anything reached PyPI, cut a **patch** release instead. That is what PATCH is for,
+and `Version numbers`_ above says when the bump should be larger than that.
 
 .. _GitHub: https://github.com/gaozhao1989/pyjab
 .. _semantic versioning: https://semver.org/
