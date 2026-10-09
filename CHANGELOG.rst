@@ -13,6 +13,19 @@ Unreleased
 Added
 ~~~~~
 
+* **The new locators are exercised against the real application's tree, not only
+  against hand-built ones.**  `tests/test_xpath_real_tree.py` starts the Swing
+  application the GUI suite drives, asks it for its accessibility tree, loads that
+  into the fake bridge and runs the locators against **it**.  The accessibility layer
+  is a JVM-side API, identical on every platform, so the tree is the one Java Access
+  Bridge reports on Windows; only the transport is faked.
+
+  That catches what a hand-built tree cannot: a role spelled the way pyjab expects
+  and the application does not use, a name that is not the accessibility name, a
+  locator that assumes a depth the real hierarchy does not have.  It needs a JDK and
+  skips without one -- including when `which` finds macOS's `/usr/bin/java` stub,
+  which is not a JDK and exits non-zero.
+
 * **The parent axis, `..`.**  `//label/..` is the parent of every label, and a step
   after it is a child of that parent: `//label/../panel` is the panel children of
   each label's parent, not every panel below it. `//panel/../..` walks up twice.
