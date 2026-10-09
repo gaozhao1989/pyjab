@@ -233,8 +233,10 @@ What CI runs
 * a check that what the repository declares matches what it contains: that every
   runtime dependency is permissively licensed
   (``tools/check_dependency_licences.py``), that the licence pyjab declares is the
-  one it ships (``tools/check_license_consistency.py``), and that every pyjab API
-  the documentation names actually exists (``tools/check_documented_api.py``);
+  one it ships (``tools/check_license_consistency.py``), that every pyjab API the
+  documentation and the tools name actually exists
+  (``tools/check_documented_api.py``), and that no released changelog section has
+  changed since it was published (``tools/check_changelog_immutable.py``);
 * a distribution build with metadata checks, including a guard that no stale
   copy of the package was packaged.
 
@@ -244,6 +246,44 @@ The sixth runs on pull requests only: **every commit must be signed off**
 why the sign-off is asked for.
 
 CI has no interactive desktop session, so the GUI suite does not run there.
+
+Changing the test matrix
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Removing a Python version or an OS from the matrix leaves a required status check
+that nothing will ever report**, and every pull request after that waits for ever on
+``Expected -- Waiting for status to be reported``.
+
+The reason is that the required checks name the matrix entries literally. The job is
+called ``tests (${{ matrix.os }}, py${{ matrix.python-version }})``, so the list held
+by branch protection contains strings like ``tests (ubuntu-latest, py3.9)``. Drop 3.9
+from the matrix and that string is required but never produced.
+
+**Adding** a version does not do this: the new job runs and reports normally, it is
+simply not required, so a failure there will not block a merge. That is a quieter
+problem and worth avoiding too.
+
+So change the matrix and the required list together. Read the current list:
+
+.. code-block:: console
+
+   $ gh api repos/gaozhao1989/pyjab/branches/master/protection \
+       --jq '.required_status_checks.contexts[]'
+
+Then set the whole new list -- ``PUT`` on ``.../required_status_checks/contexts``
+**replaces** it, where ``POST`` on the same path appends and ``PATCH`` on
+``.../required_status_checks`` also replaces. Settings -> Branches -> ``master`` ->
+Edit does the same by hand and is the safer first attempt.
+
+Every name that should still be required has to be in the command, because it
+replaces rather than appends: a short list **silently drops checks** instead of
+failing.
+
+This has not happened yet. It is written down because the failure is silent and
+delayed -- the change looks fine, CI is green on that pull request, and the *next*
+one hangs. Keep the matrix, the required list, and the Python versions
+``pyproject.toml`` advertises in its classifiers and ``requires-python``, all in
+step.
 
 Documentation
 -------------
