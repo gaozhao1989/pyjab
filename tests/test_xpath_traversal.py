@@ -314,3 +314,207 @@ def test_a_normal_tree_is_not_affected_by_the_ceiling():
     element, _ = bind(root)
 
     assert element.find_element_by_name("target").name == "target"
+
+
+# ---------------------------------------------------------------------------
+# find_elements_by_xpath: the contract, the order, and the cost
+# ---------------------------------------------------------------------------
+
+def test_nothing_matching_raises_whatever_the_path_length():
+    """It used to depend on where in the path the search failed.
+
+    ``find_elements_by_xpath`` checked whether its working list was empty at the
+    *top* of each path segment, so ``//push button`` returned ``[]`` while
+    ``//push button/label`` -- the same failure, one segment earlier in the walk --
+    raised. The rest of the family raises, and get_children() is the documented
+    exception; this was neither.
+    """
+    element, _ = bind(node("frame", node("panel", node("label", name="hello"),
+                                         name="outer"), name="app"))
+
+    for path in ["//push button", "//push button/label", "//panel/push button",
+                 "//panel/label/push button"]:
+        with pytest.raises(JABException):
+            element.find_elements_by_xpath(path)
+
+
+def test_matching_still_returns_every_match():
+    element, _ = bind(node("frame",
+                           node("label", name="a"),
+                           node("panel", node("label", name="b")),
+                           name="app"))
+
+    found = element.find_elements_by_xpath("//label")
+
+    assert sorted(f.name for f in found) == ["a", "b"]
+
+
+def test_matches_come_back_in_document_order():
+    """A node before its own descendants, which is what XPath promises.
+
+    The traversal this replaced used ``_generate_all_childs``, which yields a node
+    *after* its whole subtree -- post-order -- so ``//label`` returned an inner
+    label before the outer one that contains it.
+    """
+    inner = node("label", name="inner")
+    element, _ = bind(node("frame", node("panel",
+                                         node("label", inner, name="outer"),
+                                         name="app")))
+
+    found = element.find_elements_by_xpath("//label")
+
+    assert [f.name for f in found] == ["outer", "inner"]
+
+
+def test_a_multi_segment_path_only_looks_inside_the_first_match():
+    """The path still prunes: a later segment is a child of an earlier match."""
+    deep = node("label", node("push button", name="Nested"), name="deep")
+    elsewhere = node("label", name="elsewhere")
+    element, bridge = bind(node("frame", node("panel", deep, elsewhere, name="app")))
+
+    bridge.reset()
+    found = element.find_elements_by_xpath("//label/push button")
+
+    assert [f.name for f in found] == ["Nested"]
+
+
+def test_the_walk_is_bounded_like_the_single_match_one():
+    """A cyclic tree stops instead of recursing for ever.
+
+    ``_search_path`` gained MAX_SEARCH_DEPTH when a real colour chooser panel
+    turned out to hang a lookup. ``find_elements_by_xpath`` went through
+    ``_get_elements_by_node`` and ``_generate_all_childs``, neither of which had a
+    ceiling, so the same tree would still have run away here.
+    """
+    leaf = node("label", name="deep")
+    root = node("panel", leaf, name="root")
+    element, _ = bind(root)
+    leaf.children.append(root)
+    root.parent = leaf
+
+    with pytest.raises(JABException):
+        element.find_elements_by_xpath("//push button")
+
+
+def test_the_cost_did_not_get_worse_than_the_traversal_it_replaced():
+    """A ceiling, not an improvement -- and said plainly.
+
+    The note this work came from said ``find_elements_by_xpath`` "does not get the
+    pruning that find_element_by_xpath now has". Measured, that was wrong: the old
+    level-based traversal pruned by path too -- the first segment walked the
+    subtree, later segments walked direct children -- so the cost is the same. 1513
+    calls against 1555 on a forty-panel window, with the count asserted here so a
+    future change that makes it quadratic is caught.
+
+    The gains are the contract, the document order and the depth ceiling, all of
+    which have tests above. Repeating the "pruning" claim would have been a
+    comfortable thing to write and not true.
+    """
+    panels = [panel(*[node("label", name=f"p{i}l{j}") for j in range(8)],
+                    name=f"panel{i}", index=i) for i in range(40)]
+    panels[0].children.append(node("push button", name="TARGET"))
+    element, bridge = bind(node("frame", *panels, name="app"))
+
+    bridge.reset()
+    element.find_elements_by_xpath("//panel[@name='panel0']/push button")
+
+    assert bridge.total < 2000, f"{bridge.total} calls; the old traversal used 1555"
+
+
+def test_a_failed_multi_match_search_releases_everything_it_created():
+    """Ownership, which is the part that is easy to get wrong.
+
+    A child can be enumerated twice -- once for the next path segment, once for a
+    deeper match of this one -- so both references have to be released. The fake
+    bridge raises on a double release and on use after release, and reports what
+    is still outstanding.
+    """
+    root = node("frame",
+                node("panel", node("label", node("label", name="x"))),
+                name="app")
+    element, bridge = bind(root)
+    before = dict(bridge.refs)
+
+    with pytest.raises(JABException):
+        element.find_elements_by_xpath("//push button")
+
+    grew = {h: bridge.refs[h] - before.get(h, 0)
+            for h in bridge.refs if bridge.refs[h] > before.get(h, 0)}
+    assert not grew, f"the failed search leaked references to {grew}"
+
+
+def test_a_successful_multi_match_search_releases_everything_but_the_matches():
+    root = node("frame", node("panel", node("label", name="a"),
+                              node("label", name="b")), name="app")
+    element, bridge = bind(root)
+    before = dict(bridge.refs)
+
+    found = element.find_elements_by_xpath("//label")
+
+    assert len(found) == 2
+    # The two matches are the caller's and stay outstanding; nothing else does.
+    outstanding = {h: bridge.refs[h] - before.get(h, 0)
+                   for h in bridge.refs if bridge.refs[h] > before.get(h, 0)}
+    assert len(outstanding) == 2, outstanding
+    for element_ in found:
+        element_.release_jabelement()
+
+
+def test_an_absolute_xpath_lookup_does_not_leak_the_top_level_object():
+    """Every absolute lookup leaked one Java object, success or failure.
+
+    ``_xpath_search_root()`` calls ``_get_top_level_object()``, which is a JAB call
+    that hands out a reference, and nothing released it -- not on the found path,
+    not on the not-found path. One object per xpath lookup, for the life of the
+    process, in the API a test script calls in a loop.
+
+    Relative locators were never affected: their root is ``self``, which the caller
+    already owns.
+    """
+    root = node("frame", node("panel", node("label", name="a")), name="app")
+    element, bridge = bind(root)
+    before = dict(bridge.refs)
+
+    with pytest.raises(JABException):
+        element.find_element_by_xpath("//push button")
+
+    grew = {h: bridge.refs[h] - before.get(h, 0)
+            for h in bridge.refs if bridge.refs[h] > before.get(h, 0)}
+    assert not grew, f"a failed absolute lookup left {grew} outstanding"
+
+
+def test_a_relative_lookup_does_not_release_the_callers_element():
+    """The other direction, and the more dangerous mistake.
+
+    A relative locator starts at ``self``, which belongs to the caller. Releasing
+    it here would be a use-after-free for whoever holds it.
+    """
+    root = node("frame", node("label", name="a"), name="app")
+    element, bridge = bind(root)
+    before = dict(bridge.refs)
+
+    element.find_element_by_xpath(".//label")
+
+    assert bridge.refs[root.handle] == before[root.handle], (
+        "the caller's own element was released"
+    )
+
+
+def test_a_loop_of_lookups_does_not_grow_the_reference_count():
+    """The shape #43 describes: many lookups, growing cost, no obvious cause.
+
+    One leaked object per lookup does not stall anything on the first call. It does
+    on the ten-thousandth, which is why this is asserted as a loop rather than as a
+    single call.
+    """
+    root = node("frame", node("panel", node("label", name="a")), name="app")
+    element, bridge = bind(root)
+    before = dict(bridge.refs)
+
+    for _ in range(50):
+        with pytest.raises(JABException):
+            element.find_element_by_xpath("//push button")
+
+    grew = {h: bridge.refs[h] - before.get(h, 0)
+            for h in bridge.refs if bridge.refs[h] > before.get(h, 0)}
+    assert not grew, f"fifty failed lookups leaked {grew}"

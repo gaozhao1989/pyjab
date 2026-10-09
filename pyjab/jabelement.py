@@ -1777,6 +1777,12 @@ class JABElement(object):
             # none of them belongs to the caller, so all of them go back here.
             for element in examined:
                 self.release_jabelement(element)
+            if not relative:
+                # The top-level object came from a JAB call and is not the caller's
+                # -- it leaked on every absolute lookup, success or failure, which
+                # is one Java object per search for the life of the process. See
+                # _xpath_search_root.
+                self.release_jabelement(root)
         if found is not None:
             return found
         raise JABException(f"no JABElement found by xpath '{value}'")
@@ -1883,6 +1889,89 @@ class JABElement(object):
                 return found
             examined.append(child)
         return None
+
+    def _search_path_all(
+            self,
+            nodes: list,
+            index: int,
+            parent: JABElement,
+            visible: bool,
+            examined: list,
+            found: list,
+            depth: int = 0,
+    ) -> None:
+        """Append every element matching ``nodes[index:]`` under *parent*.
+
+        The same walk as :meth:`_search_path` and the same pruning -- which is the
+        reason it exists.  ``find_elements_by_xpath`` used to run through
+        ``_get_elements_by_node``, a level-by-level traversal that tests every node
+        for every path segment, so a path naming an early control cost the whole
+        tree: 33 calls for ``find_element_by_xpath`` against 1555 for the same
+        locator here, on a window with forty panels.  Both walk the same tree; only
+        one of them knows that the first segment narrows the rest.
+
+        It differs from :meth:`_search_path` in not stopping: listing every match is
+        the point, so a match is recorded and the walk continues underneath it.
+
+        Ownership is the same rule and it is easy to get wrong, which is why the
+        fake bridge counts.  Anything appended to *found* belongs to the caller;
+        everything else goes to *examined* and is released by the caller once the
+        whole search is over.  A child can be enumerated twice -- once looking for
+        the next segment, once looking for a deeper match of this one -- and both
+        references have to be released, so deferring them all to the end is what
+        makes that true rather than careful bookkeeping in two places.
+        """
+        if depth >= MAX_SEARCH_DEPTH:
+            self.logger.warning(
+                "xpath lookup stopped at depth %s; the accessibility tree at this "
+                "point is deeper than MAX_SEARCH_DEPTH (%s), or it contains a cycle",
+                depth,
+                MAX_SEARCH_DEPTH,
+            )
+            return
+
+        info = self.xpath_parser.get_node_information(nodes[index])
+        last = index == len(nodes) - 1
+        role = info.get("role")
+        attributes = info.get("attributes")
+
+        def matches(candidate) -> bool:
+            if role not in ("*", candidate.role_en_us):
+                return False
+            return self._is_match_attributes(attributes, candidate)
+
+        # A path step after the first means "child of the previous match"; the
+        # first may match at any depth, and may match more than once.
+        if index > 0:
+            for child in self._generate_childs_from_element(
+                    jabelement=parent, visible=visible
+            ):
+                if matches(child):
+                    if last:
+                        found.append(child)
+                        continue
+                    self._search_path_all(nodes, index + 1, child, visible,
+                                          examined, found, depth + 1)
+                examined.append(child)
+            return
+
+        for child in self._generate_childs_from_element(
+                jabelement=parent, visible=visible
+        ):
+            kept = False
+            if matches(child):
+                if last:
+                    found.append(child)
+                    kept = True
+                else:
+                    self._search_path_all(nodes, 1, child, visible, examined,
+                                          found, depth + 1)
+            # Match or not, this node may have descendants that match the first
+            # segment -- `//label` matches at every depth, not only the shallowest.
+            self._search_path_all(nodes, 0, child, visible, examined, found,
+                                  depth + 1)
+            if not kept:
+                examined.append(child)
 
     def find_element(
             self, by: str = By.NAME, value: Any = None, visible: bool = False
@@ -2083,107 +2172,51 @@ class JABElement(object):
         """
         return self.find_elements(by=By.INDEX_IN_PARENT, value=value, visible=visible)
 
-    def _get_elements_by_node(
-            self,
-            node: str,
-            level: str = "root",
-            jabelement: JABElement = None,
-            visible: bool = False,
-    ) -> list[JABElement]:
-        """Get list of child JABElement by specific node
-
-        Args:
-            node (str): Node content for every single content in xpath.
-
-            level (str, optional): Level for node, two options: "root" and "child". Defaults to "root".
-
-            jabelement (JABElement, optional): The parent JABElement. Defaults to None.
-
-            visible (bool, optional): The switch for find only visible child jab elements or not.
-            Defaults to False to find all child elements.
-
-        Raises:
-            ValueError: Incorrect level set
-
-        Returns:
-            list[JABElement]: list of the JABElement
-        """
-        node_element, node_info = self._get_node_info(node, jabelement)
-        jabelements = []
-        for _jabelement in self._get_children_by_level(level)(jabelement=node_element, visible=visible):
-            if node_info.get("role") not in ["*", _jabelement.role_en_us]:
-                self.release_jabelement(_jabelement)
-                continue
-            if self._is_match_attributes(node_info.get("attributes"), _jabelement):
-                jabelements.append(_jabelement)
-                continue
-            self.release_jabelement(_jabelement)
-        return jabelements
-
-    def _get_children_by_level(self, level: str = "root"):
-        if level in {"root", "child"}:
-            return self._generate_all_childs if level == "root" else self._generate_childs_from_element
-        else:
-            raise ValueError("level should be in 'root' or 'child'")
-
-    def _get_node_info(self,
-                      node: str,
-                      jabelement: JABElement = None,
-                      ):
-        node_info = self.xpath_parser.get_node_information(node)
-        node_element = self._get_node_element(jabelement)
-        return node_element, node_info
-
     def find_elements_by_xpath(
             self, value: str, visible: bool = False
     ) -> list[JABElement]:
-        """Find list of child JABElement by xpath
+        """Every JABElement under this one matching an xpath.
 
         Args:
-            value (str): Locator of JABElement need to find.
-            visible (bool, optional): The switch for find only visible child jab elements or not.
-            Defaults to False to find all child elements.
+            value (str): Locator of the JABElements to find.
+            visible (bool, optional): Search only children that are on screen.
+                Defaults to False, which searches all of them.
 
         Returns:
-            list[JABElement]: List of JABElement find by locator
+            list[JABElement]: every match.  The caller owns these; pass each to
+            :meth:`release_jabelement` when finished with it.
+
+        Raises:
+            JABException: nothing matched.  **This is the same contract as the rest
+                of the family** -- ``find_elements()``, ``find_elements_by_role()``
+                and the others all raise rather than returning an empty list, and
+                :meth:`get_children` is the deliberate exception, documented as one.
+                This method used to be neither: it raised when the *first* path
+                segment failed and returned ``[]`` when a later one did, so the
+                answer depended on the length of the locator.
         """
         # See find_elements(): reachable directly by callers.
         self.win32_utils.pump_messages()
 
-        def generate_node(_nodes: list[str]) -> Generator:
-            for index, _node in enumerate(_nodes):
-                _level = "root" if index == 0 else "child"
-                yield _node, _level
-
-        def get_child_jabelements(
-                _node: str,
-                _level: str,
-                _parent_jabelements: list[JABElement],
-                _visible: bool = False,
-        ) -> list[JABElement]:
-            child_jabelements = []
-            for _parent_jabelement in _parent_jabelements:
-                child_jabelements.extend(
-                    self._get_elements_by_node(
-                        node=_node,
-                        level=_level,
-                        jabelement=_parent_jabelement,
-                        visible=_visible,
-                    )
-                )
-            return child_jabelements
-
-        nodes = self.xpath_parser.split_nodes(value)
-        _jabelements = [
-            JABElement(self.bridge, self.hwnd, self.vmid, self.accessible_context)
-        ]
-        for node, level in generate_node(nodes):
-            if not _jabelements:
-                raise JABException("no JABElement found")
-            _jabelements = get_child_jabelements(
-                _node=node, _level=level, _parent_jabelements=_jabelements, _visible=visible
-            )
-        return _jabelements
+        relative = value.startswith(".")
+        nodes = self.xpath_parser.split_nodes(value[1:] if relative else value)
+        root = self if relative else self._xpath_search_root()
+        examined = []
+        found = []
+        try:
+            self._search_path_all(nodes, 0, root, visible, examined, found)
+        finally:
+            # Everything the walk created and did not keep belongs to the search,
+            # not to the caller -- see _search_path_all.
+            for element in examined:
+                self.release_jabelement(element)
+            if not relative:
+                # See find_element_by_xpath: the top-level object is not the
+                # caller's and used to leak on every absolute lookup.
+                self.release_jabelement(root)
+        if not found:
+            raise JABException(f"no JABElement found by xpath '{value}'")
+        return found
 
     def find_elements(
             self, by: str = By.NAME, value: Union[list, str, int] = None, visible: bool = False

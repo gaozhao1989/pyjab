@@ -63,6 +63,43 @@ Removed
 Fixed
 ~~~~~
 
+* **Every absolute `find_*_by_xpath` lookup leaked a Java object.**
+  `_xpath_search_root()` calls `_get_top_level_object()`, which is a JAB call that
+  hands out a reference, and nothing released it — not on the found path, not on
+  the not-found path. One object per lookup, for the life of the process, in the
+  API a test script calls in a loop. Relative locators were never affected: their
+  root is `self`, which the caller already owns.
+
+  Found by a test asserting the reference count before and after, which is the
+  same shape as issue #43 ("gets slower until it stalls, with CPU and memory
+  normal"). **That is a hypothesis and not a diagnosis** — one leaked object per
+  lookup is consistent with the report and does not by itself explain it.
+
+* **`find_elements_by_xpath` had a return contract that depended on the locator.**
+  It checked whether its working list was empty at the *top* of each path segment,
+  so `//push button` returned `[]` while `//push button/label` — the same failure,
+  one segment earlier — raised `JABException`. The rest of the family raises, and
+  `get_children()` is the documented exception; this was neither. It raises now,
+  always.
+
+* **`find_elements_by_xpath` returns matches in document order.** It ran through
+  `_generate_all_childs`, which yields a node *after* its whole subtree, so
+  `//label` returned an inner label before the outer one containing it.
+
+* **`find_elements_by_xpath` respects `MAX_SEARCH_DEPTH`.** The traversal it used
+  had no ceiling, so a cyclic accessibility tree would still have run away there
+  after the single-match path was bounded.
+
+  **The note that prompted this said the method "does not get the pruning that
+  `find_element_by_xpath` now has". Measured, that was wrong** — the old traversal
+  pruned by path too, and the cost is the same: 1513 calls against 1555 on a
+  forty-panel window. The gains are the three above, and the changelog says so
+  rather than repeating a claim the measurement does not support.
+
+* `_get_elements_by_node`, `_get_children_by_level` and `_get_node_info` are gone.
+  The first had no callers once the above landed and the other two were only
+  reachable through it.
+
 * **``tools/verify_dpi.py`` could not finish, on the one machine that can run it.**
   It reached ``driver.win32_utils``, and ``JABDriver`` names that ``win32utils``
   — ``JABElement`` is the one that spells it with an underscore.  The script used
