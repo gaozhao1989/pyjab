@@ -610,3 +610,157 @@ def test_the_parser_reports_the_operator_that_joins_each_predicate():
 
     assert [a["operator"] for a in attributes] == ["and", "and", "or"]
     assert [a["name"] for a in attributes] == ["name", "role", "name"]
+
+
+# ---------------------------------------------------------------------------
+# [n] positional predicates
+# ---------------------------------------------------------------------------
+
+def two_groups():
+    """Two panels, each with two panel children, names unique across the tree.
+
+    A single group cannot tell "the second panel anywhere" from "the second panel
+    of each parent", and that distinction is the whole of XPath's positional
+    semantics.
+    """
+    root = node("frame",
+                panel(panel(name="a1"), panel(name="a2"), name="A"),
+                panel(panel(name="b1"), panel(name="b2"), name="B"),
+                name="app")
+    return bind(root)
+
+
+def test_position_1_takes_the_first_child_of_each_parent():
+    """Not the first in the document -- the first under every parent.
+
+    W3C XPath 1.0, section 2: `child::para[position()=1]` selects the first `para`
+    child of the context node, and a step is evaluated once per context node.
+    """
+    element, _ = two_groups()
+
+    found = element.find_elements_by_xpath("//panel[1]")
+
+    assert sorted(f.name for f in found) == ["A", "a1", "b1"]
+
+
+def test_position_2_takes_the_second_of_each_parent():
+    element, _ = two_groups()
+
+    found = element.find_elements_by_xpath("//panel[2]")
+
+    # B is the second panel child of the frame, a2 the second of A, b2 the second
+    # of B. Written out because the first version of this expectation left B out.
+    assert sorted(f.name for f in found) == ["B", "a2", "b2"]
+
+
+def test_a_position_past_the_end_finds_nothing():
+    element, _ = two_groups()
+
+    with pytest.raises(JABException):
+        element.find_elements_by_xpath("//panel/panel[3]")
+
+
+def test_the_two_predicate_orders_are_different_questions():
+    """The reason predicates are applied in order rather than ANDed together.
+
+    W3C XPath 1.0 gives both forms explicitly:
+
+        child::para[@type='warning'][position()=5]   the fifth of those with @type
+        child::para[position()=5][@type='warning']   the fifth child, if it has @type
+
+    A flat attribute list cannot express that, and the first version of this
+    parser returned one.
+    """
+    element, _ = two_groups()
+
+    # Among the panels named a*, the first: a1.
+    assert [f.name for f in element.find_elements_by_xpath("//panel[@name='a1'][1]")] == ["a1"]
+
+    # The first panel of each parent, if it happens to be named a2: nothing, because
+    # the first panel of each parent is A, a1 or b1.
+    with pytest.raises(JABException):
+        element.find_elements_by_xpath("//panel[1][@name='a2']")
+
+
+def test_a_position_after_a_predicate_counts_only_the_survivors():
+    """`[@x][2]` means the second of those matching @x, not the second child.
+
+    Uses `or` rather than a comparison because comparisons are a separate change --
+    see the checklist on #58. `p1` fails the predicate and must not be counted, so
+    the second survivor is `p3` and not `p2`.
+    """
+    element, _ = bind(node("frame",
+                           panel(name="p1", index=0),
+                           panel(name="p2", index=1),
+                           panel(name="p3", index=2),
+                           name="app"))
+
+    found = element.find_elements_by_xpath(
+        "//panel[@name='p2' or @name='p3'][2]"
+    )
+
+    assert [f.name for f in found] == ["p3"], "p2 is the first survivor, p3 the second"
+
+
+def test_the_counter_is_per_parent_not_per_search():
+    """The bug this would have if the counter lived in the caller.
+
+    Two parents each with two matches: `[1]` has to return one from each, which it
+    cannot do if the counter runs across the whole search.
+    """
+    element, _ = two_groups()
+
+    found = element.find_elements_by_xpath("//panel[1]")
+
+    names = sorted(f.name for f in found)
+    assert names == ["A", "a1", "b1"], names
+    assert len(found) == 3, "one per parent, not one in total"
+
+
+@pytest.mark.parametrize("locator, why", [
+    ("//panel[0]", "XPath positions are 1-based"),
+    ("//panel[position()=2]", "an expression, not a bare position"),
+    ("//panel[last()]", "needs the context size"),
+])
+def test_the_forms_that_cannot_work_are_rejected(locator, why):
+    """Rather than approximated.
+
+    `[0]` silently matching nothing, or `[last()]` quietly behaving like `[1]`,
+    would report "no element" for a locator that was never going to work -- the
+    failure mode this project treats as the expensive one.
+    """
+    from pyjab.common.exceptions import XpathParserException
+    from pyjab.common.xpathparser import XpathParser
+
+    parser = XpathParser.__wrapped__()
+
+    with pytest.raises(XpathParserException):
+        parser.get_node_information(parser.split_nodes(locator)[0])
+
+
+def test_the_parser_returns_the_predicates_in_order():
+    """The structure the traversal depends on, pinned directly."""
+    from pyjab.common.xpathparser import XpathParser
+
+    parser = XpathParser.__wrapped__()
+    info = parser.get_node_information(
+        parser.split_nodes("//panel[@name='a' or @name='b'][2][@role='panel']")[0]
+    )
+
+    assert [sorted(p) for p in info["predicates"]] == [
+        ["attributes"], ["position"], ["attributes"]
+    ]
+    assert info["predicates"][1] == {"position": 2}
+    assert [a["operator"] for a in info["predicates"][0]["attributes"]] == ["and", "or"]
+    # And the flat view the older tests use is still there.
+    assert len(info["attributes"]) == 3
+
+
+def test_a_lone_position_still_reports_no_attributes():
+    from pyjab.common.xpathparser import XpathParser
+
+    parser = XpathParser.__wrapped__()
+    info = parser.get_node_information(parser.split_nodes("//panel[2]")[0])
+
+    assert info["attributes"] == []
+    assert info["predicates"] == [{"position": 2}]

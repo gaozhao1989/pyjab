@@ -90,7 +90,8 @@ class TestNodeInformation:
     def test_wildcard_role(self):
         assert Parser().get_node_information("*")["role"] == "*"
 
-    @pytest.mark.parametrize("node", ["PANEL", "not a role", "panel[1]"])
+    @pytest.mark.parametrize("node", ["PANEL", "not a role", "panel[0]",
+                                      "panel[position()=2]", "panel[last()]"])
     def test_rejects_unparsable_nodes(self, node):
         with pytest.raises(XpathParserException):
             Parser().get_node_information(node)

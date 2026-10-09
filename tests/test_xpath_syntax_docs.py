@@ -98,9 +98,9 @@ def test_the_check_would_notice_a_wrong_example():
     catch, one level up.
     """
     assert parses("//panel[@name='x']")
-    assert not parses("//panel[1]"), "[n] is not supported, whatever the docs said"
-    assert not parses("//panel[@indexinparent > 10]")
-    assert not parses("//panel/../panel")
+    assert parses("//panel[1]"), "[n] is supported now; it was not before 1.8.0"
+    assert not parses("//panel[@indexinparent > 10]"), "comparisons are still rejected"
+    assert not parses("//panel/../panel"), "the parent axis is still rejected"
 
 
 def test_the_examples_are_actually_found():

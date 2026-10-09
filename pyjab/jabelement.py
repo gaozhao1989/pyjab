@@ -1880,12 +1880,30 @@ class JABElement(object):
         info = self.xpath_parser.get_node_information(nodes[index])
         last = index == len(nodes) - 1
         role = info.get("role")
-        attributes = info.get("attributes")
+        predicates = info.get("predicates") or []
+
+        # One counter per step, shared by every candidate this step is offered --
+        # which is what makes a position mean "the nth candidate of this parent".
+        # XPath counts within the node-set the previous predicates left behind, so a
+        # candidate that fails an earlier predicate does not advance the count.
+        position = [0]
 
         def matches(candidate) -> bool:
             if role not in ("*", candidate.role_en_us):
                 return False
-            return self._is_match_attributes(attributes, candidate)
+            for predicate in predicates:
+                if "attributes" in predicate:
+                    if not self._is_match_attributes(predicate["attributes"], candidate):
+                        return False
+                    continue
+                # A bare position, 1-based. Counted here rather than in the caller so
+                # that `[2][@name='x']` means "the second child, if it is named x" and
+                # `[@name='x'][2]` means "the second of those named x" -- two different
+                # questions that a flat attribute list cannot tell apart.
+                position[0] += 1
+                if position[0] != predicate["position"]:
+                    return False
+            return True
 
         # A path step after the first means "child of the previous match"; the
         # first may match at any depth.
@@ -1967,12 +1985,30 @@ class JABElement(object):
         info = self.xpath_parser.get_node_information(nodes[index])
         last = index == len(nodes) - 1
         role = info.get("role")
-        attributes = info.get("attributes")
+        predicates = info.get("predicates") or []
+
+        # One counter per step, shared by every candidate this step is offered --
+        # which is what makes a position mean "the nth candidate of this parent".
+        # XPath counts within the node-set the previous predicates left behind, so a
+        # candidate that fails an earlier predicate does not advance the count.
+        position = [0]
 
         def matches(candidate) -> bool:
             if role not in ("*", candidate.role_en_us):
                 return False
-            return self._is_match_attributes(attributes, candidate)
+            for predicate in predicates:
+                if "attributes" in predicate:
+                    if not self._is_match_attributes(predicate["attributes"], candidate):
+                        return False
+                    continue
+                # A bare position, 1-based. Counted here rather than in the caller so
+                # that `[2][@name='x']` means "the second child, if it is named x" and
+                # `[@name='x'][2]` means "the second of those named x" -- two different
+                # questions that a flat attribute list cannot tell apart.
+                position[0] += 1
+                if position[0] != predicate["position"]:
+                    return False
+            return True
 
         # A path step after the first means "child of the previous match"; the
         # first may match at any depth, and may match more than once.

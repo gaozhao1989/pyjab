@@ -146,11 +146,28 @@ element.find_element_by_xpath("//push button")    # anywhere in the window
 element.find_element_by_xpath(".//push button")   # only inside element
 ```
 
+**Positions.** `[n]` picks the n-th match, counted **within each parent** and
+**1-based**, which is XPath's own meaning and not "the n-th in the window":
+
+```python
+//panel[1]                 # the first panel child of every parent
+//panel/panel[2]           # the second panel child of every panel
+//push button[@name='OK'][1]
+```
+
+Predicates are applied **in order**, so the two orders ask different questions:
+
+```python
+//panel[@name='OK'][2]     # the second of those named OK
+//panel[2][@name='OK']     # the second panel child, if it happens to be named OK
+```
+
+`[0]`, `[position()=2]` and `[last()]` are rejected with a parse error — the first
+because positions are 1-based, the others because they need an expression evaluator.
 Going the other way — `..` for the parent — is **not** supported, and neither are
-comparisons such as `[@indexinparent > 10]`, unions (`|`), or `[n]` positional
-predicates. Those are rejected with a parse error rather than answered, which is
-the point -- a locator that cannot work should say so, not report that the element
-is missing.
+comparisons such as `[@indexinparent > 10]` or unions (`|`). Those are rejected
+rather than answered, which is the point: a locator that cannot work should say so,
+not report that the element is missing.
 
 ## JABElement
 
