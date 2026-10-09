@@ -63,6 +63,27 @@ Removed
 Fixed
 ~~~~~
 
+* **``tools/verify_dpi.py`` asked for the target's DPI awareness with a process id
+  where the API takes a process handle.**  ``GetProcessDpiAwareness`` is declared
+  ``HRESULT GetProcessDpiAwareness(HANDLE hprocess, PROCESS_DPI_AWARENESS *value)``,
+  and its ``E_INVALIDARG`` is documented as "the handle or pointer passed in is not
+  valid".  Passing the id produced ``-0x7ff8ffa9`` — ``0x80070057``,
+  ``ERROR_INVALID_PARAMETER`` 87 — and the tool printed it as though it were a fact
+  about the target application rather than a bug in itself.  It now calls
+  ``OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, ...)`` first and closes the
+  handle afterwards, and decodes any failure into the unsigned HRESULT, its
+  facility and its code, with ``E_INVALIDARG`` and ``E_ACCESSDENIED`` named.
+
+* **An aware target was reported as unaware.**  The flag was computed by comparing
+  the *display name* — ``PER_MONITOR_AWARE`` — against the *enum member*,
+  ``PROCESS_PER_MONITOR_DPI_AWARE``.  They differ, so the comparison never matched
+  and every target came back unaware, which is the one answer this must not get
+  wrong: it is the value that decides whether a conversion is needed at all.  It
+  compares the enumeration values now.
+
+Fixed
+~~~~~
+
 * **``tools/verify_dpi.py`` could not see a scaled display at all.**  It computed the
   monitor scale from ``GetDpiForWindow()``.  Microsoft documents that call as
   returning **96** when the window is DPI unaware — "the answer will depend on the

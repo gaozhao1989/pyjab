@@ -56,6 +56,11 @@ DISABLE_BUTTON = "Disable middle button"
 ENABLE_BUTTON = "Enable middle button"
 MIDDLE_BUTTON = "Middle button"
 
+#: The PROCESS_DPI_AWARENESS members that mean "this process does its own scaling".
+PROCESS_DPI_SYSTEM_AWARE = 2
+PROCESS_DPI_PER_MONITOR_AWARE = 3
+PROCESS_DPI_PER_MONITOR_AWARE_V2 = 4
+
 DPI_AWARENESS = {
     0: "DPI_AWARENESS_INVALID",
     1: "UNAWARE (Windows scales coordinates for us)",
@@ -121,26 +126,75 @@ def describe_target_dpi(pid: int) -> dict:
     application is DPI aware and its coordinates were physical all along -- and the
     script could not tell them apart.
     """
+    # GetProcessDpiAwareness takes a process HANDLE, not a process id, and says so
+    # in its signature: "[in] HANDLE hprocess -- handle of the process that is being
+    # queried". Passing the id raised E_INVALIDARG (0x80070057), which is how the
+    # first version of this failed on a real run -- and it is worth recording that
+    # the failure looked like a fact about the application rather than a bug here.
+    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    k32 = ctypes.windll.kernel32
+
     facts = {}
+    handle = None
     try:
+        handle = k32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            facts["GetProcessDpiAwareness(pid)"] = (
+                f"OpenProcess failed (error {ctypes.get_last_error() or k32.GetLastError()}); "
+                "the target may be running elevated"
+            )
+            facts["_aware"] = None
+            return facts
+
         awareness = ctypes.c_int()
         hresult = ctypes.windll.shcore.GetProcessDpiAwareness(
-            ctypes.c_void_p(pid), ctypes.byref(awareness)
+            ctypes.c_void_p(handle), ctypes.byref(awareness)
         )
         if hresult == 0:
-            facts["GetProcessDpiAwareness(pid)"] = DPI_AWARENESS.get(
-                awareness.value, f"unknown ({awareness.value})"
-            )
-            facts["_aware"] = DPI_AWARENESS.get(awareness.value) in (
-                "PROCESS_SYSTEM_DPI_AWARE", "PROCESS_PER_MONITOR_DPI_AWARE"
+            name = DPI_AWARENESS.get(awareness.value, f"unknown ({awareness.value})")
+            facts["GetProcessDpiAwareness(pid)"] = name
+            # By value, not by name. The name in DPI_AWARENESS is "PER_MONITOR_AWARE"
+            # while the enum member is PROCESS_PER_MONITOR_DPI_AWARE, and a check
+            # written against the latter never matched -- so an aware target was
+            # reported as unaware, which is the one answer this must not get wrong.
+            facts["_aware"] = awareness.value in (
+                PROCESS_DPI_SYSTEM_AWARE,
+                PROCESS_DPI_PER_MONITOR_AWARE,
+                PROCESS_DPI_PER_MONITOR_AWARE_V2,
             )
         else:
-            facts["GetProcessDpiAwareness(pid)"] = f"failed (HRESULT {hresult:#x})"
+            unsigned = hresult & 0xFFFFFFFF
+            known = {
+                0x80070057: "E_INVALIDARG -- the handle or the pointer was not valid",
+                0x80070005: "E_ACCESSDENIED -- pyjab is not privileged enough to ask",
+            }
+            facts["GetProcessDpiAwareness(pid)"] = (
+                f"failed: {decode_hresult(hresult)}"
+                + (f" ({known[unsigned]})" if unsigned in known else "")
+            )
             facts["_aware"] = None
     except Exception as exc:  # pragma: no cover - platform dependent
         facts["GetProcessDpiAwareness(pid)"] = f"unavailable ({exc})"
         facts["_aware"] = None
+    finally:
+        if handle:
+            k32.CloseHandle(ctypes.c_void_p(handle))
+
     return facts
+
+
+def decode_hresult(hresult: int) -> str:
+    """`0x80070057`, `0x80070057/87`, and the signed form, for a human reading it.
+
+    The first run of the target-awareness check reported ``-0x7ff8ffa9``, which is
+    ``0x80070057`` -- E_INVALIDARG, ERROR_INVALID_PARAMETER 87. Printing the signed
+    value alone made a bug here look like a fact about the application, so the
+    unsigned form, the facility and the code are all in the string.
+    """
+    unsigned = hresult & 0xFFFFFFFF
+    facility = (unsigned >> 16) & 0x1FFF
+    code = unsigned & 0xFFFF
+    return f"HRESULT {hresult} (0x{unsigned:08X}, facility {facility}, code {code})"
 
 
 #: Pseudo-handles for SetThreadDpiAwarenessContext.  Passing -4 selects per-monitor
