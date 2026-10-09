@@ -43,8 +43,16 @@ Added
   be opened, and guessing "unaware" there would move the cursor on a setup that
   works.
 
-  **Verified by unit test for the arithmetic and the wiring; not yet verified by a
-  click on a scaled display.**
+  **Verified on a real 150% display.** From a DPI-aware thread against an unaware
+  target — the case that failed before this — ``element.click(simulate=True)`` now
+  lands. ``tools/verify_dpi.py`` reports it under "the library path", and the two
+  raw passes beside it still reproduce the original failure, which is what makes the
+  pair mean something: the middle one goes through the mouse helper directly and so
+  bypasses the conversion by design.
+
+  The other mixed case — an aware target against an unaware caller — is covered by
+  unit test but was not part of that measurement, because the target on hand is
+  unaware.
   ``tools/verify_dpi.py`` also gained a pass that clicks through
   ``element.click(simulate=True)`` rather than at ``_click_mouse`` directly. The two
   measurement passes drive the mouse helper, which is what makes them a measurement
