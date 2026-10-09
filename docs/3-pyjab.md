@@ -129,8 +129,13 @@ pyjab's XPath support is its own, not a full XPath implementation. It supports:
 //panel[@childrencount=2]
 ```
 
-Also understood: `@description`, `@role`, `@states`, `contains()`, and `and`
-between predicates.
+Also understood: `@description`, `@role`, `@states`, `contains()`, and both `and`
+and `or` between predicates, with `and` binding tighter as it does in XPath:
+
+```python
+//push button[@name='OK' or @name='Apply']
+//push button[@name='OK' and @indexinparent=2]
+```
 
 **Where a lookup starts.** A leading `.` means "from this element"; without it the
 locator means the whole window. That is XPath's own distinction between `.//` and
@@ -143,10 +148,9 @@ element.find_element_by_xpath(".//push button")   # only inside element
 
 Going the other way — `..` for the parent — is **not** supported, and neither are
 comparisons such as `[@indexinparent > 10]`, unions (`|`), or `[n]` positional
-predicates. Those are the ones to be careful with: `or` and `[n]` are not rejected,
-they parse and then answer wrongly or find nothing, so a locator using them fails
-as "not found" rather than as a syntax error. Use `and`, and one predicate per
-condition.
+predicates. Those are rejected with a parse error rather than answered, which is
+the point -- a locator that cannot work should say so, not report that the element
+is missing.
 
 ## JABElement
 

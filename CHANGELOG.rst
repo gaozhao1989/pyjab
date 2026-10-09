@@ -63,6 +63,23 @@ Removed
 Fixed
 ~~~~~
 
+* **`or` between XPath predicates was silently evaluated as `and`.**  The parser
+  collected every `@name=value` in a predicate and discarded whatever joined them,
+  so the matcher ANDed all of them. `//panel[@name='outer' or @name='second']`
+  found nothing and reported "no element" — which reads as **the element being
+  absent** rather than the locator being wrong, and that is the most expensive way
+  to be wrong. Rejecting the operator would have been better than answering it
+  incorrectly; honouring it is better still.
+
+  `and` binds tighter than `or`, as it does in XPath: the parser now records the
+  operator joining each predicate to the previous one, and the matcher splits the
+  list at every `or`, ANDs within each group and ORs across them. So
+  `[@a and @b or @c]` is `(a and b) or c`.
+
+  The other operators on the same checklist are unaffected: comparisons, `!=`,
+  unions (`|`) and `[n]` positional predicates are **rejected with a parse error**
+  rather than answered, which is the behaviour worth having.
+
 * **Every absolute `find_*_by_xpath` lookup leaked a Java object.**
   `_xpath_search_root()` calls `_get_top_level_object()`, which is a JAB call that
   hands out a reference, and nothing released it — not on the found path, not on

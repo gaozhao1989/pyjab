@@ -82,15 +82,23 @@ class XpathParser(object):
             )
         condition = conditions[0]
         pattern = re.compile(r"(@\w+?=\s*\w*\(?(\"[\s\S]*?\"|'[\s\S]*?')?\)?)")
-        contents = pattern.findall(condition)
-        if len(contents) < 1:
-            raise XpathParserException(
-                f"no contents found conditions '{contents}'"
-            )
+
         attributes = []
-        for content in contents:
-            name, value = content[0][1:].split(sep="=", maxsplit=1)
-            attributes.append(dict(name=name, value=value))
+        for match in pattern.finditer(condition):
+            # Whatever stands between the previous predicate and this one is the
+            # operator joining them. It used to be discarded, which meant `or` was
+            # silently evaluated as `and`: a locator written with it found nothing
+            # and reported "no element", which reads as the element being absent
+            # rather than the locator being wrong.
+            joiner = condition[:match.start()].strip() if attributes else ""
+            operator = "or" if joiner.lower().endswith("or") else "and"
+            name, value = match.group(0)[1:].split(sep="=", maxsplit=1)
+            attributes.append(dict(name=name, value=value, operator=operator))
+
+        if not attributes:
+            raise XpathParserException(
+                f"no contents found conditions '{condition}'"
+            )
         return attributes
 
     def get_node_information(self, node: str) -> dict:

@@ -518,3 +518,95 @@ def test_a_loop_of_lookups_does_not_grow_the_reference_count():
     grew = {h: bridge.refs[h] - before.get(h, 0)
             for h in bridge.refs if bridge.refs[h] > before.get(h, 0)}
     assert not grew, f"fifty failed lookups leaked {grew}"
+
+
+# ---------------------------------------------------------------------------
+# `or` between predicates
+# ---------------------------------------------------------------------------
+
+def two_panels():
+    root = node("frame",
+                panel(name="outer", index=0),
+                panel(name="second", index=1),
+                name="app")
+    return bind(root)
+
+
+def test_or_matches_either_side():
+    """It used to be discarded, so `or` was evaluated as `and`.
+
+    ``//panel[@name='outer' or @name='second']`` found nothing and reported "no
+    element" -- which reads as the element being absent rather than the locator
+    being wrong. That is the most expensive way to be wrong, and it is why this is
+    a fix rather than a feature request being closed.
+    """
+    element, _ = two_panels()
+
+    found = element.find_elements_by_xpath("//panel[@name='outer' or @name='second']")
+
+    assert sorted(f.name for f in found) == ["outer", "second"]
+
+
+def test_or_with_one_side_matching():
+    element, _ = two_panels()
+
+    assert element.find_element_by_xpath("//panel[@name='outer' or @name='nope']").name == "outer"
+    assert element.find_element_by_xpath("//panel[@name='nope' or @name='second']").name == "second"
+
+
+def test_or_with_neither_side_matching_finds_nothing():
+    element, _ = two_panels()
+
+    with pytest.raises(JABException):
+        element.find_element_by_xpath("//panel[@name='nope' or @name='also nope']")
+
+
+def test_and_still_binds_tighter_than_or():
+    """XPath precedence: `a and b or c` is `(a and b) or c`.
+
+    The parser returns a flat list with the operator that joins each predicate to
+    the previous one, and the matcher splits that list at every `or`. Getting the
+    precedence backwards would make this pass for the wrong reason, so both
+    groupings are asserted.
+    """
+    element, _ = two_panels()
+
+    # (nope and nope) or (second and index=1) -> second
+    assert element.find_element_by_xpath(
+        "//panel[@name='nope' and @name='nope' or @name='second' and @indexinparent=1]"
+    ).name == "second"
+
+    # nope or (nope and nope) -> nothing
+    with pytest.raises(JABException):
+        element.find_element_by_xpath(
+            "//panel[@name='nope' or @name='also nope' and @name='also nope']"
+        )
+
+
+def test_and_alone_still_needs_every_predicate():
+    element, _ = two_panels()
+
+    assert element.find_element_by_xpath(
+        "//panel[@name='second' and @indexinparent=1]"
+    ).name == "second"
+    with pytest.raises(JABException):
+        element.find_element_by_xpath("//panel[@name='second' and @indexinparent=0]")
+
+
+def test_a_single_predicate_is_unaffected():
+    """The operator it carries is `and`, which is what a lone predicate means."""
+    element, _ = two_panels()
+
+    assert element.find_element_by_xpath("//panel[@name='outer']").name == "outer"
+
+
+def test_the_parser_reports_the_operator_that_joins_each_predicate():
+    """The piece of information that was being thrown away."""
+    from pyjab.common.xpathparser import XpathParser
+
+    parser = XpathParser.__wrapped__()
+    nodes = parser.split_nodes("//panel[@name='a' and @role='panel' or @name='b']")
+    attributes = parser.get_node_information(nodes[0])["attributes"]
+
+    assert [a["operator"] for a in attributes] == ["and", "and", "or"]
+    assert [a["name"] for a in attributes] == ["name", "role", "name"]

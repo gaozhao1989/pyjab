@@ -70,7 +70,9 @@ class TestNodeInformation:
         info = Parser().get_node_information("panel[@name='a/b']")
 
         assert info["role"] == "panel"
-        assert info["attributes"] == [{"name": "name", "value": "'a/b'"}]
+        assert info["attributes"] == [
+            {"name": "name", "value": "'a/b'", "operator": "and"}
+        ]
 
     def test_attribute_value_keeps_its_quotes(self):
         """Callers strip the quotes themselves, so the parser must preserve them."""
