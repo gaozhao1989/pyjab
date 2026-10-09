@@ -63,6 +63,23 @@ Removed
 Fixed
 ~~~~~
 
+* **``tools/verify_dpi.py`` could not tell the two explanations apart.**
+  ``GetProcessDpiAwareness()`` was called with ``None``, which asks about *this*
+  process. Issue #62 turns on **two**: the target decides whether the coordinates
+  JAB reports are logical or physical, and pyjab decides whether ``SetCursorPos``
+  receives physical pixels or a space Windows scales for it.
+
+  So when the script reported "the JAB position is already right here", that had
+  two possible causes that look identical — the display is at 100%, or the
+  application is DPI aware and its coordinates were physical all along — and the
+  script had no way to say which. It now reads ``GetProcessDpiAwareness(pid)`` for
+  the target too, and the verdict names the cause. On a scaled display with an
+  unaware target it says so explicitly; at 100% it says the run proves nothing
+  about #62.
+
+Fixed
+~~~~~
+
 * **`or` between XPath predicates was silently evaluated as `and`.**  The parser
   collected every `@name=value` in a predicate and discarded whatever joined them,
   so the matcher ANDed all of them. `//panel[@name='outer' or @name='second']`
