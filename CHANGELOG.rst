@@ -7,6 +7,37 @@ This project adheres to `Semantic Versioning`_ and `Keep a Changelog`_.
 .. _Semantic Versioning: https://semver.org/
 .. _Keep a Changelog: https://keepachangelog.com/
 
+Unreleased
+----------
+
+Added
+~~~~~
+
+* **A check that a released changelog section cannot change.**  Every entry added
+  after v1.6.3 went into the 1.6.3 section -- that section sits at the top of the
+  file and the anchor used to insert them matched it -- so the repository claimed
+  1.6.3 included the DPI fix and the xpath leak fix while the sdist on PyPI, built
+  from the tree at the tag, did not.  Nothing failed; the next release found it by
+  hand.
+
+  ``tools/check_changelog_immutable.py`` compares each released section against a
+  digest recorded in ``tools/released_changelog_sections.json``, and CI runs it.  A
+  comparison against the tag is the obvious check and does not work where it has to
+  run: GitHub Actions checks out at depth 1, with no tags and no history, which is
+  also why ``check_dco.py`` skips itself in CI.  The recorded digest needs neither.
+
+  Records all eleven versions whose tags carry a versioned section.  The four older
+  ones whose sdists predate the heading format have nothing to compare against, and
+  the check says so rather than passing over them silently.
+
+* **``docs/reference/`` — the .bak files that quoted Oracle's headers were recorded
+  under the wrong release and are now recorded nowhere.**  Their ``Removed`` entry
+  sat in the 1.6.0 section, but v1.6.0 still contains both files and the commit that
+  deleted them is first reachable from v1.6.1.  Moving the entry to 1.6.1 would
+  change *that* released section instead, so it was removed: it never appeared in any
+  sdist, and the removal itself is in the git history where it belongs.  This is the
+  same mistake as the one above, one release earlier, and it is why the check exists.
+
 1.7.0 (2026-10-09)
 ------------------
 
@@ -465,20 +496,6 @@ Changed
   Both are declared now.
 * ``get_focused_element()`` has been written again from its behaviour.  The
   method is still Chih-Yu's, and ``CONTRIBUTORS.txt`` says so.
-
-Removed
-~~~~~~~
-
-* **``docs/reference/`` -- two ``.bak`` files that quoted Oracle's headers.**
-  ``apicallbacks.py.bak`` reproduced twenty-two ``typedef`` declarations from
-  ``AccessBridgeCallbacks.h`` and eleven lines of its prose, and
-  ``jabcontext.py.bak`` was eighteen hundred lines of a ``JABContext`` class that
-  no longer exists anywhere in pyjab.  Nothing imported either, neither was in the
-  sdist or the wheel, and the reason they were kept -- "historical reference" --
-  is what the git history is for.  Between them they were the only files in the
-  repository that were not pyjab's own, LICENSE aside, and shipping one project's
-  header text inside another's source is not a thing to leave lying in a folder
-  called ``docs/``.
 
 Added
 ~~~~~

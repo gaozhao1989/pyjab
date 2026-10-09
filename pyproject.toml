@@ -59,6 +59,13 @@ dev = [
     # tools/check_license_consistency.py reads pyproject.toml, and the
     # standard library only gained tomllib in 3.11.
     "tomli>=2.0.1; python_version < '3.11'",
+    # tests/test_changelog_immutable.py parses the workflow files. A step added to
+    # ci.yml at the wrong indentation made every run finish as a failure with zero
+    # jobs and no logs, which reads like infrastructure rather than a syntax error
+    # in the file that was just edited. With PyYAML missing the test skips, and a
+    # guard that skips is not a guard -- the same reason check_dco.py is worth
+    # having even though it cannot run in CI.
+    "PyYAML>=6.0",
 ]
 
 [project.urls]
