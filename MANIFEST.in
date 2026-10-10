@@ -25,6 +25,7 @@ recursive-include docs *.md
 # A maintainer procedure, not user documentation: it points at notes that are
 # themselves not in the sdist.
 exclude docs/VERIFY_M0_AND_SOAK.md
+exclude docs/DEPENDENCY_ANALYSIS.md
 exclude docs/TRIAGE.md
 exclude docs/ROADMAP.md
 exclude docs/PYJAB_MCP_PLAN.md
