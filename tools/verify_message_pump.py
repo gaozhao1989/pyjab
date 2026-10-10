@@ -6,10 +6,12 @@ Run this on Windows, with a JDK installed and pyjab 1.3.0 in the environment.
 Why this exists
 ---------------
 CI covers the pump logic and proves the real ``pythoncom.PumpWaitingMessages()``
-call works, but GitHub runners have no interactive desktop session, so no
-automated test can drive a live Swing application.  What changed in 1.3.0 is
-"does pyjab notice a window or dialog that opens *after* the first window is
-bound", and that only shows up end to end.
+call works, but the default matrix never drives a live Swing application -- the
+GUI suite runs only in ``.github/workflows/windows-gui.yml``, which is dispatched
+by hand.  So this script is still the way to check the pump against a *particular*
+application, and against the Java Control Panel below in particular.  What changed
+in 1.3.0 is "does pyjab notice a window or dialog that opens *after* the first
+window is bound", and that only shows up end to end.
 
 This reproduces the scenario from issue #56 ("Java Control Panel -> Open about;
 try to found new About window, but failed") using the Java Control Panel, which

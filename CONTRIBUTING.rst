@@ -245,7 +245,39 @@ The sixth runs on pull requests only: **every commit must be signed off**
 ``master`` predate the requirement. See `Licence of your contribution`_ above for
 why the sign-off is asked for.
 
-CI has no interactive desktop session, so the GUI suite does not run there.
+The default CI matrix does not run the GUI suite, which is why the ``GUI_TEST_MODULES``
+in ``tests/conftest.py`` are opt-in. There is now a separate workflow that does, on a
+hosted Windows runner -- see `Running the GUI suite`_ below.
+
+Running the GUI suite
+~~~~~~~~~~~~~~~~~~~~~
+
+``.github/workflows/windows-gui.yml`` runs the tests that need Windows, a JDK and an
+interactive desktop session on a GitHub-hosted ``windows-latest`` runner. Those runners
+are free and unmetered for a public repository, and they *do* have a real desktop
+session -- session 2, ``console``, Active, with ``explorer.exe`` running -- so no VM is
+needed. It is dispatched by hand, one task at a time:
+
+.. code-block:: console
+
+   $ gh workflow run windows-gui.yml -f task=gui-suite -f java=17
+   $ gh run watch
+
+``task`` selects the GUI suite, the M0 comparison, one of the ``tools/verify_*``
+scripts, or the soak. ``java`` selects the Temurin JDK, and 8 is the one worth running:
+the discovery job covers the DLL's location there, but no live application has ever been
+driven through it.
+
+**It is not a required status check and it does not run on a push.** A red one does not
+block a merge, and a green one does not mean the GUI suite ran -- read it rather than
+assuming either.
+
+Enabling Java Access Bridge is a step of its own *before* any JVM starts. The bridge is
+enabled by ``~/.accessibility.properties``, which the target JVM reads at startup, and
+the GUI fixtures launch the application before the first ``JABDriver`` exists. Get that
+order wrong and the first window of the first run has no bridge, which reads as "JAB
+cannot see the window in CI" rather than as an ordering mistake -- so the step fails
+loudly if the file was not written.
 
 Changing the test matrix
 ~~~~~~~~~~~~~~~~~~~~~~~~

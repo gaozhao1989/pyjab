@@ -300,6 +300,10 @@ interactive desktop session.  They are opt-in:
    $ set PYJAB_RUN_GUI_TESTS=1    # Windows
    $ pytest
 
+You do not need a Windows machine of your own for that: ``windows-gui.yml`` runs the
+same suite on a GitHub-hosted Windows runner, which does have an interactive desktop
+session.  See `CONTRIBUTING.rst <CONTRIBUTING.rst>`_.
+
 ``tests/conftest.py`` documents which fixtures exist and what they need.
 
 Related projects

@@ -13,6 +13,27 @@ Unreleased
 Added
 ~~~~~
 
+* **The GUI suite runs in CI, on a hosted Windows runner.** The four
+  ``GUI_TEST_MODULES`` need Windows, a JDK and an interactive desktop session, so they
+  had only ever been run by hand -- ``AGENTS.md`` said GitHub runners have no desktop
+  session, and five other documents repeated it. That is not true of ``windows-latest``.
+  Measured: the runner is in an **active console session** -- session 2, user
+  ``runneradmin``, with ``explorer.exe`` running -- so a Swing frame created there gets a
+  real ``MainWindowHandle``, ``EnumWindows`` finds it among the desktop's windows, and
+  pyjab's own JAB-backed window list reports it.
+
+  ``.github/workflows/windows-gui.yml`` dispatches one task against a chosen Temurin
+  JDK: the GUI suite, the M0 comparison, one of the ``tools/verify_*`` scripts, or the
+  soak. Runner minutes are free and unmetered for a public repository, so this replaces
+  "run it on the other machine and carry the results back" with a log anyone can read.
+  It is not a status check and does not run on a push, so a red one does not block a
+  merge -- and a green one does not mean the GUI suite ran.
+
+  Enabling the bridge is its own step *before* any JVM starts, and it fails loudly when
+  ``~/.accessibility.properties`` was not written. The GUI fixtures launch the
+  application before the first ``JABDriver`` exists, and getting that order wrong reads
+  as "JAB cannot see the window in CI" rather than as an ordering mistake.
+
 * **``pyjab-inspect``, a locator tool that ships with pyjab.** Issue #75 is "cannot
   find a control", and the answer was to install a separate Java application or read
   the source of the error message, which says nothing matched but not why.
@@ -112,6 +133,22 @@ Added
 
 Fixed
 ~~~~~
+
+* **Five GUI tests still asserted the root special cases that were removed.** The
+  ``test_frame``, ``test_dialog`` and ``test_component_info`` tests in
+  ``tests/test_components.py``, and both new-window tests in
+  ``tests/test_message_pump_gui.py``, asked for the window's own role as though it were
+  a descendant. A search looks at descendants only, so each one raised ``JABException``.
+
+  In the two message-pump tests the raise came on the line *after* the assertion that
+  matters: binding the dialog by title -- which is exactly what the pump fix is about --
+  had already succeeded. So the pump was never implicated; the incidental follow-up
+  check was.
+
+  The entry recording the special-case removal says the eight methods "were not covered
+  by a test, and none failed when the special cases were removed". That was wrong in a
+  small way. They were covered, by these five call sites, and nothing ran them: the
+  first run of the GUI suite in CI found all five.
 
 * **Every error message printed as the repr of a tuple.** ``CommonException`` passed
   ``status`` to ``Exception.__init__`` as a second argument, so ``str()`` of every
