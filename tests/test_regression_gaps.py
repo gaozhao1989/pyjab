@@ -134,24 +134,27 @@ def test_the_accelerator_item_exists_as_a_menu_item(driver):
     assert item.role_en_us == Role.MENU_ITEM
 
 
-@pytest.mark.xfail(
-    reason=(
-        "The accelerator does not invoke the item on this runner: send_keys('alt+y') "
-        "returns without error and the item's name never changes. Found by this test, "
-        "reported on #169; either the keystroke is not reaching the window (focus, or a "
-        "menu that has to be open) or the accelerator path is genuinely different from "
-        "the click path, which is what #53 was about. Not resolved by guessing."
-    ),
-    strict=True,
-)
 def test_the_accelerator_invokes_it_with_the_same_effect_as_clicking(driver):
     """`#53`'s conclusion: the keyboard path has to *do* the same thing, not just exist.
 
     Driven through `send_keys`, which is the public shortcut API added for #168 — so this
     test also exercises that, against a real application, which is the only place it can be
     exercised at all.
+
+    **A label is clicked first, and that is the finding rather than a workaround.** The first
+    version of this test went straight to `send_keys`, and on the runner the keystroke
+    reached nothing: an accelerator fires for the **focused** window, and attaching to a
+    window does not focus it. Clicking any element does — `click()` brings the window
+    forward — so the click is what puts the window in a state where a shortcut can land.
+
+    That is worth having in a test rather than in a comment: a caller who attaches and then
+    sends a shortcut without touching anything first gets silence, and `send_keys`'s own
+    docstring says so. There is no public way to focus a window directly; see #180.
     """
     item = driver.find_element_by_name("Accelerated item")
+
+    # Foregrounds the window. Harmless: it is a label.
+    driver.find_element_by_name("A Label").click()
 
     driver.send_keys("alt+y")
 
