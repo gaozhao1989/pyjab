@@ -50,6 +50,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+          cache: pip
 
       - name: Install the package and its test tooling
         run: |
@@ -83,6 +84,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
 
       - uses: actions/setup-java@v4
         with:
@@ -130,6 +132,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
 
       - uses: actions/setup-java@v4
         with:
@@ -254,6 +257,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
 
       # Installed rather than read from pyproject.toml: what matters is the
       # licence of the distribution that would actually be installed, and that
@@ -317,6 +321,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
 
       - name: Build sdist and wheel
         run: |

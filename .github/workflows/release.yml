@@ -50,6 +50,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
 
       - name: Verify the tag matches pyjab.__version__
         if: startsWith(github.ref, 'refs/tags/v')
