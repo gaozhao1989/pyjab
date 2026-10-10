@@ -737,6 +737,57 @@ class Win32Utils(object):
         for key in keys:
             win32api.keybd_event(self.virtual_key_code[key], 0, 0, 0)
 
+    def send_keys(self, keys: str) -> None:
+        """Send a keyboard shortcut, such as ``"alt+y"`` or ``"ctrl+shift+s"``.
+
+        The public form of the chord primitive: the named keys are **held together**, then
+        released in the same order. That is what makes it a shortcut rather than a sequence
+        — :meth:`JABElement.send_text` types text one character at a time and types the
+        letters of ``"alt+y"`` if you give it that, because text has no modifiers.
+
+        Args:
+            keys: the chord, with the keys separated by ``+``. Names are the same ones
+                :attr:`virtual_key_code` uses and are case-insensitive: ``ctrl``, ``alt``,
+                ``shift``, ``tab``, ``enter``, ``escape``, ``spacebar``, ``left_arrow``, a
+                single letter or digit, and about a hundred more.
+
+        Raises:
+            ValueError: a name is not in the table, or the argument is empty. **Both are
+                raised rather than ignored**: a shortcut that silently does nothing, or that
+                sends the wrong key, is the one kind of failure here that cannot be taken
+                back — it acts on somebody else's application.
+
+        Note:
+            **This sends to whatever has the keyboard focus**; it does not focus anything
+            and it does not bring the window forward. A shortcut only works if the window
+            meant to receive it already has focus, so a caller that has just attached to a
+            window usually has to bring it forward first.
+
+        :Usage:
+            Win32Utils().send_keys("alt+y")
+            Win32Utils().send_keys("ctrl+shift+s")
+        """
+        if not keys or not keys.strip():
+            raise ValueError("send_keys() needs a key or a chord, such as 'alt+y'")
+
+        names = [name.strip().lower() for name in keys.split("+")]
+        if any(not name for name in names):
+            raise ValueError(
+                f"{keys!r} has an empty key name; write a chord as 'ctrl+shift+s'"
+            )
+
+        unknown = [name for name in names if name not in self.virtual_key_code]
+        if unknown:
+            raise ValueError(
+                "unknown key name(s) {} in {!r}. Names are case-insensitive; the table has "
+                "'ctrl', 'alt', 'shift', 'tab', 'enter', 'escape', 'spacebar', the arrow "
+                "keys and the letters and digits.".format(", ".join(map(repr, unknown)), keys)
+            )
+
+        # One key is not a chord, but holding and releasing it is still the right thing:
+        # a bare 'enter' pressed this way is what the callers of the private helper expect.
+        self._press_hold_release_key(*names)
+
     def _press_hold_release_key(self, *keys) -> None:
         """
         press and hold passed in strings. Once held, release\n
