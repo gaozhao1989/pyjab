@@ -550,6 +550,31 @@ and the accessibility action path is the only option — see
 [Selecting](#selecting).
 
 
+## Shortcuts
+
+`send_text()` types text, one character at a time, so it cannot express a modifier chord —
+`send_text("alt+y")` types `a`, `l`, `t`, `+`, `y`. Shortcuts have their own method:
+
+```python
+driver.send_keys("alt+y")
+element.send_keys("ctrl+shift+s")
+Win32Utils().send_keys("ctrl+alt+del")
+```
+
+The named keys are **held together** and then released in the same order. Names are the ones
+the key table uses and are **case-insensitive**: `ctrl`, `alt`, `shift`, `tab`, `enter`,
+`escape`, `spacebar`, the arrow keys, a single letter or digit, and about a hundred more.
+
+**An unknown name raises, naming it.** This is the one place in pyjab where a wrong answer
+does something *irreversible* to somebody else's application, so a chord that cannot be
+interpreted says which name it did not recognise rather than pressing part of it.
+
+!!! note "It sends to whatever has the keyboard focus"
+    Nothing is focused first and no control is clicked — clicking to focus a window would
+    also activate the control under the pointer, and avoiding that is usually the reason to
+    use a shortcut at all. If the window you mean has lost focus, the chord goes to whatever
+    has it.
+
 ## Attaching, listing, and letting go
 
 `JABDriver` binds to **one** window and holds it. Two things follow, and both are here

@@ -7,6 +7,30 @@ This project adheres to `Semantic Versioning`_ and `Keep a Changelog`_.
 .. _Semantic Versioning: https://semver.org/
 .. _Keep a Changelog: https://keepachangelog.com/
 
+Unreleased
+----------
+
+Added
+~~~~~
+
+* **``send_keys()``, for sending a shortcut rather than typing text.** ``send_text()``
+  types one character at a time, so ``send_text("alt+y")`` types the four characters
+  ``a``, ``l``, ``t``, ``+`` — text has no modifiers. The chord form was reachable only
+  through private helpers.
+
+  ``Win32Utils().send_keys("alt+y")``, ``element.send_keys("ctrl+shift+s")`` and
+  ``driver.send_keys(...)`` hold the named keys together and release them in the same
+  order. Names are the ones the key table uses and are case-insensitive.
+
+  **An unknown name raises rather than being ignored.** This is the one place in the
+  library where a wrong answer does something *irreversible* to somebody else's
+  application, so a chord that cannot be interpreted says which name it did not recognise
+  instead of pressing part of it.
+
+  It sends to **whatever has the keyboard focus** and does not focus anything; the
+  docstrings say so, because a shortcut only works if the intended window already has
+  focus. Gaozhao1989/pyjab#168.
+
 1.10.0 - 2026-10-10
 ------------------
 

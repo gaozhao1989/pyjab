@@ -332,6 +332,24 @@ class JABElement(object):
                     jabelement.bridge, jabelement.hwnd, jabelement.vmid, child_acc
                 )
 
+    def send_keys(self, keys: str) -> None:
+        """Send a keyboard shortcut to the window this element belongs to.
+
+        Args:
+            keys: the chord, such as ``"alt+y"``, with ``+`` between the key names. See
+                :meth:`pyjab.common.win32utils.Win32Utils.send_keys` for the names.
+
+        Raises:
+            ValueError: a name is not a key, with the name it did not recognise.
+
+        Note:
+            **Nothing is focused first, and the element is not clicked.** The chord goes to
+            whatever currently has the keyboard focus — which is deliberate, because
+            clicking a control to focus its window would also activate that control, and a
+            shortcut's whole purpose is usually to avoid doing that.
+        """
+        self.win32_utils.send_keys(keys)
+
     def as_record(self) -> dict:
         """This element's identity and geometry, as plain data.
 

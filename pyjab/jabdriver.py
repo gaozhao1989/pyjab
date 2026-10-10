@@ -96,6 +96,23 @@ class JABDriver(object):
     def __enter__(self):
         return self
 
+    def send_keys(self, keys: str) -> None:
+        """Send a keyboard shortcut to the bound window.
+
+        Args:
+            keys: the chord, such as ``"alt+y"``, with ``+`` between the key names. See
+                :meth:`pyjab.common.win32utils.Win32Utils.send_keys` for the names.
+
+        Raises:
+            ValueError: a name is not a key, with the name it did not recognise.
+
+        Note:
+            Sent to whatever has the keyboard focus, which is normally the bound window
+            because :class:`JABDriver` brought it forward when it attached. If the user has
+            since focused something else, the shortcut goes there.
+        """
+        self.win32utils.send_keys(keys)
+
     def detach(self) -> None:
         """Release the bound window **without terminating its process**.
 
