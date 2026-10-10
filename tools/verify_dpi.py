@@ -46,6 +46,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Optional
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 JAVA_DIR = REPO_ROOT / "tests" / "java"
@@ -311,6 +312,11 @@ def describe_window(hwnd: int) -> dict:
     return facts
 
 
+#: Set by ``--ui-scale`` and passed to the target JVM. None leaves the JVM's own default,
+#: which is 1.0.
+UI_SCALE: Optional[float] = None
+
+
 def launch_application() -> subprocess.Popen:
     javac = find_tool("javac")
     java = find_tool("java")
@@ -320,8 +326,17 @@ def launch_application() -> subprocess.Popen:
     sources = sorted(str(p) for p in JAVA_DIR.glob("*.java"))
     subprocess.run([javac, "-Xlint:all", "-d", str(classes)] + sources, check=True)
 
+    extra = []
+    if UI_SCALE is not None:
+        # The point of this option. Issue #62 is about a *scaled* target, and the runner's
+        # display scale is 1.0 -- but the scaling does not have to come from the display.
+        # `sun.java2d.uiScale` makes the target JVM lay itself out at a scale of its own
+        # choosing, which is the same situation from pyjab's side: JAB reports the JVM's
+        # logical coordinates while Win32 reports physical pixels.
+        extra.append(f"-Dsun.java2d.uiScale={UI_SCALE}")
+
     return subprocess.Popen(
-        [java, "-Duser.language=en", "-Duser.country=US",
+        [java, "-Duser.language=en", "-Duser.country=US", *extra,
          "-cp", str(classes), APP_CLASS, "--title=" + APP_TITLE],
     )
 
@@ -530,6 +545,17 @@ def reproduction(outcome: dict, aware_outcome: dict) -> str:
 
 
 def main() -> int:
+    global UI_SCALE
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--ui-scale", type=float, default=None, metavar="N",
+        help="launch the test application with -Dsun.java2d.uiScale=N, so that issue #62's "
+             "situation can be produced on a display whose own scale is 1.0",
+    )
+    cli = parser.parse_args()
+    UI_SCALE = cli.ui_scale
+    if UI_SCALE is not None:
+        print(f"launching with -Dsun.java2d.uiScale={UI_SCALE}")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--no-launch", action="store_true",
                         help="attach to an application that is already running")

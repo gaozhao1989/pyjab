@@ -65,6 +65,7 @@ on:
           - xpath
           - table-selection
           - dpi
+          - dpi-scaled
           - test-app
           - soak
           - jvm-discovery
@@ -204,6 +205,16 @@ jobs:
         shell: pwsh
         run: |
           python tools/verify_table_selection.py 2>&1 | Tee-Object -FilePath table-selection.log
+          exit $LASTEXITCODE
+
+      - name: "task=dpi-scaled"
+        if: inputs.task == 'dpi-scaled'
+        shell: pwsh
+        run: |
+          # The runner's *display* scale is 1.0, which is why the plain dpi task cannot
+          # test issue #62. This asks the target JVM to scale itself instead, which is the
+          # same situation from pyjab's side and needs no display scaling at all.
+          python tools/verify_dpi.py --ui-scale 1.5 2>&1 | Tee-Object -FilePath dpi-scaled.log
           exit $LASTEXITCODE
 
       - name: "task=dpi"
