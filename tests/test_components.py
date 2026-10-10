@@ -40,8 +40,13 @@ class TestComponents(object):
     # ---------------------------------------------------------------- window
 
     def test_frame(self, test_app: JABDriver):
-        frame = test_app.find_element_by_role(Role.FRAME)
+        # The frame is the window, and the window is not its own descendant, so
+        # a role search cannot return it -- it raises instead, and says so.  The
+        # root is reached through ``root_element``; tests/test_find_contract.py
+        # pins that contract.
+        frame = test_app.root_element
         assert frame
+        assert frame.role == Role.FRAME
         self.logger.info(frame.get_element_information())
 
     def test_root_pane(self, test_app: JABDriver):
@@ -343,7 +348,9 @@ class TestComponents(object):
     def test_dialog(self, test_app: JABDriver):
         dialog = self.open_dialog(test_app, "Show dialog", "A Dialog")
 
-        assert dialog.find_element_by_role(Role.DIALOG)
+        # The dialog is this driver's root, for the same reason the frame is the
+        # main window's: a search looks at descendants only.
+        assert dialog.root_element.role == Role.DIALOG
         assert dialog.find_element_by_name("Dialog label")
 
         dialog.find_element_by_name("Close dialog").click()
@@ -400,9 +407,15 @@ class TestComponents(object):
     # ---------------------------------------------------------------- misc
 
     def test_component_info(self, test_app: JABDriver):
-        """Every locator the API documents resolves to something."""
+        """Every locator the API documents resolves to something.
+
+        ``Role.FRAME`` is deliberately absent.  The window *is* a frame, and a
+        search looks at descendants only, so the window can never be its own
+        answer -- it is reachable as ``test_app.root_element``, which
+        ``test_frame`` above and ``tests/test_find_contract.py`` cover.
+        """
         for by_role in [
-            Role.FRAME, Role.ROOT_PANE, Role.LAYERED_PANE, Role.PANEL,
+            Role.ROOT_PANE, Role.LAYERED_PANE, Role.PANEL,
             Role.LABEL, Role.PUSH_BUTTON, Role.CHECK_BOX, Role.RADIO_BUTTON,
             Role.TABLE, Role.TREE, Role.LIST, Role.PROGRESS_BAR,
             Role.SPLIT_PANE, Role.TOOL_BAR, Role.VIEW_PORT,

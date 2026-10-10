@@ -69,16 +69,21 @@ on:
       title:
         description: Window title for tasks that attach to a running application
         required: false
+      title:
+        description: Window title for tasks that attach to a running application
+        required: false
         default: PyjabTestApp
 
-  # TEMPORARY, and to be removed before this reaches master.
+  # TEMPORARY, and removed again in the next commit -- before this reaches master.
   #
-  # GitHub only accepts a workflow_dispatch for a workflow that exists on the
-  # default branch ("HTTP 404: workflow windows-gui.yml not found on the default
-  # branch"), so a workflow being verified on a branch cannot be dispatched.  A
-  # push trigger runs it with the defaults instead, which is what makes the
-  # first verification run possible.  Every `inputs.x` below therefore carries
-  # an `|| default`, because for a push event there are no inputs at all.
+  # A workflow being verified on a branch cannot be dispatched by hand: GitHub
+  # answers "HTTP 404: workflow windows-gui.yml not found on the default branch".
+  # So the pre-merge run that checks the five GUI-test fixes has to come from a
+  # push.  Every inputs.x reference below therefore carries an || default, because
+  # a push event supplies no inputs at all.
+  #
+  # Neither line can change a test result, so the run this triggers still verifies
+  # the commit that follows it, which only deletes them again.
   push:
     branches:
       - probe/windows-gui

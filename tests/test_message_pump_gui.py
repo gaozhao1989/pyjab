@@ -130,7 +130,12 @@ def test_new_window_is_found_after_a_plain_click(test_app: JABDriver):
             "the output of tools/verify_message_pump.py."
         )
 
-    assert popup.find_element_by_role(Role.DIALOG) is not None
+    # The dialog is this driver's root, not one of its descendants, so a role
+    # search cannot return it.  The binding above is the assertion for the pump
+    # -- finding the dialog by title is what 1.3.0 fixed.  This line only says
+    # that what was bound is the dialog, rather than another window with the
+    # same title.
+    assert popup.root_element.role == Role.DIALOG
 
 
 def test_dialog_is_reachable_after_pumping(test_app: JABDriver):
@@ -171,7 +176,7 @@ def test_a_second_new_window_is_also_found(test_app: JABDriver):
             popup = JABDriver(title=DIALOG_WINDOW_TITLE, timeout=15)
         except TimeoutError as exc:  # pragma: no cover - failure path
             pytest.fail(f"the dialog was not found on attempt {attempt + 1}: {exc}")
-        assert popup.find_element_by_role(Role.DIALOG) is not None
+        assert popup.root_element.role == Role.DIALOG
         popup.find_element_by_name("Close dialog").click()
 
 

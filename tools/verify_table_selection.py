@@ -6,10 +6,10 @@ Needs Windows and a JDK.  Run it against the test application:
 
 The unit tests in ``tests/test_table_selection.py`` check that pyjab asks the
 bridge for the right things.  They cannot check what a real Swing table answers,
-because GitHub runners have no interactive desktop and no Java table -- see
-AGENTS.md 1.1.  This script exists for that half: it drives
-``tests/java/PyjabTestApp.java`` and prints what the application reports, so the
-answers can be read rather than assumed.  It drives two tables:
+and the default CI matrix never will -- see AGENTS.md 1.1.  This script exists for
+that half: it drives ``tests/java/PyjabTestApp.java`` and prints what the
+application reports, so the answers can be read rather than assumed.  It drives
+two tables:
 
 * **"Sports table"** -- five rows, all of them showing.  Selection happens here,
   because a table that fits has no scrolling to confuse the result.
