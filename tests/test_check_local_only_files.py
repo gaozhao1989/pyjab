@@ -53,6 +53,28 @@ def test_git_ignores_says_yes_for_a_local_path_and_no_for_a_shipped_one():
     assert guard.git_ignores("README.rst") is False
 
 
+def test_a_directory_pattern_is_ignored_even_when_the_directory_is_absent():
+    """The bug this guard shipped with, as a test.
+
+    `/.agents/` ends in a slash, so the pattern matches **directories only**,
+    and `git check-ignore` cannot tell that a path is a directory when the path
+    is not there. So on a fresh clone -- which is what CI builds -- the guard
+    reported `FAILED: git does not ignore '.agents'`, while passing on the
+    maintainer's machine, where the directory happens to exist.
+
+    This picks a local path that is a directory and is genuinely absent, so the
+    assertion cannot pass by accident. If one of them is ever created, the
+    `assert not exists` below says so rather than quietly weakening the test.
+    """
+    absent = [p for p in guard.LOCAL_PATHS if not (ROOT / p).exists()]
+    assert absent, (
+        "every local path exists, so this test can no longer prove anything -- "
+        "pick an absent directory or add a new local path"
+    )
+    for path in absent:
+        assert guard.git_ignores(path) is True, f"{path} is not ignored when absent"
+
+
 def test_the_guard_passes_on_this_checkout_without_building_anything():
     result = subprocess.run(
         [sys.executable, str(ROOT / "tools" / "check_local_only_files.py"), "--no-sdist"],

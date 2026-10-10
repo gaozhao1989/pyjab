@@ -294,8 +294,11 @@ jobs:
       - name: No local-only file reaches a distribution
         # Two facts, checked by behaviour: that git ignores each path, and that
         # the archive this builds does not contain it. `.gitignore` does not
-        # protect an sdist -- an sdist is built from the working tree.
-        run: python tools/check_local_only_files.py
+        # protect an sdist -- an sdist is built from the working tree. The
+        # archive half needs `build`, which this job did not previously install.
+        run: |
+          python -m pip install --upgrade build
+          python tools/check_local_only_files.py
 
   # ---------------------------------------------------------------------------
   # Build the distributions and validate the metadata, so a broken release is

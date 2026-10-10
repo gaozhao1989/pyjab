@@ -56,12 +56,29 @@ LOCAL_PATHS = (
 
 
 def git_ignores(path: str) -> bool:
-    """Whether git ignores *path*. Behaviour, not a pattern match."""
-    result = subprocess.run(
-        ["git", "check-ignore", "-q", path],
-        cwd=REPO, capture_output=True,
-    )
-    return result.returncode == 0
+    """Whether git ignores *path*. Behaviour, not a pattern match.
+
+    **Both forms are tried, and that is load-bearing.** A pattern ending in a
+    slash -- `/.agents/`, which is how this repository writes it -- matches
+    **directories only**, and `git check-ignore` cannot tell that a path is a
+    directory when the path is not there. In a fresh clone `.agents/` does not
+    exist, so `git check-ignore .agents` reports "not ignored" while the
+    directory would in fact be ignored the moment it appeared. CI is a fresh
+    clone, which is how this was found: the guard failed there and passed here,
+    where the directory happens to exist.
+
+    A trailing slash is git's documented way to say "this is a directory", so
+    testing the path both ways is correct for files and for directories, and it
+    does not depend on the path existing.
+    """
+    for candidate in (path, path.rstrip("/") + "/"):
+        result = subprocess.run(
+            ["git", "check-ignore", "-q", candidate],
+            cwd=REPO, capture_output=True,
+        )
+        if result.returncode == 0:
+            return True
+    return False
 
 
 def build_sdist() -> Path | None:
