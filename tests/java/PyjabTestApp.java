@@ -157,7 +157,7 @@ public class PyjabTestApp {
         // should still close cleanly when the user does it instead.
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
-        frame.setJMenuBar(buildMenuBar());
+        frame.setJMenuBar(buildMenuBar(frame));
 
         JPanel contentPane = new JPanel(new BorderLayout());
         contentPane.setName("Content pane");
@@ -267,7 +267,7 @@ public class PyjabTestApp {
     // ------------------------------------------------------------------
     // Supports the "menu bar", "menu", "menu item", "check box menu item"
     // and "separator" lookups, plus selecting an item from "A Menu".
-    private static JMenuBar buildMenuBar() {
+    private static JMenuBar buildMenuBar(final JFrame frame) {
         JMenuBar menuBar = new JMenuBar();
         menuBar.setName("Menu bar");
 
@@ -296,7 +296,20 @@ public class PyjabTestApp {
         JMenuItem accelerated = new JMenuItem("Accelerated item");
         accelerated.setName("Accelerated item");
         accelerated.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Y, InputEvent.ALT_DOWN_MASK));
-        accelerated.addActionListener(e -> accelerated.setName("Accelerated item (invoked)"));
+        // It opens a dialog, and it used to rename itself instead (issue #183). A rename
+        // is a weak observable: "the listener never ran" and "the listener ran and the new
+        // name is not visible through JAB" look identical, and a test that cannot tell them
+        // apart cannot say which one the accelerator failed to do. A dialog is a separate
+        // top-level window -- it either exists or it does not.
+        accelerated.addActionListener(e -> {
+            JDialog dialog = new JDialog(frame, "Accelerated dialog", false);
+            dialog.setName("Accelerated dialog");
+            JLabel label = new JLabel("Accelerated dialog label");
+            label.setName("Accelerated dialog label");
+            dialog.add(label);
+            dialog.setSize(240, 90);
+            showDialog(dialog);
+        });
         aMenu.add(accelerated);
 
         JMenu anotherMenu = new JMenu("Another Menu");
