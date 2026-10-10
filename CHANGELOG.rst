@@ -7,6 +7,30 @@ This project adheres to `Semantic Versioning`_ and `Keep a Changelog`_.
 .. _Semantic Versioning: https://semver.org/
 .. _Keep a Changelog: https://keepachangelog.com/
 
+Unreleased
+----------
+
+Changed
+~~~~~~~
+
+* **pyjab no longer configures logging.** ``Logger.__init__`` called
+  ``logging.basicConfig``, which configures the **root** logger — so importing pyjab
+  silently decided the format and level for every other logger in the host application.
+  It did so once per process, because ``Logger`` is a singleton, which is exactly what made
+  it hard to notice.
+
+  It now attaches a ``NullHandler`` and sets its own logger's level, which is what a
+  library is supposed to do: records go nowhere until the application configures logging.
+  **If you relied on pyjab setting up logging for you, you now have to do it yourself** —
+  which is the change, and the point.
+
+  .. note::
+
+     **Affects: pyjab-mcp** — first released in **1.10.0**. A server that let pyjab
+     configure logging now has to configure its own: `logging.basicConfig` at start-up, or a
+     handler of its choosing. Nothing breaks silently — records simply go nowhere until it
+     does.
+
 1.9.0 - 2026-10-10
 ------------------
 
