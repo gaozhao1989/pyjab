@@ -55,6 +55,10 @@ def a_full_pair():
         "cell": {"index": 6, "role": "Text", "text": "row3col2", "of": 9},
         "tree": {"count": 4, "named": 4, "sample": ["root", "child"]},
         "button": {"count": 3, "sample": "Button", "patterns": "invoke"},
+        # The control: the same client enumerating the desktop. Healthy, so the
+        # verdicts in these tests are about Java rather than about the client.
+        "_control": {"elements": 420, "named": 300, "roles": 24,
+                     "reached_limit": False, "role_counts": {"Pane": 100}},
     }
     return jab, uia
 
@@ -331,3 +335,67 @@ def test_each_side_actually_measures_every_question_asked(side):
 
     missing = asked - measured
     assert not missing, f"{side} never measures {sorted(missing)}"
+
+
+# ---------------------------------------------------------------------------
+# The control, without which a win cannot be told from a broken client
+# ---------------------------------------------------------------------------
+
+def test_a_client_that_cannot_enumerate_is_not_a_win_for_pyjab():
+    """The confound, made explicit.
+
+    UIA reaches Java through the MSAA proxy. If that is not wired up on the machine, the
+    client sees a window frame and nothing inside it -- which is *exactly* what "UIA
+    cannot see Java content" looks like. So a small UIA tree only means something when
+    the same client has demonstrated it can enumerate something else.
+    """
+    jab, uia = a_full_pair()
+    uia["elements"] = 6
+    uia["_control"] = {"elements": 6, "named": 5, "roles": 4}
+
+    conclusion = verify_m0.verdict(jab, uia, complete=True)
+
+    assert "INCONCLUSIVE" in conclusion
+    assert "CLEARLY BETTER" not in conclusion
+    assert "cannot enumerate much of anything" in conclusion
+
+
+def test_a_healthy_control_lets_the_comparison_stand():
+    """And the same numbers with a working client are a real finding."""
+    jab, uia = a_full_pair()
+    uia["elements"] = 6
+    uia["_control"] = {"elements": 420, "named": 300, "roles": 24}
+
+    conclusion = verify_m0.verdict(jab, uia, complete=True)
+
+    assert "INCONCLUSIVE" not in conclusion
+
+
+def test_a_missing_control_is_inconclusive_rather_than_assumed_fine():
+    """No control cannot be read as a healthy one."""
+    jab, uia = a_full_pair()
+    uia.pop("_control")
+
+    conclusion = verify_m0.verdict(jab, uia, complete=True)
+
+    assert "INCONCLUSIVE" in conclusion
+    assert "control" in conclusion
+
+
+def test_an_unavailable_control_is_inconclusive():
+    jab, uia = a_full_pair()
+    uia["_control"] = verify_m0.Unavailable("could not walk the desktop through UIA")
+
+    conclusion = verify_m0.verdict(jab, uia, complete=True)
+
+    assert "INCONCLUSIVE" in conclusion
+
+
+def test_the_control_is_shown_in_the_report():
+    """A conclusion that depends on the control has to display it."""
+    jab, uia = a_full_pair()
+    lines, _complete = verify_m0.report(jab, uia)
+    rendered = "\n".join(lines)
+
+    assert "UIA control" in rendered
+    assert "420" in rendered

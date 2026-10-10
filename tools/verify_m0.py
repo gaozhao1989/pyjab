@@ -189,6 +189,46 @@ def _jab_cell(driver, root, table_info) -> object:
             "text": cells[index].name or "", "of": len(cells)}
 
 
+def uia_control(limit: int = 1500) -> dict:
+    """How much the UIA client can enumerate when nothing Java is involved.
+
+    The control this comparison needs, and the reason it needs one.  A run where UIA
+    reports six elements for a Java window has two possible explanations:
+
+    * UIA cannot see into Java content, which is the finding the plan is looking for;
+    * this UIA client cannot enumerate anything much, which would also produce six
+      elements and would look *exactly* like the first one.
+
+    The second is not hypothetical.  UIA reaches Java through the MSAA proxy, and
+    whether that proxy is wired up depends on the machine.  So this walks the desktop
+    root -- the taskbar, the open windows, everything -- with the same client, and
+    reports what it found.  Dozens of elements there and six in the Java window is a
+    finding about Java.  Six there too is a finding about the client, and the verdict
+    says INCONCLUSIVE rather than declaring a win.
+
+    Bounded, because the desktop is unbounded and this is a measurement rather than a
+    dump.
+    """
+    try:
+        import uiautomation
+    except Exception as exc:                    # noqa: BLE001 - reported, not handled
+        return {"_client": Unavailable("the uiautomation package is not importable",
+                                       str(exc))}
+    try:
+        elements = _uia_walk(uiautomation.GetRootControl(), 0, limit)
+    except Exception as exc:                    # noqa: BLE001
+        return {"_client": Unavailable("could not walk the desktop through UIA",
+                                       str(exc))}
+    named = [item for item in elements if item["name"]]
+    return {
+        "elements": len(elements),
+        "roles": len({item["role"] for item in elements}),
+        "named": len(named),
+        "reached_limit": len(elements) >= limit,
+        "role_counts": _counts(item["role"] for item in elements),
+    }
+
+
 def uia_side(title: str, timeout: int) -> dict:
     """Read the same window through UIA. Never raises; reports Unavailable instead."""
     try:
@@ -364,7 +404,24 @@ def report(jab_report: dict, uia_report: dict) -> tuple:
             complete = False
         lines.append(f"  {label.ljust(width)} {left[:34]:<34} {right[:34]:<34}")
 
+    # The control is a measurement like any other, so an unmeasured one makes the run
+    # incomplete -- otherwise the exit status would report success on a run whose
+    # conclusion is INCONCLUSIVE.
+    if not isinstance(uia_report.get("_control"), dict):
+        complete = False
+
+    control = uia_report.get("_control")
     lines.append("")
+    if control is None:
+        lines.append("  UIA control: NOT MEASURED -- a small UIA tree cannot be told "
+                     "apart from a client that cannot enumerate")
+    elif isinstance(control, Unavailable):
+        lines.append(f"  UIA control: UNAVAILABLE ({control.reason})")
+    else:
+        lines.append(f"  UIA control: {control['elements']} element(s), "
+                     f"{control['named']} named, {control['roles']} role(s) across the "
+                     f"desktop -- this is how much the client can enumerate at all")
+
     lines.append("  pyjab roles: " + ", ".join(
         f"{k} x{v}" for k, v in list(jab_report.get("role_counts", {}).items())[:12]))
     if uia_report:
@@ -388,6 +445,28 @@ def verdict(jab_report: dict, uia_report: dict, complete: bool) -> str:
     if not complete:
         return ("INCONCLUSIVE: at least one side could not be measured. The plan's "
                 "decision table needs both; see the UNANSWERED rows above.")
+
+    # The control, before anything else. A UIA client that cannot enumerate is not
+    # evidence that UIA cannot see Java, and the two look identical in the table.
+    # A missing control is inconclusive rather than assumed healthy: "nobody measured
+    # it" and "it was measured and is fine" are different states, and reading the first
+    # as the second is how a broken client becomes a win for pyjab. The first version of
+    # this did exactly that, and the test that caught it said so.
+    if "_control" not in uia_report:
+        return ("INCONCLUSIVE: no UIA control was measured, so a small UIA tree for the "
+                "Java window cannot be told apart from a client that cannot enumerate.")
+    control = uia_report["_control"]
+    if isinstance(control, Unavailable):
+        return (f"INCONCLUSIVE: the UIA control could not be measured "
+                f"({control.reason}), so a small UIA tree for the Java window cannot be "
+                f"told apart from a client that cannot enumerate.")
+    control_elements = control.get("elements")
+    if control_elements is not None and control_elements < 30:
+        return (f"INCONCLUSIVE: the UIA client enumerated only {control_elements} "
+                f"element(s) across the whole desktop, so it cannot enumerate much of "
+                f"anything. The {uia_report.get('elements')} it reports for this window "
+                f"say nothing about Java. Install or repair the UIA/MSAA bridge and "
+                f"rerun before drawing a conclusion.")
 
     def cell_text(report):
         # Not `cell`: check_documented_api.py's TOOL_VARIABLES maps that name to
