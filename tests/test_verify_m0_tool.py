@@ -132,6 +132,13 @@ def the_real_run():
     has no table at all. Before Absent existed this shape came back INCONCLUSIVE,
     because UIA's absent table counted as an unanswered question -- which put
     verdict()'s clear-win branch out of reach for the one case it was written for.
+
+    The control came later, measured in a second dispatch of the same branch. It is part
+    of this fixture because without it the numbers above cannot be told apart from a UIA
+    client that simply cannot enumerate -- and the first version of this fixture had no
+    control, so it asserted a conclusion the recorded run did not support. The run is
+    real either way; what changed is that it now carries the evidence that makes it
+    mean something.
     """
     jab = {
         "windows": {"java": 1, "sample": ["PyjabTestApp"]},
@@ -143,8 +150,17 @@ def the_real_run():
         "button": {"count": 35, "sample": "push button", "states": "enabled,showing"},
     }
     uia = {
-        "windows": {"top_level": 5, "sample": ["Taskbar", "PyjabTestApp"]},
+        "windows": {"top_level": 6, "sample": ["Taskbar", "PyjabTestApp"]},
         "elements": 6, "roles": 4, "named": 5, "depth": 3,
+        # The control, measured in the same run on 2026-10-10 and added afterwards --
+        # the first dispatch of it came back without one, which is what showed that the
+        # function was being defined and never called. 147 elements across the desktop
+        # with reached_limit false, so the client walks a UIA tree of real size; the six
+        # it reports for the Java window are therefore about Java rather than about the
+        # client.
+        "_control": {"elements": 147, "named": 99, "roles": 17,
+                     "reached_limit": False,
+                     "role_counts": {"ButtonControl": 45, "TextControl": 41}},
         "role_counts": {"ButtonControl": 3, "TitleBarControl": 1},
         "table": verify_m0.Absent("no UIA element with 'table' in its type"),
         "cell": verify_m0.Absent("no UIA table, so no cell to read"),
