@@ -207,8 +207,32 @@ class JABElement(object):
 
     @property
     def accessible_interfaces(self) -> bool:
-        # TODO: need handle acc interface
-        return False
+        """Whether the element exposes an accessibility interface beyond the basics.
+
+        The four flags below come from the accessibility context info -- see
+        ``accessibleinfo.py``, where they sit beside ``accessibleComponent``.
+
+        **``accessibleComponent`` is deliberately not one of them.** It is the base
+        interface every accessible object has, which is why JAB reports it separately;
+        including it would make this property always ``True``, which is the same defect as
+        the ``return False`` it replaces, pointed the other way.
+
+        An element with none of the four is a real answer -- a plain painted panel has no
+        text, no actions, no selection and no value -- so ``False`` here means something.
+
+        Note:
+            The four are read from one ``getAccessibleContextInfo`` call, which the three
+            sibling properties (:attr:`accessible_text`, :attr:`accessible_action`,
+            :attr:`accessible_selection`) each make separately. This property makes its own,
+            like they do.
+        """
+        info = self._acc_info()
+        return bool(
+            info.accessibleText
+            or info.accessibleAction
+            or info.accessibleSelection
+            or info.accessibleValue
+        )
 
     @property
     def text(self) -> Optional[str]:

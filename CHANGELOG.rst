@@ -10,6 +10,21 @@ This project adheres to `Semantic Versioning`_ and `Keep a Changelog`_.
 Unreleased
 ----------
 
+Fixed
+~~~~~
+
+* **``accessible_interfaces`` answered ``False`` for every element.** It was ``return
+  False`` with a ``TODO`` above it, while the three sibling properties read the real value
+  from the accessibility context info. A user asking whether an element exposes an
+  accessibility interface was told no, always, including for an element with a text
+  interface. Reported as #207.
+
+  It is now the union of the four flags that mean something -- ``accessibleText``,
+  ``accessibleAction``, ``accessibleSelection``, ``accessibleValue``. **The fifth,
+  ``accessibleComponent``, is deliberately excluded**: it is the base interface every
+  accessible object has, so counting it would make the property always ``True``, which is
+  the same defect pointed the other way. An element with none of the four is a real answer.
+
 * **``visible_children_count``, because there are two answers to "how many children".**
   ``children_count`` is the **total**, from the accessibility context info;
   ``visible_children_count`` is the count the bridge calls visible, from
