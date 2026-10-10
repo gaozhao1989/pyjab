@@ -331,6 +331,63 @@ class JABElement(object):
                     jabelement.bridge, jabelement.hwnd, jabelement.vmid, child_acc
                 )
 
+    def as_record(self) -> dict:
+        """This element's identity and geometry, as plain data.
+
+        The fields are the ones a locator can match on, which is why they are these: a
+        caller that wants to write a locator, or to check later that an element it holds a
+        locator for is still the same element, needs exactly this set.
+
+        Plain data on purpose. An element is a live JAB reference with a lifetime, and
+        handing one to something that outlives the call is how this codebase has leaked
+        twice. A dict cannot leak.
+        """
+        try:
+            bounds = self.bounds or {}
+        except Exception:                        # pragma: no cover - JAB dependent
+            bounds = {}
+        return {
+            "role": self.role_en_us,
+            "name": self.name or "",
+            "description": self.description or "",
+            "index_in_parent": self.index_in_parent,
+            "children_count": self.children_count,
+            "object_depth": self.object_depth,
+            "states": ",".join(self.states_en_us or []),
+            "bounds": bounds,
+        }
+
+    def walk(self, max_depth: Optional[int] = None,
+             limit: Optional[int] = None) -> "JABTree":
+        """Walk this element's descendants, yielding ``(depth, record)``.
+
+        **Ownership**: every record is plain data, and every JAB reference the walk takes
+        is released before the next one is yielded. The caller never receives a reference
+        and therefore cannot leak one -- which is the whole reason this yields records
+        rather than ``JABElement``s. See :meth:`release_jabelement` for what goes wrong
+        when a reference outlives its use.
+
+        Args:
+            max_depth (int, optional): How far below this element to go. ``0`` yields only
+                the immediate children. Defaults to None, which does not limit depth.
+            limit (int, optional): The most records to produce. Defaults to None.
+
+        Returns:
+            JABTree: an iterable of ``(depth, record)`` pairs. It is an object rather than
+            a bare generator so that the caller can ask **whether the walk was cut short**
+            -- see :attr:`JABTree.truncated`. A tree that was truncated and one that
+            genuinely ends at the limit produce the same records, and a caller that cannot
+            tell them apart will act on half a window.
+
+        :Usage:
+            tree = element.walk(max_depth=2, limit=200)
+            for depth, item in tree:
+                print("  " * depth, item["role"], item["name"])
+            if tree.truncated:
+                print("(partial: only the first", len(tree), "were read)")
+        """
+        return JABTree(self, max_depth=max_depth, limit=limit)
+
     def get_children(
         self, by: str = None, value: Optional[str] = None
     ) -> list[JABElement]:
@@ -2908,3 +2965,78 @@ class JABElement(object):
                     _error_msg = f"Failed to wait for expected values '{_expected_values}' in '{timeout}' seconds"
                 raise TimeoutError(_error_msg)
             sleep(poll_interval)
+
+class JABTree:
+    """An iteration over a subtree, which knows whether it finished.
+
+    Yields ``(depth, record)`` from :meth:`JABElement.walk`. Records are plain dicts and
+    every JAB reference taken during the walk is released as the walk advances, so nothing
+    the caller sees has a lifetime to manage.
+
+    The reason this is an object rather than a generator is the three attributes below.
+    **A truncated walk and a complete one produce the same records**, and the difference
+    is the whole question a caller is asking: "is the tree like this, or did I stop
+    reading?" A caller that cannot tell them apart will act on half a window and believe
+    it saw the whole thing.
+
+    Attributes:
+        truncated (bool): True if any limit stopped the walk before the subtree was
+            exhausted. This is the one to check.
+        limit_hit (bool): True if *limit* was reached.
+        max_depth_hit (bool): True if a node was not descended into because of
+            *max_depth*. Note that reaching *max_depth* is not itself truncation -- a walk
+            asked for two levels and given two levels did what it was asked.
+    """
+
+    def __init__(self, element, max_depth: Optional[int] = None,
+                 limit: Optional[int] = None) -> None:
+        self._element = element
+        self._max_depth = max_depth
+        self._limit = limit
+        self.limit_hit = False
+        self.max_depth_hit = False
+        self.count = 0
+
+    #: True if a limit stopped the walk. This is the attribute to check.
+    @property
+    def truncated(self) -> bool:
+        return self.limit_hit
+
+    def __len__(self) -> int:
+        """Records produced so far -- only meaningful after iterating."""
+        return self.count
+
+    def __iter__(self):
+        if self._max_depth is not None and self._max_depth < 0:
+            return
+
+        def descend(node, depth):
+            # _generate_childs_from_element, not get_children: the latter materialises
+            # every child and each carries a reference. A walk that stops early has then
+            # taken references to children it will never reach, and nothing releases them
+            # -- the caller asked for the first two of twenty and leaked eighteen. The
+            # generator asks for one child at a time, so an abandoned walk has taken only
+            # what it released in the finally below.
+            for child in node._generate_childs_from_element(jabelement=node):
+                try:
+                    if self._limit is not None and self.count >= self._limit:
+                        # Set on the object, not returned from this frame: `return` here
+                        # ends this frame only, and the parent's loop would carry on
+                        # calling back in. The check at the top of the loop is what
+                        # actually stops the walk.
+                        self.limit_hit = True
+                        return
+                    self.count += 1
+                    yield depth, child.as_record()
+                    if self._max_depth is None or depth < self._max_depth:
+                        yield from descend(child, depth + 1)
+                    else:
+                        self.max_depth_hit = True
+                finally:
+                    # Released here rather than collected and released at the end, because
+                    # a walk can be abandoned part-way -- the caller may stop iterating,
+                    # and a generator that is closed does not run code after the yield
+                    # unless it is in a finally.
+                    node.release_jabelement(child)
+
+        yield from descend(self._element, 0)

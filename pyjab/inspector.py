@@ -60,55 +60,23 @@ def _quote(value: str) -> str:
 
 
 def record(element) -> dict:
-    """Everything about one element that is useful for writing a locator.
-
-    Taken as plain data on purpose. The element is released by the caller immediately
-    afterwards, so nothing downstream can hold a JAB reference by accident -- see
-    AGENTS.md 2.1a, where holding one too long or releasing it twice is the bug.
-    """
-    bounds = {}
-    try:
-        bounds = element.bounds or {}
-    except Exception:                                 # pragma: no cover - JAB dependent
-        pass
-    return {
-        "role": element.role_en_us,
-        "name": element.name or "",
-        "description": element.description or "",
-        "index_in_parent": element.index_in_parent,
-        "children_count": element.children_count,
-        "object_depth": element.object_depth,
-        "states": ",".join(element.states_en_us or []),
-        "bounds": bounds,
-    }
+    """This element as plain data. See :meth:`pyjab.jabelement.JABElement.as_record`."""
+    return element.as_record()
 
 
 def walk(element, max_depth: int, limit: int):
-    """Yield ``(depth, record)`` for the subtree, releasing as it goes.
+    """Walk a subtree, yielding ``(depth, record)``.
 
-    Every child comes from a JAB call and belongs to whoever asked for it, so each is
-    released in a ``finally`` once its own subtree has been read. Yielding records
-    rather than elements is what makes that possible: the caller never gets a
-    reference, so it cannot leak one.
+    Delegates to :meth:`pyjab.jabelement.JABElement.walk`, which is where this now lives:
+    traversal is a thing an element can do, and the CLI is only its first caller. It moved
+    because a second project needed it and a private function in a CLI module is not
+    something another project may depend on.
+
+    The return value is a ``JABTree``, so the caller can ask whether the walk was
+    truncated -- which this function used to make impossible, because a bare generator has
+    nowhere to put that answer.
     """
-    if max_depth is not None and max_depth < 0:
-        return
-    produced = 0
-
-    def descend(node, depth):
-        nonlocal produced
-        for child in node.get_children():
-            try:
-                if limit is not None and produced >= limit:
-                    return
-                produced += 1
-                yield depth, record(child)
-                if max_depth is None or depth < max_depth:
-                    yield from descend(child, depth + 1)
-            finally:
-                node.release_jabelement(child)
-
-    yield from descend(element, 0)
+    return element.walk(max_depth=max_depth, limit=limit)
 
 
 def render_tree(entries, show_bounds: bool = False) -> str:
@@ -306,15 +274,19 @@ def cmd_windows(args) -> int:
 def cmd_tree(args) -> int:
     with attached(args.title, args.timeout, args.launch) as driver:
         root = driver.root_element
-        entries = list(walk(root, args.depth, args.limit))
+        tree = walk(root, args.depth, args.limit)
+        entries = list(tree)
         if args.json:
             print(json.dumps([{"depth": d, **item} for d, item in entries],
                              ensure_ascii=False, indent=2))
         else:
             print(f"{len(entries)} element(s) under {args.title!r}:\n")
             print(render_tree(entries, show_bounds=args.bounds))
-            if args.limit is not None and len(entries) == args.limit:
-                print(f"\n(stopped at --limit {args.limit})")
+            if tree.truncated:
+                # Asked of the walk rather than inferred from the count: a tree that
+                # genuinely ends at exactly --limit is not the same as one that was cut
+                # off there, and only the walk knows which happened.
+                print(f"\n(stopped at --limit {args.limit}; more elements follow)")
     return 0
 
 
