@@ -150,6 +150,33 @@ def the_real_run():
     return jab, uia
 
 
+def test_no_verdict_string_carries_the_cell_report_artefact():
+    """Every sentence verdict() can print, checked as text rather than as a file.
+
+    A partial rename left "cell_report" inside the printed verdicts, and it survived
+    a commit because the fix was checked with grep -- which cannot see a string split
+    across two source lines, and the printed one was. This drives every branch and
+    reads what comes out.
+    """
+    both = {"cell": {"text": "x"}, "named": 10}
+    no_cell = {"named": 10}
+    uia_more = {"cell": {"text": "x"}, "named": 40}
+
+    cases = [
+        (both, no_cell, True),        # JAB clearly better
+        (no_cell, both, True),        # UIA looks better
+        (both, uia_more, True),       # UIA looks better on information
+        (both, both, True),           # about the same
+        (no_cell, no_cell, True),     # inconclusive from these numbers
+        (both, both, False),          # incomplete
+    ]
+
+    for jab, uia, complete in cases:
+        conclusion = verify_m0.verdict(jab, uia, complete)
+        assert "cell_report" not in conclusion, conclusion
+        assert conclusion, "a verdict must say something"
+
+
 def test_the_first_real_run_reaches_the_plans_clear_win():
     """The test whose absence let the conflation ship.
 
