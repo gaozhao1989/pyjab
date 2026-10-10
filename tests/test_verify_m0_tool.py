@@ -93,14 +93,89 @@ def test_a_missing_client_does_not_make_the_verdict_a_win():
     assert "CLEARLY BETTER" not in conclusion
 
 
-def test_one_unanswered_row_makes_the_whole_report_incomplete():
-    """A comparison is only a comparison where both sides answered."""
+def test_a_row_that_could_not_be_measured_makes_the_whole_report_incomplete():
+    """A comparison is only a comparison where both sides answered.
+
+    The reason has to be a *failure to measure*. This used to use "no UIA element
+    with 'tree' in its type", which is the opposite -- a measurement that was taken
+    and came back empty, and therefore an answer.
+    """
     jab, uia = a_full_pair()
-    uia["tree"] = verify_m0.Unavailable("no UIA element with 'tree' in its type")
+    uia["tree"] = verify_m0.Unavailable("could not enumerate UIA windows")
 
     _lines, complete = verify_m0.report(jab, uia)
 
     assert complete is False
+
+
+def test_a_measured_absence_is_an_answer_not_a_gap():
+    """UIA exposing no table is a result, and it is the plan's own clear-win row."""
+    jab, uia = a_full_pair()
+    uia["table"] = verify_m0.Absent("no UIA element with 'table' in its type")
+    uia["tree"] = verify_m0.Absent("no UIA element with 'tree' in its type")
+
+    lines, complete = verify_m0.report(jab, uia)
+
+    assert complete is True
+    assert "ABSENT" in verify_m0.describe(uia["table"])
+    assert "UNAVAILABLE" not in "\n".join(lines)
+
+
+def the_real_run():
+    """The payload the first real run produced, numbers and all.
+
+    pyjab read 601 elements, 29 roles and a table cell's text; UIA read 6 elements and
+    has no table at all. Before Absent existed this shape came back INCONCLUSIVE,
+    because UIA's absent table counted as an unanswered question -- which put
+    verdict()'s clear-win branch out of reach for the one case it was written for.
+    """
+    jab = {
+        "windows": {"java": 1, "sample": ["PyjabTestApp"]},
+        "elements": 601, "roles": 29, "named": 513, "depth": 12,
+        "role_counts": {"label": 451, "push button": 35, "table": 2},
+        "table": {"role": "table", "name": "Sports table", "children": 20},
+        "cell": {"index": 6, "role": "label", "text": "true", "of": 20},
+        "tree": {"count": 1, "named": 1, "sample": ["Tree"]},
+        "button": {"count": 35, "sample": "push button", "states": "enabled,showing"},
+    }
+    uia = {
+        "windows": {"top_level": 5, "sample": ["Taskbar", "PyjabTestApp"]},
+        "elements": 6, "roles": 4, "named": 5, "depth": 3,
+        "role_counts": {"ButtonControl": 3, "TitleBarControl": 1},
+        "table": verify_m0.Absent("no UIA element with 'table' in its type"),
+        "cell": verify_m0.Absent("no UIA table, so no cell to read"),
+        "tree": verify_m0.Absent("no UIA element with 'tree' in its type"),
+        "button": {"count": 3, "sample": "ButtonControl", "states": ""},
+    }
+    return jab, uia
+
+
+def test_the_first_real_run_reaches_the_plans_clear_win():
+    """The test whose absence let the conflation ship.
+
+    This is the run of 2026-10-10 on windows-latest, JDK 17, against the Swing test
+    application: the go/no-go for the whole MCP layer.
+    """
+    jab, uia = the_real_run()
+
+    _lines, complete = verify_m0.report(jab, uia)
+    conclusion = verify_m0.verdict(jab, uia, complete)
+
+    assert complete is True
+    assert "JAB CLEARLY BETTER" in conclusion
+    assert "INCONCLUSIVE" not in conclusion
+
+
+def test_a_failed_enumeration_still_beats_the_clear_win():
+    """The inverse: a genuine failure must not be read as UIA having nothing."""
+    jab, uia = the_real_run()
+    uia["windows"] = verify_m0.Unavailable("could not enumerate UIA windows")
+
+    _lines, complete = verify_m0.report(jab, uia)
+    conclusion = verify_m0.verdict(jab, uia, complete)
+
+    assert complete is False
+    assert "CLEARLY BETTER" not in conclusion
 
 
 def test_a_fully_measured_pair_is_complete():

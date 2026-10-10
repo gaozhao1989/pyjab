@@ -27,9 +27,19 @@ The distinction that matters most
 ---------------------------------
 
 A comparison script that fails to read UIA would report "JAB sees 40 elements, UIA sees
-0" and look like a decisive win for JAB. So every UIA reading here is a **status**: a
-count, or the reason there is no count -- client missing, call failed, tree empty. The
-report says which. **An unavailable measurement is never rendered as a zero.**
+0" and look like a decisive win for JAB. So every UIA reading here is a **status**, and
+there are three of them, not two:
+
+* a **count** -- what was measured;
+* an :class:`Absent` -- the measurement *was* taken and the answer is "nothing there".
+  UIA exposing no table is an answer, and it is the plan's own clear-win row: pyjab
+  reads a table cell and UIA reports none;
+* an :class:`Unavailable` -- the measurement could **not** be taken; the client is
+  missing or the call failed. This is the one that is never rendered as a zero.
+
+The report says which of the three each row is. Only the third makes the run
+INCONCLUSIVE; treating the second as the third is what made the plan's clear-win row
+unreachable, which is why ``Absent`` exists rather than a flag on ``Unavailable``.
 
 Usage
 -----
@@ -39,8 +49,8 @@ Usage
     python tools/verify_m0.py --title PyjabTestApp
 
 Add `--json` for a machine-readable report. Exit status is 0 if every measurement was
-taken, 1 if any was unavailable -- so a comparison that could not be made cannot look
-like a comparison that was.
+taken -- including the ones that found nothing -- and 1 if any could not be taken, so a
+comparison that could not be made cannot look like a comparison that was.
 
 Run it once per target the plan names: a JDK 8 login form, a JDK 17 window with a large
 table, and a window with a tree, tabs and a dialog.
@@ -88,6 +98,25 @@ class Unavailable:
         return f"unavailable: {self.reason}"
 
 
+class Absent(Unavailable):
+    """The measurement *was* taken, and the answer is: nothing there.
+
+    This distinction is the whole point of the script. "UIA exposes no table" is an
+    answer, and it is the plan's own clear-win row -- pyjab reads a table cell's text
+    and UIA reports none. "UIA could not be enumerated" is not an answer, and reading
+    it as one would flatter pyjab.
+
+    Both used to be a plain ``Unavailable``, and ``report()`` judged them by their
+    rendered string, so *every* absence made the run INCONCLUSIVE. That put
+    ``verdict()``'s clear-win branch out of reach for the one case it was written
+    for: when UIA finds no table it never sets ``cell`` at all, so the row counted as
+    unanswered and the verdict returned before comparing anything.
+    """
+
+    def __repr__(self) -> str:
+        return f"absent: {self.reason}"
+
+
 def jab_side(title: str, timeout: int) -> dict:
     """Read the window through pyjab. Raises if pyjab cannot attach."""
     from pyjab.jabdriver import JABDriver
@@ -119,19 +148,24 @@ def jab_side(title: str, timeout: int) -> dict:
                            "children": tables[0]["children_count"]}
         result["cell"] = _jab_cell(driver, root, tables[0])
     else:
-        result["table"] = Unavailable("no element with 'table' in its role")
+        result["table"] = Absent("no element with 'table' in its role")
+        # Explicit, because the completeness check looks at every question and this
+        # one would otherwise fall back to report()'s "not measured" default -- which
+        # means a *failure* to measure, and would keep the run INCONCLUSIVE even
+        # though "there is no table" is a perfectly good answer.
+        result["cell"] = Absent("no table, so no cell to read")
 
     nodes = [item for item in elements if "tree" in item["role"] or "list item" in item["role"]]
     result["tree"] = ({"count": len(nodes),
                        "named": sum(1 for item in nodes if item["name"]),
                        "sample": [item["name"] for item in nodes if item["name"]][:5]}
-                      if nodes else Unavailable("no element with 'tree' in its role"))
+                      if nodes else Absent("no element with 'tree' in its role"))
 
     buttons = [item for item in elements if "push button" in item["role"]]
     result["button"] = ({"count": len(buttons),
                          "sample": buttons[0]["role"],
                          "states": buttons[0]["states"] or "(none reported)"}
-                        if buttons else Unavailable("no push button found"))
+                        if buttons else Absent("no push button found"))
     return result
 
 
@@ -148,7 +182,7 @@ def _jab_cell(driver, root, table_info) -> object:
     except JABException as exc:
         return Unavailable("could not read the table's children", str(exc))
     if not cells:
-        return Unavailable("the table reported no children")
+        return Absent("the table reported no children")
     # Row-major as Swing reports it; index 6 is row 3, column 2 of a 3-wide table.
     index = min(6, len(cells) - 1)
     return {"index": index, "role": cells[index].role_en_us,
@@ -196,20 +230,24 @@ def uia_side(title: str, timeout: int) -> dict:
         result["table"] = {"role": tables[0]["role"], "name": tables[0]["name"]}
         result["cell"] = _uia_cell(tables[0])
     else:
-        result["table"] = Unavailable("no UIA element with 'table' in its type")
+        result["table"] = Absent("no UIA element with 'table' in its type")
+        # Same reason as the JAB side: without this the row falls back to
+        # report()'s "not measured" default, which is a failure to measure, and the
+        # run stays INCONCLUSIVE even though "UIA has no table" is the answer.
+        result["cell"] = Absent("no UIA table, so no cell to read")
 
     nodes = [item for item in elements
              if "tree" in item["role"].lower() or "listitem" in item["role"].lower()]
     result["tree"] = ({"count": len(nodes),
                        "named": sum(1 for item in nodes if item["name"]),
                        "sample": [item["name"] for item in nodes if item["name"]][:5]}
-                      if nodes else Unavailable("no UIA element with 'tree' in its type"))
+                      if nodes else Absent("no UIA element with 'tree' in its type"))
 
     buttons = [item for item in elements
                if "button" in item["role"].lower() and "listitem" not in item["role"].lower()]
     result["button"] = ({"count": len(buttons), "sample": buttons[0]["role"],
                          "states": buttons[0].get("patterns", "(not read)")}
-                        if buttons else Unavailable("no UIA button found"))
+                        if buttons else Absent("no UIA button found"))
     return result
 
 
@@ -251,7 +289,7 @@ def _uia_cell(table) -> object:
     except Exception as exc:                    # noqa: BLE001
         return Unavailable("could not read the UIA table's children", str(exc))
     if not cells:
-        return Unavailable("the UIA table reported no children")
+        return Absent("the UIA table reported no children")
     index = min(6, len(cells) - 1)
     try:
         return {"index": index, "role": cells[index].ControlTypeName,
@@ -271,7 +309,19 @@ def _counts(values) -> dict:
 # Reporting
 # ---------------------------------------------------------------------------
 
+def _unmeasured(value) -> bool:
+    """True when this is a failure to measure, rather than a measured absence.
+
+    The distinction the whole script turns on, and it has to be a type test: the
+    rendered string cannot carry it, which is exactly what made every absence look
+    like an unanswered question.
+    """
+    return isinstance(value, Unavailable) and not isinstance(value, Absent)
+
+
 def describe(value) -> str:
+    if isinstance(value, Absent):
+        return f"ABSENT ({value.reason})"
     if isinstance(value, Unavailable):
         return f"UNAVAILABLE ({value.reason})"
     if isinstance(value, dict):
@@ -282,8 +332,10 @@ def describe(value) -> str:
 def report(jab_report: dict, uia_report: dict) -> tuple:
     """The side-by-side table, and whether every measurement was actually taken.
 
-    The second return value is the point: a row where either side is Unavailable is an
-    unanswered question, not a win.
+    The second return value is the point: a row where either side could not be
+    measured is an unanswered question, not a win. A row where a side measured and
+    found *nothing* is an answer -- that is what Absent records, and it is the plan's
+    own clear-win row.
     """
     lines = []
     complete = True
@@ -302,9 +354,13 @@ def report(jab_report: dict, uia_report: dict) -> tuple:
     lines.append(f"  {'question'.ljust(width)} {'pyjab (JAB)':<34} {'UIA':<34}")
     lines.append(f"  {'-' * width} {'-' * 34} {'-' * 34}")
     for key, label in QUESTIONS:
-        left = describe(jab_report.get(key, Unavailable("not reported by the JAB side")))
-        right = describe(uia_report.get(key, Unavailable("not measured")))
-        if left.startswith("UNAVAILABLE") or right.startswith("UNAVAILABLE"):
+        jab_value = jab_report.get(key, Unavailable("not reported by the JAB side"))
+        uia_value = uia_report.get(key, Unavailable("not measured"))
+        left, right = describe(jab_value), describe(uia_value)
+        # A type test, not the rendered string: only a failure to measure makes the
+        # run incomplete. This is the line that used to put verdict()'s clear-win
+        # branch out of reach.
+        if _unmeasured(jab_value) or _unmeasured(uia_value):
             complete = False
         lines.append(f"  {label.ljust(width)} {left[:34]:<34} {right[:34]:<34}")
 
@@ -343,7 +399,7 @@ def verdict(jab_report: dict, uia_report: dict, complete: bool) -> str:
         return ("JAB CLEARLY BETTER on the plan's own test: pyjab reads a table cell_report's "
                 "text and UIA reports none. Continue the MCP direction.")
     if uia_text and not jab_text:
-        return ("UIA LOOKS BETTER: it reads a table cell_report's text and pyjab reports none. "
+        return ("UIA LOOKS BETTER: it reads a table cell's text and pyjab reports none. "
                 "The plan says stop the MCP direction and put the effort into the "
                 "library. Confirm by hand first.")
 
@@ -353,15 +409,15 @@ def verdict(jab_report: dict, uia_report: dict, complete: bool) -> str:
 
     if jab_text and uia_text:
         if ratio is not None and ratio > 1.5:
-            return (f"UIA LOOKS BETTER on information: both read the cell_report, and UIA "
+            return (f"UIA LOOKS BETTER on information: both read the cell, and UIA "
                     f"exposes {uia_named} named elements against pyjab's {jab_named} "
                     f"({ratio:.1f}x). The plan says stop the MCP direction. Check by "
                     f"hand first -- these may be duplicates or containers, which are "
                     f"noise rather than detail.")
-        return ("ABOUT THE SAME: both read the table cell_report and UIA does not expose "
+        return ("ABOUT THE SAME: both read the table cell and UIA does not expose "
                 "materially more named elements. Downgrade pyjab-mcp to an optional "
                 "backend rather than a product.")
-    return ("INCONCLUSIVE from these numbers alone: neither side read the table cell_report. "
+    return ("INCONCLUSIVE from these numbers alone: neither side read the table cell. "
             "Read the table above against the plan's decision table "
             "(docs/PYJAB_MCP_PLAN.md section 2.3). What the script cannot judge is "
             "whether the *fields* either side exposes are the ones an agent needs.")
@@ -388,7 +444,11 @@ def main() -> int:
     if args.json:
         def plain(value):
             if isinstance(value, Unavailable):
-                return {"unavailable": value.reason, "detail": value.detail}
+                # explicit, because the distinction is invisible in the output
+                # otherwise and it is the difference between an answer and a gap
+                return {"unavailable": value.reason,
+                        "measured_absence": isinstance(value, Absent),
+                        "detail": value.detail}
             if isinstance(value, dict):
                 return {k: plain(v) for k, v in value.items() if k != "control"}
             return value
