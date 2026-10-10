@@ -1,0 +1,240 @@
+name: Windows GUI tests
+
+# A hosted Windows runner with a real interactive desktop session -- which is
+# what the GUI layer needs, and what the default CI deliberately does not
+# attempt ("CI cannot verify GUI behaviour", AGENTS.md section 1.1).
+#
+# Why this is worth having rather than a paid VM:
+#
+#   * this repository is public, so standard-runner minutes are free and
+#     unmetered -- there is no account to create and no instance to pay for;
+#   * the runner is not a service in session 0.  A diagnostic run established
+#     that it has an **active console session**: session 2, user runneradmin,
+#     with explorer.exe running.  So a Swing window is a real window, on a real
+#     desktop, and Java Access Bridge can see it.
+#
+# The diagnostic that established it reported, on windows-latest:
+#
+#     >console    runneradmin    2  Active
+#     Id   SessionId   MainWindowHandle   MainWindowTitle
+#     7896 2           66068              PyjabTestApp
+#     top-level windows on this desktop: 72   PyjabTestApp present: True
+#     1 Java window(s): hwnd=66068 pid=7896 title='PyjabTestApp'
+#
+# The last line is pyjab's own window list, through JAB.
+#
+# Usage:
+#     gh workflow run windows-gui.yml --ref master -f task=gui-suite
+#     gh run watch
+#
+# That is the whole point of this file: the tests run somewhere the maintainer
+# can read the log from, instead of on a second machine whose results have to be
+# carried back by hand.
+#
+# On `task` and `java`: the interesting JDK is 8, because that is where the JAB
+# DLL lives in %JAVA_HOME%\jre\bin instead of %JAVA_HOME%\bin, and the matrix in
+# ci.yml covers discovery but never a live application.
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: What to run
+        required: true
+        default: gui-suite
+        type: choice
+        options:
+          - gui-suite
+          - m0
+          - xpath
+          - table-selection
+          - dpi
+          - test-app
+          - soak
+          - environment
+      java:
+        description: Temurin JDK version
+        required: true
+        default: "17"
+        type: choice
+        options:
+          - "8"
+          - "11"
+          - "17"
+          - "21"
+      minutes:
+        description: Duration for task=soak, in minutes
+        required: false
+        default: "1"
+      title:
+        description: Window title for tasks that attach to a running application
+        required: false
+        default: PyjabTestApp
+
+permissions:
+  contents: read
+
+jobs:
+  windows-gui:
+    name: ${{ inputs.task }} (JDK ${{ inputs.java }})
+    runs-on: windows-latest
+    # The GUI suite drives a real JVM and waits on bounded timeouts; the soak is
+    # the only genuinely long one, and it stops itself at `minutes`.  The cap
+    # keeps a hung JAB call from burning the six hours a hosted job may run.
+    timeout-minutes: 240
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ inputs.java }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Every run records the thing that makes it possible, so a future "pyjab
+      # cannot see the window in CI" is answerable from the log rather than by
+      # re-deriving it.
+      - name: Report the desktop this run actually has
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          Write-Host "user        : $(whoami)"
+          Write-Host "our session : $((Get-Process -Id $PID).SessionId)"
+          Write-Host "java        : $(java -version 2>&1 | Select-Object -First 1)"
+          Write-Host "JAVA_HOME   : $env:JAVA_HOME"
+          Write-Host "== logon sessions =="
+          qwinsta 2>&1
+          Write-Host "== an interactive shell exists =="
+          Get-Process explorer -ErrorAction SilentlyContinue |
+            Format-Table Id, SessionId -AutoSize
+          Write-Host "== JAB DLLs this JDK ships =="
+          Get-ChildItem -Path $env:JAVA_HOME -Recurse -Filter "WindowsAccessBridge-*.dll" `
+            -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName
+          exit 0
+
+      - name: Install pyjab
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ".[dev]"
+
+      # Load-bearing, and the reason the GUI suite can run here at all.
+      #
+      # The bridge is enabled by ~/.accessibility.properties, which the *target*
+      # JVM reads at startup.  The GUI fixtures launch the application before the
+      # first JABDriver exists, so if enablement were left to the driver the
+      # first window of the first run would have no bridge -- and it would look
+      # like "JAB cannot see the window in CI" rather than an ordering mistake.
+      - name: Enable Java Access Bridge before any JVM starts
+        shell: pwsh
+        run: |
+          python -c "from pyjab.common.service import Service; Service().init_bridge(); print('init_bridge ok')"
+          Write-Host "== ~/.accessibility.properties =="
+          Get-Content "$env:USERPROFILE\.accessibility.properties" -ErrorAction SilentlyContinue
+          if (-not (Test-Path "$env:USERPROFILE\.accessibility.properties")) {
+            Write-Host "::error::the bridge properties file was not written; the GUI tests cannot pass without it"
+            exit 1
+          }
+
+      # ------------------------------------------------------------------
+      # The GUI layer.  Opt-in everywhere else, because it needs Windows, a
+      # JDK and an interactive desktop -- all three of which are here.
+      # ------------------------------------------------------------------
+      - name: "task=gui-suite"
+        if: inputs.task == 'gui-suite'
+        shell: pwsh
+        env:
+          PYJAB_RUN_GUI_TESTS: "1"
+        run: |
+          # faulthandler_timeout in pyproject.toml prints every thread's stack
+          # after 300s, which names the pyjab call that never returned.
+          python -m pytest tests/ -v 2>&1 | Tee-Object -FilePath gui-suite.log
+          exit $LASTEXITCODE
+
+      - name: "task=m0"
+        if: inputs.task == 'm0'
+        shell: pwsh
+        run: |
+          # Windows only, and deliberately not in pyproject.toml because one
+          # tool uses it.  verify_m0 attaches to a window it does not own.
+          python -m pip install uiautomation
+          javac -d tests/java/classes tests/java/PyjabTestApp.java
+          $app = Start-Process java -PassThru -ArgumentList `
+            '-Duser.language=en','-Duser.country=US','-cp','tests/java/classes','PyjabTestApp',`
+            "--title=${{ inputs.title }}"
+          Start-Sleep -Seconds 15
+          python tools/verify_m0.py --title "${{ inputs.title }}" --json |
+            Tee-Object -FilePath m0.json
+          $code = $LASTEXITCODE
+          Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue
+          exit $code
+
+      - name: "task=xpath"
+        if: inputs.task == 'xpath'
+        shell: pwsh
+        run: |
+          # Launches and owns its own application; needs no external title.
+          python tools/verify_xpath.py 2>&1 | Tee-Object -FilePath xpath.log
+          exit $LASTEXITCODE
+
+      - name: "task=table-selection"
+        if: inputs.task == 'table-selection'
+        shell: pwsh
+        run: |
+          python tools/verify_table_selection.py 2>&1 | Tee-Object -FilePath table-selection.log
+          exit $LASTEXITCODE
+
+      - name: "task=dpi"
+        if: inputs.task == 'dpi'
+        shell: pwsh
+        run: |
+          # Without --hold: the tool's interactive mode never returns.
+          python tools/verify_dpi.py 2>&1 | Tee-Object -FilePath dpi.log
+          exit $LASTEXITCODE
+
+      - name: "task=test-app"
+        if: inputs.task == 'test-app'
+        shell: pwsh
+        run: |
+          python tools/verify_test_app.py 2>&1 | Tee-Object -FilePath test-app.log
+          exit $LASTEXITCODE
+
+      - name: "task=soak"
+        if: inputs.task == 'soak'
+        shell: pwsh
+        run: |
+          javac -d tests/java/classes tests/java/PyjabTestApp.java
+          $app = Start-Process java -PassThru -ArgumentList `
+            '-Duser.language=en','-Duser.country=US','-cp','tests/java/classes','PyjabTestApp',`
+            "--title=${{ inputs.title }}"
+          Start-Sleep -Seconds 15
+          # --interval 5 keeps a short run meaningful; the default 60 is for the
+          # two-hour run the roadmap asks for.
+          python tools/soak.py --title "${{ inputs.title }}" --minutes ${{ inputs.minutes }} `
+            --interval 5 2>&1 | Tee-Object -FilePath soak.txt
+          $code = $LASTEXITCODE
+          Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue
+          exit $code
+
+      - name: "task=environment"
+        if: inputs.task == 'environment'
+        shell: pwsh
+        run: |
+          Write-Host "diagnostics only; see the desktop report above"
+          exit 0
+
+      # Uploaded even when the step failed -- a failed GUI run is exactly when
+      # the measurement is worth reading.
+      - name: Upload what the run produced
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-gui-${{ inputs.task }}-jdk${{ inputs.java }}
+          if-no-files-found: ignore
+          path: |
+            *.log
+            *.json
+            *.txt
