@@ -328,6 +328,31 @@ def test_the_report_writes_the_raw_line_and_the_pyjab_outcome(capsys):
     assert "pyjab path : get_visible_children() raised JABException" in output
 
 
+def test_a_row_for_an_unknown_symbol_does_not_lose_the_report(capsys):
+    """The third dispatch died in ``report()`` on ``KeyError: 'control'``.
+
+    A crashed child had left a placeholder in the symbol field, and looking that up in
+    ``CALL_SITES`` threw away thirteen measured rows. A report that a child's input can kill
+    is not a report, so an unknown symbol prints as an unknown symbol -- and the run is
+    ``INCONCLUSIVE``, because a row this tool cannot name is not a measured row.
+    """
+    rows = a_full_sweep()
+    rows.record(verdict("not-a-symbol", raw=1))
+
+    code = tool.report(rows, CONTROL)
+    output = capsys.readouterr().out
+
+    assert code == 2
+    assert "not-a-symbol" in output
+    assert "unknown to this tool" in output
+    assert "PASSED" not in output
+
+
+def test_the_finding_survives_a_symbol_it_does_not_know():
+    """The same lookup, reached from the finding instead of from the row loop."""
+    assert "unknown to this tool" in tool.finding([verdict("mystery", raw=0)])
+
+
 def test_a_raw_line_for_a_call_that_raised_shows_the_exception_not_a_value():
     found = verdict(raw=None, error="RuntimeError: Result 0")
     assert found.raw_line() == "raw getVisibleChildren -> raised RuntimeError: Result 0"

@@ -817,6 +817,17 @@ def _unique(values):
     return unique
 
 
+def unknown_symbols(verdicts) -> list:
+    """Rows whose symbol this tool's table does not know.
+
+    One of these can only come from a child whose report was written by the crash handler, so
+    it is a row about the harness rather than a measurement -- the run says so instead of
+    passing on it.
+    """
+    return _unique(verdict.symbol for verdict in verdicts
+                   if verdict.symbol not in CALL_SITES)
+
+
 def falsy_summary(verdicts) -> str:
     """The one line the issue is asking for: which **candidate** symbols came back falsy.
 
@@ -849,8 +860,8 @@ def finding(verdicts) -> str:
             f"{verdict.symbol}: {verdict.error}" for verdict in unmeasured))
     if falsy:
         sites = ", ".join(
-            f"{symbol} ({CALL_SITES[symbol][0]}, which {CALL_SITES[symbol][1]} the "
-            f"result)" for symbol in _unique(verdict.symbol for verdict in falsy))
+            f"{symbol} ({call_site(symbol)})" for symbol in
+            _unique(verdict.symbol for verdict in falsy))
         return (f"arming these rows would raise in ordinary use: {sites}. Arm the rest; "
                 f"handle these first")
     return ("every candidate returned a nonzero value, so arming these rows changes "
@@ -909,6 +920,18 @@ class Rows(object):
         self.unreached.append((symbol, reason))
 
 
+def call_site(symbol: str) -> str:
+    """Where a symbol is reached from, and what the site does with the result.
+
+    A symbol the table does not know is a fact about this tool, not a reason to lose the
+    report. The third dispatch crashed in ``report()`` on ``KeyError: 'control'`` -- a
+    placeholder a crashed child had left in the symbol field -- and threw away thirteen
+    measured rows. A report that a child's input can kill is not a report.
+    """
+    site, what = CALL_SITES.get(symbol, ("unknown to this tool", "is not read"))
+    return f"{site}; the call site {what} the result"
+
+
 def report(rows: Rows, control: Optional[Tuple[str, str]]) -> int:
     """Print everything measured, and return the process exit code.
 
@@ -921,16 +944,14 @@ def report(rows: Rows, control: Optional[Tuple[str, str]]) -> int:
     print("=" * 78)
 
     for verdict in rows.verdicts:
-        site, expectation = CALL_SITES[verdict.symbol]
-        print(f"\n{verdict.symbol}   ({site}; the call site {expectation} the result)")
+        print(f"\n{verdict.symbol}   ({call_site(verdict.symbol)})")
         print(f"  reached by : {verdict.arguments}")
         print(f"  {verdict.raw_line()}")
         if verdict.outcome is not None:
             print(f"  pyjab path : {verdict.outcome}")
 
     for symbol, reason in rows.unreached:
-        site, expectation = CALL_SITES[symbol]
-        print(f"\n{symbol}   ({site}; the call site {expectation} the result)")
+        print(f"\n{symbol}   ({call_site(symbol)})")
         print(f"  not reached: {reason}")
         print(f"  raw {symbol} -> not reached: no call arrived to take arguments from")
 
@@ -967,6 +988,11 @@ def report(rows: Rows, control: Optional[Tuple[str, str]]) -> int:
     if missing:
         print("INCONCLUSIVE: the direct call for "
               + ", ".join(missing) + " did not return, so those rows are unmeasured")
+        return 2
+    unknown = unknown_symbols(rows.verdicts)
+    if unknown:
+        print("INCONCLUSIVE: " + ", ".join(unknown) + " is not a symbol this tool knows, "
+              "so that row came from a crashed child rather than from a measurement")
         return 2
     if control_failed(rows.verdicts):
         print("INCONCLUSIVE: " + control_note(rows.verdicts))
@@ -1109,8 +1135,15 @@ def measure_one_in_this_process(driver, symbol: str) -> Verdict:
             return verdict
 
         if recorder.hits < 1:
-            verdict.error = (f"the harness drove {reach.note}, but the bridge was never "
-                             f"asked for {symbol}; that is a gap in this tool")
+            # The reach claim is not made, but the value still is: the question is what the
+            # symbol returns, and a direct call on the same window answers it. What is lost
+            # is the knowledge that this exact call site ran, and the line says so.
+            verdict.arguments = (f"{reach.note} -- but the wrapper counted no call to "
+                                 f"{symbol}, so the call site was not observed; the value "
+                                 f"below is a direct call on the same window")
+            verdict.raw, verdict.error = raw_measure(
+                driver.bridge, symbol, lambda: RAW[symbol](driver.bridge, ctx))
+            verdict.outcome = ctx.get("outcome")
             return verdict
 
         # The two action symbols are performed by click(), which finds its own element and
@@ -1390,25 +1423,36 @@ def main() -> int:
     if args.child:
         if args.painted:
             args.symbol = "getVisibleChildren"
+        if args.control:
+            args.symbol = "control"
         try:
             return child_main(args)
         except Exception as error:                        # noqa: BLE001 - reported
-            # A crash in the child must still leave one JSON row behind. Twice now the
-            # tool's own bug arrived at the parent as "no JSON row", which reads like a
-            # broken bridge rather than like a line in this file -- the attribute typo cost
-            # a whole dispatch to find.
+            # A crash in the child must still leave one JSON row behind, under the key the
+            # parent reads for that kind of child, and it must name the symbol it was
+            # measuring: the first version used "control" as a placeholder for everything,
+            # and `report()` then died on `KeyError: 'control'` and threw away thirteen
+            # measured rows. Either way a bug in this file arrived at the parent as "no JSON
+            # row", which reads like a broken bridge rather than like a line in the tool.
             where = traceback.extract_tb(error.__traceback__)[-1]
-            print(json.dumps({"verdict": {
-                "symbol": args.symbol or "control",
-                "arguments": "the child crashed before it could drive anything",
-                "candidate": True,
-                "raw": None,
-                "raw_type": None,
-                "raw_error": (f"the harness could not drive it: {type(error).__name__}: "
-                              f"{error} (at {Path(where.filename).name}:{where.lineno} in "
-                              f"{where.name})"),
-                "outcome": None,
-            }}))
+            reason = (f"{type(error).__name__}: {error} (at "
+                      f"{Path(where.filename).name}:{where.lineno} in {where.name})")
+            if args.control:
+                print(json.dumps({"control": {
+                    "note": "the control child crashed before it could call anything",
+                    "rendered": f"FAIL {reason}",
+                    "ok": False,
+                }}))
+            else:
+                print(json.dumps({"verdict": {
+                    "symbol": args.symbol or "unknown",
+                    "arguments": "the child crashed before it could drive anything",
+                    "candidate": not args.painted,
+                    "raw": None,
+                    "raw_type": None,
+                    "raw_error": f"the harness could not drive it: {reason}",
+                    "outcome": None,
+                }}))
             return 1
     return parent_main(args)
 
