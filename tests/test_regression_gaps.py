@@ -134,6 +134,26 @@ def test_the_accelerator_item_exists_as_a_menu_item(driver):
     assert item.role_en_us == Role.MENU_ITEM
 
 
+def test_clicking_the_accelerated_item_invokes_it(driver):
+    """The control the accelerator test needs, and the cheapest question in #183.
+
+    If clicking the item renames it, the item and its listener are fine and the accelerator
+    is the problem. If clicking does not, the item is the problem and the accelerator has
+    never had a chance. Those two lead in different directions, and nothing has tried the
+    first one.
+
+    The menu is clicked open first, because a `JMenuItem` inside a closed menu is not on
+    screen and may well have nothing to click.
+    """
+    driver.find_element_by_name("A Menu").click()
+
+    item = driver.find_element_by_name("Accelerated item")
+    item.click()
+
+    invoked = driver.find_element_by_name("Accelerated item (invoked)")
+    assert invoked.role_en_us == Role.MENU_ITEM
+
+
 @pytest.mark.xfail(
     strict=True,
     reason=(
