@@ -142,6 +142,14 @@ def main() -> int:
             print(f"  FAIL {type(error).__name__}: {error}")
             failures.append("the grab did not encode")
 
+        if png is not None:
+            # Written out so a human can look at it. The numbers below can say "3883
+            # distinct colours" and still not answer "is this the window I expected",
+            # which is a question only an eye can settle.
+            out = REPO_ROOT / "screenshot.png"
+            out.write_bytes(png)
+            print(f"  wrote {out.name} ({len(png)} bytes) so it can be looked at")
+
         print("\nthe one that matters: is it actually a picture?")
         print("-" * 47)
         if png is not None:

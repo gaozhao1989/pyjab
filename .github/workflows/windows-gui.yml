@@ -274,3 +274,6 @@ jobs:
             *.log
             *.json
             *.txt
+            # The screenshot task writes the PNG it checked, so that a human can confirm
+            # it is the window that was expected rather than only that it varies.
+            *.png
