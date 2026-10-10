@@ -117,7 +117,7 @@ jobs:
 
       - name: Run discovery tests
         run: |
-          python -m pip install pytest
+          python -m pip install ".[dev]"
           python -m pytest tests/test_bridge_dll_discovery.py -v
 
   # ---------------------------------------------------------------------------
@@ -265,7 +265,7 @@ jobs:
       - name: Install pyjab and pip-licenses
         run: |
           python -m pip install --upgrade pip
-          python -m pip install ".[dev]" pip-licenses
+          python -m pip install ".[dev]"
 
       - name: Check that every dependency is permissively licensed
         run: python tools/check_dependency_licences.py
@@ -325,7 +325,7 @@ jobs:
 
       - name: Build sdist and wheel
         run: |
-          python -m pip install --upgrade pip build twine
+          python -m pip install ".[dev]"
           python -m build
 
       - name: Check metadata

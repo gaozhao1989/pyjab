@@ -81,6 +81,15 @@ dev = [
     # which is how ci.yml and release.yml drifted apart once already, and a
     # release failed after its tag had already been pushed.
     "build>=1.0",
+    # twine checks the distribution metadata; pip-licenses is what the checks job
+    # reads the licence of every dependency with. Both were `pip install`ed inside
+    # a workflow step, which is the drift AGENTS.md 7 warns about.
+    "twine>=5.0",
+    "pip-licenses>=4.3",
+    # Only the dispatch-only GUI workflow uses this, for the UIA comparison in
+    # tools/verify_m0.py -- but that workflow installs ".[dev]" already, so it is
+    # one list instead of two.
+    "uiautomation>=2.0; sys_platform == 'win32'",
 ]
 
 [project.urls]
