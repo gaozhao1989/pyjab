@@ -211,13 +211,15 @@ jobs:
         if: inputs.task == 'dpi-scaled'
         shell: pwsh
         run: |
-          # The runner's *display* scale is 1.0, which is why the plain dpi task cannot
-          # test issue #62. This asks the target JVM to scale itself instead, which is the
-          # same situation from pyjab's side and needs no display scaling at all.
-          # Can this runner be made to scale its display at all? Issue #169 item 3 needs
-          # 150%, and the uiScale experiment showed that a JVM scaling itself is not the
-          # same thing. This tries the documented way -- the per-user LogPixels value --
-          # and reports whether the display's answer changes.
+          # NOT a test of issue #62, and it must not be read as one. A JVM that scales
+          # its own layout leaves the mapping between JAB's logical coordinates and the
+          # screen's physical pixels untouched -- measured: the window grows and the
+          # JAB/Win32 ratio stays 1.0. #62 is about that mapping, and a hosted runner
+          # cannot produce it: the display is 96 DPI and LogPixels = 144 needs a logoff
+          # that a hosted runner cannot perform.
+          #
+          # What this does prove is that the click path still lands on a target that is
+          # not at 1.0, which is worth having and is all it claims.
           Write-Host "=== before ==="
           Add-Type -AssemblyName System.Windows.Forms
           Write-Host "LogPixels: $((Get-ItemProperty 'HKCU:\Control Panel\Desktop' -Name LogPixels -ErrorAction SilentlyContinue).LogPixels)"
