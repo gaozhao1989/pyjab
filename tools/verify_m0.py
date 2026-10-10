@@ -521,6 +521,12 @@ def main() -> int:
 
     jab_report = jab_side(args.title, args.timeout)
     uia_report = uia_side(args.title, args.timeout)
+    # The control, measured every run rather than when someone remembers: without it a
+    # small UIA tree cannot be told apart from a client that cannot enumerate, and the
+    # two look identical in the report. This line was missing from the first version of
+    # the control -- the function was written and never called, which no test noticed
+    # because the tests call verdict() directly.
+    uia_report["_control"] = uia_control()
     lines, complete = report(jab_report, uia_report)
     conclusion = verdict(jab_report, uia_report, complete)
 

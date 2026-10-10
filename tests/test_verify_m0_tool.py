@@ -399,3 +399,26 @@ def test_the_control_is_shown_in_the_report():
 
     assert "UIA control" in rendered
     assert "420" in rendered
+
+
+def test_main_actually_measures_the_control():
+    """The function being written is not the same as the function being called.
+
+    The first version of the control defined it and never called it. No test noticed,
+    because every test here calls verdict() directly with a fixture that already had a
+    control in it -- so the suite proved the analysis worked and said nothing about
+    whether the measurement ran. This checks the call site, from the source.
+    """
+    import ast
+
+    source = (REPO_ROOT / "tools" / "verify_m0.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    main = next(node for node in ast.walk(tree)
+                if isinstance(node, ast.FunctionDef) and node.name == "main")
+
+    called = {node.func.id for node in ast.walk(main)
+              if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)}
+
+    assert "uia_control" in called, (
+        "main() never calls uia_control(), so no run carries a control"
+    )
