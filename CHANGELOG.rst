@@ -134,6 +134,37 @@ Added
 Fixed
 ~~~~~
 
+* **``tools/verify_m0.py`` could not return its own clear-win verdict.** ``report()``
+  judged each row by the *rendered string*, and ``describe()`` rendered two opposite
+  things identically: "the measurement could not be taken" and "the measurement was
+  taken and the answer is nothing there". So UIA exposing no table at all made the run
+  INCONCLUSIVE, and ``verdict()`` returned there -- before reaching
+  ``if jab_text and not uia_text``.
+
+  That branch is the plan's own example of a clear win, and it was unreachable for the
+  case it was written for. When UIA finds no table it never sets ``cell`` at all, so
+  the row counted as unanswered. The go/no-go for the whole MCP layer could only ever
+  answer INCONCLUSIVE.
+
+  ``Absent`` now marks a measured absence, ``report()`` tests the type rather than the
+  string, and the ``cell`` question is recorded explicitly when there is no table --
+  without that last part the row falls back to "not measured" and nothing changes.
+  Both sides set it, and ``--json`` reports ``measured_absence`` beside each reason.
+
+  On the first real run -- pyjab 601 elements and a table cell's text, UIA 6 elements
+  and no table -- this turns INCONCLUSIVE into "JAB CLEARLY BETTER", the decision
+  table's first row. A regression test drives ``report()`` and ``verdict()`` with that
+  payload and returns INCONCLUSIVE under the old logic.
+
+  Failures to measure are unaffected and still make the run incomplete. The five
+  per-question reasons a failed call can produce ("could not enumerate UIA windows"
+  among them) do not pass through the ``_client`` check, so the type test is what
+  keeps them fatal.
+
+* **``verify_m0.py`` printed "a table cell_report's text" in every verdict.** A partial
+  rename left ``cell_report`` inside the sentences the script prints. Same commit
+  because it is the same function.
+
 * **``tools/verify_xpath.py`` announced a launch it never performed.** The default
   path -- no ``--no-launch`` -- printed "launching PyjabTestApp ..." and then waited
   for a window that nothing had started, so it could only ever time out: ``process =
