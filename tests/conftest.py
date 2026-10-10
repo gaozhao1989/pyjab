@@ -25,6 +25,7 @@ GUI_TEST_MODULES = [
     "test_bug_fix.py",
     "test_components.py",
     "test_message_pump_gui.py",
+    "test_regression_gaps.py",
 ]
 
 collect_ignore: list[str] = []
