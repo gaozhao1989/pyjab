@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import sys
+import warnings
+from io import BytesIO
 
 # pyjab ships as a pure-python wheel, so pip installs it on Linux and macOS too.
 # There it used to fail later with a bare
@@ -722,6 +724,51 @@ class JABDriver(object):
             encoded as ASCII.
         """
         return base64.b64encode(self.get_screenshot_as_png()).decode("ascii")
+
+    def get_screenshot(self):
+        """A Pillow ``Image`` of the screenshot.
+
+        .. deprecated:: 1.9.0
+            Pillow is no longer a dependency of pyjab, so this method only works when it
+            is installed separately, and it is **removed in 2.0.0**.
+
+            Use :meth:`get_screenshot_as_png` and an image library of your own:
+
+            .. code-block:: python
+
+                from io import BytesIO
+                from PIL import Image
+
+                image = Image.open(BytesIO(driver.get_screenshot_as_png()))
+
+            That is the same pixels with one line on your side, and it puts the imaging
+            dependency where it belongs -- yours to choose, and yours to keep up to date.
+
+        Returns:
+            PIL.Image.Image: the screenshot.
+
+        Raises:
+            ImportError: Pillow is not installed, with what to do about it.
+        """
+        warnings.warn(
+            "get_screenshot() returns a Pillow Image and is removed in 2.0.0. Use "
+            "get_screenshot_as_png() -- Image.open(BytesIO(png)) is the same thing "
+            "without making Pillow pyjab's dependency. Install pyjab[pillow] to keep "
+            "this working until then.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        try:
+            from PIL import Image
+        except ImportError as error:                 # pragma: no cover - env dependent
+            raise ImportError(
+                "get_screenshot() needs Pillow, which pyjab no longer installs. Either "
+                "install it with `pip install pyjab[pillow]`, or use "
+                "get_screenshot_as_png() and an image library of your choice -- "
+                "Image.open(BytesIO(png)) is one line."
+            ) from error
+
+        return Image.open(BytesIO(self.get_screenshot_as_png()))
 
     def get_window_size(self):
         """The bound window's size in pixels, as ``(width, height)``.

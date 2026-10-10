@@ -7,8 +7,8 @@ This project adheres to `Semantic Versioning`_ and `Keep a Changelog`_.
 .. _Semantic Versioning: https://semver.org/
 .. _Keep a Changelog: https://keepachangelog.com/
 
-Unreleased
-----------
+1.9.0 - 2026-10-10
+------------------
 
 Added
 ~~~~~
@@ -131,28 +131,41 @@ Added
   found is the most common report and ``find`` reports which step of the locator stopped
   matching.
 
-Removed
-~~~~~~~
+* **Screenshots are taken with GDI and written with ``zlib``.** ``BitBlt`` and
+  ``GetDIBits`` for the pixels, ``pyjab.common.png`` for the file — so ``pip install
+  pyjab`` brings no imaging library at all. The pixels are the same ones as before: this
+  changes what takes and encodes them, not what they show. **Verified on a real desktop**:
+  the rectangle the grab returns decodes back to the requested size, and has thousands of
+  distinct colours rather than being a uniform black frame — which is what a silently
+  failed GDI call produces, and it opens as a perfectly valid image.
 
-* **``get_screenshot()``, and with it the Pillow dependency.** The method returned a
-  Pillow ``Image``, which made Pillow a runtime dependency for the sake of one
-  convenience — and it was pyjab's own divergence rather than something a Selenium user
-  would expect: Selenium's method of that name returns base64, as the method's own
-  docstring had always pointed out.
+Deprecated
+~~~~~~~~~~
 
-  **The capability is not lost.** ``get_screenshot_as_png()`` gives the same pixels as
-  PNG bytes, and an image object is one line on the caller's side, which is where that
-  dependency belongs::
+* **``get_screenshot()``, which returns a Pillow ``Image``.** Deprecated in this release
+  and **removed in 2.0.0**.
 
-      Image.open(BytesIO(driver.get_screenshot_as_png()))
+  Pillow is no longer a dependency of pyjab. It was there for two reasons and only one was
+  real: encoding a PNG, and handing back an ``Image``. The second is what this method
+  needs, and it was pyjab's own divergence rather than something a Selenium user would
+  expect — Selenium's method of that name returns base64, as this method's docstring had
+  always said.
 
-  This is a **breaking change**, hence 2.0.0. The three Selenium-compatible methods --
-  ``get_screenshot_as_png()``, ``get_screenshot_as_base64()`` and
-  ``get_screenshot_as_file()`` -- keep their signatures and still return the same kind of
-  thing.
+  **It still works**, for anyone who has Pillow, and warns when called. It also raises a
+  clear ``ImportError`` naming ``pyjab[pillow]`` when Pillow is absent, so the failure
+  says what to do rather than surfacing as an ``ImportError`` from inside a library.
 
-  **``pip install pyjab`` no longer installs Pillow.** Screenshots are taken with plain
-  GDI calls (``BitBlt`` and ``GetDIBits``) and written with nothing but ``zlib``.
+  **``get_screenshot_as_png()``, ``get_screenshot_as_base64()`` and
+  ``get_screenshot_as_file()`` keep their signatures and return types**, need no
+  third-party package, and are what to move to::
+
+      from io import BytesIO
+      from PIL import Image
+
+      image = Image.open(BytesIO(driver.get_screenshot_as_png()))
+
+  That is the same pixels with one line on the caller's side, which is where an imaging
+  dependency belongs.
 
 Fixed
 ~~~~~
