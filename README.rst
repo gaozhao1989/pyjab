@@ -22,6 +22,43 @@ most people already know, so that there is nothing new to learn.
    :local:
    :depth: 2
 
+An MCP server for AI agents
+---------------------------
+
+`pyjab-mcp`_ exposes this library as a `Model Context Protocol`_ server, so an AI
+agent can drive a Java application the same way it drives a browser: list the
+windows, take a bounded snapshot of the tree, find an element, fill a form, read a
+table.
+
+It is a separate project with its own release cycle, and it depends on pyjab's
+published API -- nothing else. That is why the two live in different repositories:
+it means pyjab's public surface has to be sufficient on its own, rather than
+quietly growing holes that only one caller can see through.
+
+The question the whole direction rested on was measured before any of it was
+built, because generic Windows automation is the obvious alternative. On a real
+Java window, through the same ``UIAutomationCore`` that generic automation uses:
+
+======================  ==========  ==========  =======
+                        elements    named       depth
+======================  ==========  ==========  =======
+generic UI Automation   **6**       5           3
+pyjab                   **601**     513         12
+======================  ==========  ==========  =======
+
+The six are a title bar, a menu bar, one menu item and three buttons, with nothing
+inside the content pane.
+
+**The control is what makes that mean something.** The same UI Automation client
+enumerated **147 elements across the whole desktop**, 99 of them named, and
+**finished rather than truncating** -- so the six are about Java rather than about
+the client, and the client was demonstrably able to look.
+
+Bounded: one machine, one client, one application.
+
+.. _pyjab-mcp: https://github.com/gaozhao1989/pyjab-mcp
+.. _Model Context Protocol: https://modelcontextprotocol.io/
+
 How it works
 ------------
 

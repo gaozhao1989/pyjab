@@ -10,6 +10,21 @@ This project adheres to `Semantic Versioning`_ and `Keep a Changelog`_.
 Unreleased
 ----------
 
+* **``visible_children_count``, because there are two answers to "how many children".**
+  ``children_count`` is the **total**, from the accessibility context info. What a
+  traversal yields is the **visible** count, from ``getVisibleChildrenCount``. Both are
+  correct and they differ whenever an element has hidden children — so
+  ``children_count > len(list(element.walk()))`` is a **normal** result, and before this
+  there was nothing to tell it apart from a bug or a truncated walk.
+
+  ``as_record()`` deliberately still carries only ``children_count``: it is the record a
+  walk produces **per node**, and the visible count is a second bridge call per node. A
+  caller that needs it asks for it.
+
+  ``visible_children_count`` **raises** rather than returning zero when the bridge refuses
+  the call — a refused count is not an answer of zero, which is the same distinction issue
+  #73 is about.
+
 Added
 ~~~~~
 

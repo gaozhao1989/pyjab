@@ -550,6 +550,33 @@ and the accessibility action path is the only option — see
 [Selecting](#selecting).
 
 
+## Counting children
+
+**There are two answers, and they are both right.**
+
+| | where it comes from | what it is |
+|---|---|---|
+| `children_count` | the accessibility context info | the **total**, visible or not |
+| `visible_children_count` | `getVisibleChildrenCount` | the **visible** ones — what a walk yields |
+
+So for an element with hidden children:
+
+```python
+element.children_count            # e.g. 5
+element.visible_children_count    # e.g. 2
+len(list(element.walk()))         # 2, because a walk steps through the visible ones
+```
+
+`children_count > len(list(element.walk()))` is therefore **normal**, not a bug and not a
+truncated walk. If you need to know whether a walk was cut short, that is what
+`JABTree.truncated` is for — a different question from this one.
+
+`as_record()` carries **only `children_count`**, deliberately: it is the record a walk
+produces for every node, and the visible count is a second bridge call per node. Ask for the
+property when you need it.
+
+`visible_children_count` **raises** if the bridge refuses the call. A refused count is not a
+count of zero, and that distinction is the same one the canvas note below is about.
 ## Shortcuts
 
 `send_text()` types text, one character at a time, so it cannot express a modifier chord —
