@@ -21,16 +21,15 @@ from ctypes import byref
 from ctypes import CDLL
 from ctypes import c_long
 from ctypes.wintypes import HWND
-from io import BytesIO
 from pathlib import Path
 from subprocess import Popen
 from time import sleep, time
 from typing import Any, Dict, Tuple, Optional
 
 import win32process
-from PIL import ImageGrab
 from pyjab.accessibleinfo import AccessBridgeVersionInfo
 from pyjab.common.by import By
+from pyjab.common.png import bgra_to_png
 from pyjab.common.exceptions import JABException
 from pyjab.common.logger import Logger
 from pyjab.common.service import Service
@@ -653,42 +652,14 @@ class JABDriver(object):
                 is relative to the working directory.
 
         Returns:
-            None.  Pillow raises if the file cannot be written; there is no
+            None.  Raises OSError if the file cannot be written; there is no
             True/False to check.
 
-        Use :meth:`get_screenshot` instead if you want the image rather than a
-        file.
+        The bytes are the same ones :meth:`get_screenshot_as_png` returns, so a
+        caller who wants them in hand rather than on disk should ask for those.
         """
-        im = self.get_screenshot()
-        im.save(filename)
-
-    def get_screenshot(self):
-        """The screenshot of the current window, as a Pillow ``Image``.
-
-        Selenium's method of this name returns base64; this one returns the image
-        itself, and :meth:`get_screenshot_as_file` is the one that writes a file.
-        The docstring said base64 and its example called a
-        ``get_screenshot_as_base64()`` that has never existed in pyjab.
-
-        :Usage:
-            image = driver.get_screenshot()
-        """
-        self.win32utils._set_window_foreground(hwnd=self.root_element.hwnd)
-        bounds = self.root_element.bounds
-        x = bounds.get("x")
-        y = bounds.get("y")
-        width = bounds.get("width")
-        height = bounds.get("height")
-        return ImageGrab.grab(
-            bbox=(
-                x,
-                y,
-                x + width,
-                y + height,
-            ),
-            include_layered_windows=False,
-            all_screens=True,
-        )
+        with open(filename, "wb") as handle:
+            handle.write(self.get_screenshot_as_png())
 
     def set_window_size(self, width, height):
         """Resize the bound window, in pixels.
@@ -737,9 +708,11 @@ class JABDriver(object):
         Returns:
             bytes: a complete PNG file, magic number and all.
         """
-        buffer = BytesIO()
-        self.get_screenshot().save(buffer, format="PNG")
-        return buffer.getvalue()
+        bounds = self.root_element.bounds if hasattr(self, "root_element") else self.bounds
+        x, y = bounds["x"], bounds["y"]
+        width, height = bounds["width"], bounds["height"]
+        win32 = self.win32utils if hasattr(self, "win32utils") else self.win32_utils
+        return bgra_to_png(win32.grab_rect(x, y, width, height), width, height)
 
     def get_screenshot_as_base64(self) -> str:
         """The screenshot as a base64-encoded PNG, for embedding in HTML or JSON.

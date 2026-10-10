@@ -387,17 +387,13 @@ driver.get_screenshot_as_file("window.png")   # writes a PNG, returns None
 
 png = driver.get_screenshot_as_png()          # the PNG bytes
 b64 = driver.get_screenshot_as_base64()       # the same bytes, base64
-
-image = driver.get_screenshot()               # a Pillow Image
 ```
 
-All four work on an element as well, cropping to that element:
+All three work on an element as well, cropping to that element:
 
 ```python
 element.get_screenshot_as_file("element.png")
-element.get_screenshot_as_png()
-element.get_screenshot_as_base64()
-element.get_screenshot()
+png = element.get_screenshot_as_png()
 ```
 
 The names and the return types are Selenium's, so the usual embedding works:
@@ -406,8 +402,21 @@ The names and the return types are Selenium's, so the usual embedding works:
 html = f'<img src="data:image/png;base64,{driver.get_screenshot_as_base64()}">'
 ```
 
+**No third-party package is involved.** The pixels come from GDI and the PNG is written
+with `zlib`, so `pip install pyjab` brings no imaging library.
+
+If you want an image object rather than bytes, that is one line on your side, with the
+imaging library of your choice:
+
+```python
+from io import BytesIO
+from PIL import Image
+
+image = Image.open(BytesIO(driver.get_screenshot_as_png()))
+```
+
 One difference to know about: **`get_screenshot_as_file()` returns `None`, not
-`True`/`False`.** Pillow raises if the file cannot be written, so a failure is an
+`True`/`False`.** An `OSError` is raised if the file cannot be written, so a failure is an
 exception rather than a value you have to remember to check.
 
 ## The `simulate` parameter

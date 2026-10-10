@@ -18,12 +18,6 @@ Note for anyone upgrading from 1.1.x: older releases declared **both**
 `pywin32==223`, and having both made dependency resolution fail for every
 released version. It was removed in 1.2.0.
 
-## [Pillow](https://github.com/python-pillow/Pillow)
-
-The friendly PIL fork. pyjab uses it for screenshots — window, element and
-whole-screen capture — and to save them as PNG or return them as bytes or
-base64.
-
 ## Standard library
 
 pyjab uses `ctypes` to talk to `WindowsAccessBridge-64.dll`, and `pythoncom`

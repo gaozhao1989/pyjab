@@ -471,6 +471,104 @@ class Win32Utils(object):
         finally:
             kernel32.CloseHandle(handle)
 
+    #: BitBlt's "copy the pixels" raster operation.
+    SRCCOPY = 0x00CC0020
+    DIB_RGB_COLORS = 0
+
+    def grab_rect(self, x: int, y: int, width: int, height: int) -> bytes:
+        """The pixels of a screen rectangle, as a top-down BGRA buffer.
+
+        Pure ctypes over GDI: ``BitBlt`` from the screen into a memory device context, then
+        ``GetDIBits`` for the bits. This is what replaces ``PIL.ImageGrab``, which was the
+        only reason Pillow was a dependency.
+
+        **Why not simply return an image.** :mod:`pyjab.common.png` turns this buffer into
+        a file with nothing but ``zlib``, and keeping the two apart means the encoder -- the
+        part that is easy to get subtly wrong -- is testable on any platform, with synthetic
+        pixels, while this part needs a screen.
+
+        Args:
+            x: Left edge, in **physical** screen coordinates. See
+                :func:`pyjab.common.win32utils.physical_point` for why that matters.
+            y: Top edge, physical screen coordinates.
+            width: Pixels across.
+            height: Pixels down.
+
+        Returns:
+            bytes: ``width * height * 4`` bytes, B, G, R, A per pixel, **top row first**.
+            ``GetDIBits`` produces bottom-up for a positive height, so the header's height
+            is negated here to ask for top-down -- easier than reversing rows and less easy
+            to forget.
+
+        Raises:
+            RuntimeError: a GDI call failed, with which one. Silent failure here would
+                produce a black image, which is indistinguishable from a black window.
+        """
+        user32 = ctypes.windll.user32
+        gdi32 = ctypes.windll.gdi32
+
+        screen_dc = user32.GetDC(None)
+        if not screen_dc:
+            raise RuntimeError("GetDC(NULL) failed, so there is no screen to read")
+        memory_dc = None
+        bitmap = None
+        previous = None
+        try:
+            memory_dc = gdi32.CreateCompatibleDC(screen_dc)
+            if not memory_dc:
+                raise RuntimeError("CreateCompatibleDC failed")
+            bitmap = gdi32.CreateCompatibleBitmap(screen_dc, width, height)
+            if not bitmap:
+                raise RuntimeError(f"CreateCompatibleBitmap failed for {width}x{height}")
+            previous = gdi32.SelectObject(memory_dc, bitmap)
+            if not gdi32.BitBlt(memory_dc, 0, 0, width, height, screen_dc, x, y, self.SRCCOPY):
+                raise RuntimeError(
+                    f"BitBlt failed for the rectangle {x},{y},{width},{height}"
+                )
+
+            class BITMAPINFOHEADER(ctypes.Structure):
+                _fields_ = [
+                    ("biSize", ctypes.wintypes.DWORD),
+                    ("biWidth", ctypes.c_long),
+                    ("biHeight", ctypes.c_long),
+                    ("biPlanes", ctypes.wintypes.WORD),
+                    ("biBitCount", ctypes.wintypes.WORD),
+                    ("biCompression", ctypes.wintypes.DWORD),
+                    ("biSizeImage", ctypes.wintypes.DWORD),
+                    ("biXPelsPerMeter", ctypes.c_long),
+                    ("biYPelsPerMeter", ctypes.c_long),
+                    ("biClrUsed", ctypes.wintypes.DWORD),
+                    ("biClrImportant", ctypes.wintypes.DWORD),
+                ]
+
+            header = BITMAPINFOHEADER()
+            header.biSize = ctypes.sizeof(BITMAPINFOHEADER)
+            header.biWidth = width
+            header.biHeight = -height          # negative: top-down, see the docstring
+            header.biPlanes = 1
+            header.biBitCount = 32
+            header.biCompression = 0           # BI_RGB
+
+            buffer = ctypes.create_string_buffer(width * height * 4)
+            scanned = gdi32.GetDIBits(
+                memory_dc, bitmap, 0, height, buffer,
+                ctypes.byref(header), self.DIB_RGB_COLORS,
+            )
+            if scanned != height:
+                raise RuntimeError(
+                    f"GetDIBits returned {scanned} of {height} rows; the image would be "
+                    "partly uninitialised"
+                )
+            return buffer.raw
+        finally:
+            if previous and memory_dc:
+                gdi32.SelectObject(memory_dc, previous)
+            if bitmap:
+                gdi32.DeleteObject(bitmap)
+            if memory_dc:
+                gdi32.DeleteDC(memory_dc)
+            user32.ReleaseDC(None, screen_dc)
+
     @staticmethod
     def enum_windows() -> Dict[HWND, str]:
         dict_hwnd = dict()

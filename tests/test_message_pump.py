@@ -91,7 +91,6 @@ def _import_jabelement():
     platform, so that faking ``sys.platform`` cannot push PIL down a Windows-only
     import path.  On Windows itself this is all a no-op.
     """
-    import PIL.ImageGrab  # noqa: F401  (deliberately imported first)
 
     real_platform = sys.platform
     sys.platform = "win32"

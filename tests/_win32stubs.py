@@ -119,11 +119,12 @@ def faked_platform(platform: str = "win32"):
 def import_jabelement():
     """Return ``JABElement``, working around its platform guard.
 
-    ``PIL.ImageGrab`` is imported first, under the real platform, so that faking
-    ``sys.platform`` cannot push PIL down a Windows-only import path.  On Windows
-    itself all of this is a no-op.
+    Nothing has to be imported first any more.  This used to pull ``PIL.ImageGrab`` in
+    under the real platform, because faking ``sys.platform`` could otherwise push PIL down
+    a Windows-only import path -- and PIL raised off Windows.  Pillow is no longer a
+    dependency of pyjab at all, so there is nothing to pull in.  On Windows itself all of
+    this is a no-op.
     """
-    import PIL.ImageGrab  # noqa: F401
 
     with faked_platform():
         from pyjab.jabelement import JABElement
@@ -133,7 +134,6 @@ def import_jabelement():
 
 def import_jabdriver():
     """Return ``JABDriver``, working around its platform guard."""
-    import PIL.ImageGrab  # noqa: F401
 
     with faked_platform():
         from pyjab.jabdriver import JABDriver

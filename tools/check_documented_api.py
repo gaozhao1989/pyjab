@@ -79,6 +79,13 @@ DOCUMENTED_VARIABLES = {
 #: than the check being loosened until it stops noticing anything.
 KNOWN_REMOVED = {
     "setup_msg_pump": "removed in 1.3.0; named only in the upgrade notes",
+    # Removed in 2.0.0. It returned a Pillow ``Image``, which made Pillow a runtime
+    # dependency for one convenience method -- and a method that was pyjab's own
+    # divergence rather than something Selenium users expect (Selenium's returns base64).
+    # The screenshot API is otherwise unchanged and needs no third-party package;
+    # ``Image.open(BytesIO(driver.get_screenshot_as_png()))`` is the same thing in one
+    # line, on the caller's side, where that dependency belongs.
+    "get_screenshot": "removed in 2.0.0; use get_screenshot_as_png with an image library",
 }
 
 #: ``pyjab.something.else`` in prose.  URLs are excluded below, because a link to
