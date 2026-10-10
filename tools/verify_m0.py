@@ -214,17 +214,20 @@ def uia_control(limit: int = 1500) -> dict:
     except Exception as exc:                    # noqa: BLE001 - reported, not handled
         return {"_client": Unavailable("the uiautomation package is not importable",
                                        str(exc))}
+    walk = UiaWalk(limit)
     try:
-        elements = _uia_walk(uiautomation.GetRootControl(), 0, limit)
+        _uia_walk(uiautomation.GetRootControl(), 0, walk)
     except Exception as exc:                    # noqa: BLE001
         return {"_client": Unavailable("could not walk the desktop through UIA",
                                        str(exc))}
+    elements = walk.elements
     named = [item for item in elements if item["name"]]
     return {
         "elements": len(elements),
         "roles": len({item["role"] for item in elements}),
         "named": len(named),
-        "reached_limit": len(elements) >= limit,
+        "reached_limit": walk.limit_hit,
+        "incomplete": walk.incomplete,
         "role_counts": _counts(item["role"] for item in elements),
     }
 
@@ -254,10 +257,13 @@ def uia_side(title: str, timeout: int) -> dict:
     except Exception as exc:                    # noqa: BLE001
         result["windows"] = Unavailable("could not enumerate UIA windows", str(exc))
 
+    walk = UiaWalk()
     try:
-        elements = _uia_walk(window, 0)
+        _uia_walk(window, 0, walk)
     except Exception as exc:                    # noqa: BLE001
         return {"_client": Unavailable("walking the UIA tree failed", str(exc))}
+    elements = walk.elements
+    result["_walk"] = walk.as_dict()
 
     result["elements"] = len(elements)
     result["roles"] = len({item["role"] for item in elements})
@@ -288,23 +294,99 @@ def uia_side(title: str, timeout: int) -> dict:
     result["button"] = ({"count": len(buttons), "sample": buttons[0]["role"],
                          "states": buttons[0].get("patterns", "(not read)")}
                         if buttons else Absent("no UIA button found"))
+
+    # The distinction this file exists for, applied to its own walk. An Absent answer is
+    # "measured, and it is not there"; it is only worth that name if the walk finished.
+    # A skipped child takes its whole subtree with it and looks exactly like a child that
+    # was never there -- and "UIA has no table" is the answer that most flatters pyjab, so
+    # it is the last answer that should be reachable by accident.
+    if walk.incomplete:
+        for key in ("table", "cell", "tree", "button"):
+            if isinstance(result.get(key), Absent):
+                result[key] = Unavailable(f"{result[key].reason} -- but {walk.why()}")
     return result
 
 
-def _uia_walk(control, depth, limit=4000):
-    """A flat list of what UIA exposes, for comparison with ``inspector.walk``.
+class UiaWalk:
+    """What a UIA walk collected, and what it could not read.
 
-    Depth-limited and counted, because a UIA tree can be enormous and this is a
-    measurement rather than a dump.
+    A skipped child and a child that is not there produce the same tree, and this walk
+    feeds a verdict in which **a missing table is read as "UIA has no table"** -- the
+    answer that most flatters pyjab. So an incomplete walk has to be distinguishable from
+    a complete one, and the four ways this walk used to drop data silently are exactly
+    the ways that distinction was being lost.
+
+    Reported rather than thrown: whether an incomplete walk is fatal depends on what is
+    being claimed. Absence is not proven by a walk that skipped things, so an incomplete
+    walk turns every "not found" into an unmeasured one.
     """
-    collected = []
-    if depth > 30 or len(collected) > limit:
-        return collected
+
+    def __init__(self, limit: int = 4000) -> None:
+        self.elements = []
+        self.limit = limit
+        #: Children whose own properties raised, so they and their subtrees are missing.
+        self.skipped = 0
+        #: Subtrees not entered because ``GetChildren`` raised.
+        self.truncated = 0
+        #: Subtrees not entered because of the depth cap.
+        self.too_deep = 0
+        #: Whether the element cap stopped the walk. This used to be dead code: the cap
+        #: was tested against a list that had just been assigned empty, so it was
+        #: ``0 > limit`` at every entry and never fired.
+        self.limit_hit = False
+
+    @property
+    def incomplete(self) -> bool:
+        return bool(self.skipped or self.truncated or self.too_deep or self.limit_hit)
+
+    def why(self) -> str:
+        if not self.incomplete:
+            return ""
+        parts = []
+        if self.skipped:
+            parts.append(f"{self.skipped} child(ren) whose properties raised")
+        if self.truncated:
+            parts.append(f"{self.truncated} subtree(s) whose GetChildren raised")
+        if self.too_deep:
+            parts.append(f"{self.too_deep} subtree(s) past the depth cap")
+        if self.limit_hit:
+            parts.append(f"the {self.limit}-element cap")
+        return "the UIA walk did not finish: " + ", ".join(parts)
+
+    def as_dict(self) -> dict:
+        """For the JSON, so a reader can see the walk was cut short and how."""
+        return {"elements": len(self.elements), "limit": self.limit,
+                "skipped_children": self.skipped, "truncated_subtrees": self.truncated,
+                "capped_subtrees": self.too_deep, "limit_hit": self.limit_hit,
+                "incomplete": self.incomplete, "reason": self.why()}
+
+
+def _uia_walk(control, depth: int, walk: UiaWalk) -> None:
+    """Collect what UIA exposes under *control*, recording anything not read.
+
+    Depth- and element-limited, because a UIA tree can be enormous and this is a
+    measurement rather than a dump -- and both limits are now real. The element cap used
+    to be tested against a freshly-assigned empty list, so it never fired and the
+    parameter was decoration; a parameter that looks like a guard and is not one is worse
+    than no guard, because it reads as one in the docstring.
+    """
+    if depth > 30:
+        walk.too_deep += 1
+        return
+    if len(walk.elements) >= walk.limit:
+        walk.limit_hit = True
+        return
     try:
         children = control.GetChildren()
     except Exception:                           # noqa: BLE001
-        return collected
+        # Not silent any more. A GetChildren that raises at any depth truncates that
+        # whole subtree, and a truncated table is indistinguishable from an absent one.
+        walk.truncated += 1
+        return
     for child in children:
+        if len(walk.elements) >= walk.limit:
+            walk.limit_hit = True
+            return
         try:
             role = child.ControlTypeName
             name = child.Name or ""
@@ -313,13 +395,15 @@ def _uia_walk(control, depth, limit=4000):
                 for p in getattr(child, "GetSupportedPatterns", lambda: [])()
             )) if hasattr(child, "GetSupportedPatterns") else ""
         except Exception:                       # noqa: BLE001
+            # A child whose properties cannot be read takes its whole subtree with it,
+            # because the recursion below is inside this loop body.
+            walk.skipped += 1
             continue
         # The control itself is kept so a later step can ask it for children; it is
         # stripped before the report is serialised, and is not part of the comparison.
-        collected.append({"role": role, "name": name, "depth": depth + 1,
-                          "patterns": patterns, "control": child})
-        collected.extend(_uia_walk(child, depth + 1, limit - len(collected)))
-    return collected
+        walk.elements.append({"role": role, "name": name, "depth": depth + 1,
+                              "patterns": patterns, "control": child})
+        _uia_walk(child, depth + 1, walk)
 
 
 def _uia_cell(table) -> object:
@@ -409,6 +493,11 @@ def report(jab_report: dict, uia_report: dict) -> tuple:
     # conclusion is INCONCLUSIVE.
     if not isinstance(uia_report.get("_control"), dict):
         complete = False
+
+    walk = uia_report.get("_walk")
+    if isinstance(walk, dict) and walk.get("incomplete"):
+        lines.append(f"  UIA walk: INCOMPLETE -- {walk.get('reason')}")
+        lines.append("             every 'not found' below is therefore unproven")
 
     control = uia_report.get("_control")
     lines.append("")
