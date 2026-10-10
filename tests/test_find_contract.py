@@ -43,11 +43,16 @@ JABDriver = _win32stubs.import_jabdriver()
 
 
 class _StandInDriver:
-    """Just ``root_element``, which is all the find family reads.
+    """``root_element`` plus the real delegation helper.
 
-    ``JABDriver.__init__`` launches a Java process and binds a window, so the methods
-    are called unbound against this instead.
+    ``JABDriver.__init__`` launches a Java process and binds a window, so the methods are
+    called unbound against this instead. The helper is the real one rather than a stub:
+    what it does -- adding an explanation when the window itself matches -- is part of
+    the contract these tests are about, and a stub would let it drift.
     """
+
+    _search_from_root = JABDriver._search_from_root
+    _ROOT_ATTRIBUTE = JABDriver._ROOT_ATTRIBUTE
 
     def __init__(self, root_element) -> None:
         self.root_element = root_element
@@ -227,3 +232,95 @@ def test_the_driver_adds_nothing_to_what_the_element_finds():
         assert names_of(from_driver) == names_of(from_element), name
 
     assert len(compared) >= 8, f"only compared {compared}"
+
+
+# ---------------------------------------------------------------------------
+# The message when someone's old code stops working
+# ---------------------------------------------------------------------------
+#
+# Removing the root special cases is a behaviour change: find_element_by_name(window_title)
+# used to return the window and now raises. The change is right -- the old result was an
+# object the driver owns, from a method whose contract says the caller does -- but a bare
+# "not found" tells the person whose code broke nothing about what to do. So when the
+# window itself is what would have matched, the message says so.
+
+#: The two of the four where the window's own value matches nothing underneath it either,
+#: so the search genuinely fails. ``description=""`` and ``states`` are not here because
+#: the window's descendants share both in this fixture, so those searches succeed and
+#: return a child -- which is the right answer, and there is no failure to explain.
+FAILING_SEARCHES = [row for row in ROOT_ATTRIBUTES if row[0] in ("name", "role")]
+
+
+@pytest.mark.parametrize("attribute, locator", FAILING_SEARCHES)
+def test_a_search_for_the_window_explains_itself(attribute, locator):
+    """The hint that turns a behaviour change into an instruction.
+
+    Only on the path where nothing matched: if a descendant matches, the search succeeded
+    and there is nothing to explain.
+    """
+    element, _bridge = a_window()
+    driver = _StandInDriver(element)
+
+    with pytest.raises(JABException) as raised:
+        getattr(JABDriver, f"find_element_by_{attribute}")(driver, locator)
+
+    message = str(raised.value)
+    assert "driver.root_element" in message, (
+        "the person whose code just broke needs to be told where the window is"
+    )
+    assert "In earlier versions" in message, (
+        "and that this used to work, or they will look for the bug in their own code"
+    )
+
+
+def test_a_search_that_matches_nothing_gets_no_explanation():
+    """The hint must be about the window, not a footer on every failure."""
+    element, _bridge = a_window()
+    driver = _StandInDriver(element)
+
+    with pytest.raises(JABException) as raised:
+        JABDriver.find_element_by_name(driver, "NoSuchButton")
+
+    assert "driver.root_element" not in str(raised.value)
+
+
+def test_the_element_side_gets_no_explanation():
+    """There is no window to point at from an element, and no old behaviour to explain."""
+    element, _bridge = a_window()
+
+    with pytest.raises(JABException) as raised:
+        element.find_element_by_name("app")
+
+    assert "driver.root_element" not in str(raised.value)
+
+
+def test_an_exception_prints_as_its_message():
+    """Not as the repr of a tuple.
+
+    CommonException passed ``status`` to Exception.__init__ as a second argument, so every
+    error message pyjab has ever raised printed as ``('the message', None)`` -- in a
+    terminal, in a log line, and quoted in an issue. Fixed in the same change because the
+    hint above is a message, and a message wrapped in a tuple repr defeats the point.
+    """
+    from pyjab.common.exceptions import JABException as Error
+
+    assert str(Error("Save not found")) == "Save not found"
+    assert Error("Save not found").status is None
+    assert Error("Save not found", "0x1").status == "0x1"
+
+
+def test_the_hint_does_not_appear_when_a_descendant_matches():
+    """`find_element_by_description("")` finds a child, so nothing failed.
+
+    Worth pinning because it is the case that made the first version of the test above
+    wrong: the window's own description is empty and so is every descendant's, so asking
+    for elements with no description succeeds rather than raising. A hint about the window
+    would be confusing on a call that worked.
+    """
+    element, _bridge = a_window()
+    driver = _StandInDriver(element)
+
+    found = JABDriver.find_element_by_description(driver, "")
+
+    assert found is not element, "a descendant, not the window"
+    assert found.description == ""

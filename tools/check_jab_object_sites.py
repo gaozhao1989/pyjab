@@ -56,18 +56,25 @@ SIGNATURE_SOURCE = REPO_ROOT / "pyjab" / "jabfixedfunc.py"
 
 #: ``(file, enclosing function, symbol)`` -> where the reference goes.
 #:
-#: Audited by reading, and two of the seven are exercised by
-#: ``tests/test_object_lifetimes.py`` against the reference-counting bridge. The
-#: driver-side ones cannot be: they run inside ``JABDriver.__init__`` and need a live
-#: Java window. Those say so rather than implying the same evidence for all seven.
+#: **All seven are now exercised**, by ``tests/test_object_lifetimes.py`` against the
+#: reference-counting bridge. The three driver-side ones reach their code by calling the
+#: methods unbound against a stand-in, which is enough to exercise the reference
+#: handling without launching a Java process -- the same trick
+#: ``tests/test_screenshots.py`` uses.
+#:
+#: This started out saying "read, not exercised" for two of them. That was honest and
+#: not good enough: a disposition nobody can run is a disposition that drifts. The note
+#: sat there through the first version of the file, and replacing it took one stand-in
+#: and four tests.
 SITES = {
     ("pyjab/jabdriver.py", "_get_accessible_context_from_hwnd",
      "getAccessibleContextFromHWND"):
         "Returns the pair to init_jab, its only caller, which stores it as "
         "self.accessible_context and holds it for the lifetime of the driver -- which "
         "is why every JABElement it creates carries it. Not released, and must not be: "
-        "it is the handle the whole object graph hangs from. Read, not exercised: it "
-        "runs inside __init__.",
+        "it is the handle the whole object graph hangs from. Exercised by "
+        "tests/test_object_lifetimes.py, which checks exactly one reference comes back.",
+
 
     ("pyjab/jabdriver.py", "init_jab", "getTopLevelObject"):
         "Released immediately after the one call that uses it, to turn a vmid and a "
@@ -75,12 +82,15 @@ SITES = {
         "driver constructed from a vmid and a context left one Java object behind. That "
         "is one per driver rather than one per lookup, which is why it was not noticed "
         "-- and the reason it was found is this checker rather than reading, since the "
-        "hand inventory of call sites missed this call twice.",
+        "hand inventory of call sites missed this call twice. Exercised by "
+        "tests/test_object_lifetimes.py.",
 
     ("pyjab/jabdriver.py", "_focused_context", "getAccessibleContextWithFocus"):
         "Returns the context to get_focused_element, which wraps it in a JABElement and "
         "returns that -- so the caller owns one reference, the same contract as "
-        "find_element_by_*. Read, not exercised: needs a live window with focus.",
+        "find_element_by_*. Exercised both ways by tests/test_object_lifetimes.py: one "
+        "reference outstanding when something is focused, and none at all when nothing "
+        "is, since a falsy return handed nothing out.",
 
     ("pyjab/jabelement.py", "_get_accessible_parent_from_context",
      "getAccessibleParentFromContext"):
