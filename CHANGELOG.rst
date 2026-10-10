@@ -154,14 +154,17 @@ Fixed
   already selected. In cell-selection mode nothing changes, because there every add is
   wanted. ``clear=False`` stops toggling off a row that was already selected.
 
-  ``select_all()`` is a related defect this does **not** fix: it is a silent no-op on a
-  default Swing table, because ``AccessibleJTable.selectAllAccessibleSelection()`` is
-  ``if (cellSelectionEnabled) { selectAll(); }`` and falls through. The docstring and
-  ``docs/3-pyjab.md`` now say so rather than leaving callers to discover it.
+  ``select_all()`` had the same root: ``AccessibleJTable.selectAllAccessibleSelection()``
+  is ``if (cellSelectionEnabled) { selectAll(); }`` and falls through, so on a default
+  Swing table it was a **silent no-op** -- nothing selected, nothing raised. It reads the
+  result back now and walks the table when nothing was selected, adding only cells that are
+  not already selected, which selects every row, every column or every cell according to
+  what the table allows. Where the bridge's own call did work, the check costs one call and
+  no adds.
 
   The offline suite was green because nothing modelled this. ``tests/_fakejab.py`` kept a
-  single set of cell indices, and the defect lives in the divergence between a
-  ``JTable``'s two ``ListSelectionModel``s. It models both now, from the JDK source, and
+  single set of cell indices, and the defect lives in the divergence between the two
+  selection models a ``JTable`` keeps. It models both now, from the JDK source, and
   reproduces the runner's exact numbers. Three tests fail on the pre-fix code.
 
 * **``tools/verify_m0.py`` could not return its own clear-win verdict.** ``report()``
