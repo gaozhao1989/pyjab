@@ -34,6 +34,14 @@ exclude docs/ISSUE_REPLIES.md
 exclude docs/CONSENT_REQUESTS.md
 prune docs/replies
 
+# The local-only material: the working agreement, the agent skills and briefs.
+# They are gitignored and they are *not* user documentation; an sdist is built
+# from the working tree, so .gitignore alone does not keep them out.
+# tools/check_local_only_files.py verifies this from the built archive.
+prune .agents
+exclude AGENTS.md
+exclude AGENTS.local.md
+
 prune build
 prune dist
 global-exclude *.py[cod] __pycache__ *.egg-info .DS_Store
