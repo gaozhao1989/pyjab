@@ -80,6 +80,11 @@ from pyjab.common.types import JOBJECT64
 #: handler in the package.  All three keep their hand-written ``if not result:``
 #: check live.
 #:
+#: The five armed rows keep **no** check of their own: it was removed in #217, because
+#: a check that cannot run reads as working code.  What those checks used to say -- the
+#: symbol that failed, and ``setTextContents``'s ``simulate`` hint -- is carried by the
+#: hook's message instead; see :data:`ERRCHECK_HINTS`.
+#:
 #: Arming is not free.  The hook makes the caller's own ``if not result:`` check
 #: unreachable, and it turns a falsy result into ``RuntimeError`` **from inside the
 #: call**, so the ``except JABException`` blocks in ``jabelement.py``,
@@ -246,6 +251,18 @@ SIGNATURES = (
     ("getVisibleChildren", BOOL, (c_long, JOBJECT64, c_int, POINTER(VisibleChildrenInfo)), False),
 )
 
+#: Guidance the hook appends to its message, keyed by symbol.
+#:
+#: The hook exists because arming a row made the caller's own ``if not result:`` check
+#: unreachable -- so the message it raises is now the only place a caller is told what
+#: went wrong, and anything the hand-written check used to say has to be said here
+#: instead (#217).  Every armed row gets the symbol name from ``func.__name__``; this
+#: table is for guidance that is specific to one call, and is deliberately sparse
+#: rather than a second copy of the armed set.
+ERRCHECK_HINTS = {
+    "setTextContents": "try set parameter 'simulate' with True",
+}
+
 
 class JABFixedFunc(object):
     """Declares the JAB signatures on a loaded bridge DLL."""
@@ -275,9 +292,18 @@ class JABFixedFunc(object):
         some JAB calls answer with a truthy ``-1`` instead (``getObjectDepth``,
         checked by hand in ``jabelement.py``), so arming a row is not a
         substitute for knowing what that call returns on failure.
+
+        The message carries the symbol name, taken from the function pointer ctypes
+        populated it on, plus whatever :data:`ERRCHECK_HINTS` holds for it.  That is
+        where the information the removed call-site checks used to carry now lives:
+        the check they replaced could never run, so its message could not either.
         """
         if not result:
-            raise RuntimeError(f"Result {result}")
+            name = getattr(func, "__name__", None)
+            hint = getattr(func, "_pyjab_error_hint", None)
+            where = f" from '{name}'" if name else ""
+            advice = f"; {hint}" if hint else ""
+            raise RuntimeError(f"Result {result}{where}{advice}")
         return result
 
     def _fix_bridge_function(self, restype, name, *argtypes, **kwargs):
@@ -291,6 +317,9 @@ class JABFixedFunc(object):
         func.argtypes = argtypes
         if kwargs.get("errorcheck"):
             func.errcheck = self._check_error
+            hint = ERRCHECK_HINTS.get(name)
+            if hint:
+                func._pyjab_error_hint = hint
 
     def _fix_bridge_functions(self):
         """Declare every signature in :data:`SIGNATURES` on the bridge DLL."""

@@ -371,6 +371,8 @@ class JABDriver(object):
                 bridgeWinDLLVersion
         """
         info = AccessBridgeVersionInfo()
+        # No result check, and none is possible: getVersionInfo is armed in
+        # SIGNATURES, so a falsy result raises from inside the call (#217).
         self.bridge.getVersionInfo(self.vmid, byref(info))
         return {
             "VMVersion": info.VMVersion,

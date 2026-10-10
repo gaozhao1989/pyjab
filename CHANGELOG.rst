@@ -200,6 +200,27 @@ Changed
   A dependent that wrapped such a call in ``except JABException`` will stop catching it;
   catch ``RuntimeError`` as well, or check the result before the call rather than after.
 
+* **The five hand-written checks that arming made unreachable are gone, and what they said
+  comes out of the hook instead.** The change above installed the hook on those five symbols;
+  their call sites still carried ``if not result:`` / ``if result == 0:`` — code that
+  **cannot run**, because ctypes raises from inside the call before the check is evaluated.
+  It was dead code that read as live, and a list of "dead" branches maintained from reading
+  is how the ``errorcheck`` note went wrong twice. The rule is one mechanism per call.
+
+  Every armed call site now checks nothing, and ``tests/test_errorcheck_binding.py`` asserts
+  both halves against real ctypes function pointers: armed, the call raises with the symbol
+  named; **disarmed, it does not** — which is what fails if a check is written back. The rule
+  for the rows that are still unarmed is unchanged: **check the result yourself.** Reported
+  as #217.
+
+  The message the hook raises is where their information went. It now names the symbol
+  (``Result 0 from 'getAccessibleTextInfo'``) and appends any per-symbol guidance from the new
+  ``ERRCHECK_HINTS`` table. ``setTextContents`` had the only such guidance — *"try set
+  parameter 'simulate' with True"* — written for exactly the failure the hook now reports, so
+  it is in ``ERRCHECK_HINTS`` and in ``send_text``'s docstring rather than in a check nothing
+  could reach. **No separate ``Affects: pyjab-mcp`` marker is needed**: this is the same
+  ``RuntimeError`` the entry above already marks, with a more specific message.
+
 * **``visible_children_count`` answers with the number the bridge returned, ``0`` included,
   instead of raising on a refusal.** The property is new in this release, and it was written
   to raise ``JABException`` when ``getVisibleChildrenCount`` came back falsy — expecting the
