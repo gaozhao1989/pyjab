@@ -144,6 +144,34 @@ Added
 Changed
 ~~~~~~~
 
+* **Five JAB calls now raise when they fail, instead of returning a value the caller has to
+  check.** The ``errorcheck`` flag in ``SIGNATURES`` installs ctypes' ``errcheck`` hook, and
+  no row was armed until now. The five are ``getAccessibleTextInfo``,
+  ``getAccessibleTextRange``, ``getAccessibleTableCellInfo``, ``setTextContents`` and
+  ``getVersionInfo`` — **each cleared by a measurement**: a real run through pyjab's own call
+  sites found every one of them returning truthy, and no ``except JABException`` block is
+  reachable from any of the five, so the new ``RuntimeError`` cannot displace an exception
+  that something was catching.
+
+  **Three more rows stay ``False``, and the test suite asserts all three.** The same run
+  measured ``getVisibleChildren`` and ``getTopLevelObject`` truthy, and both are still left
+  unarmed because it only cleared the path that worked. ``getVisibleChildren`` is called on
+  **every** element by the ``visible=True`` walk, and a childless panel answers falsy — that
+  is the second control the measurement tool was written with. ``getTopLevelObject``
+  documents ``(AccessibleContext)0`` as its error answer, and ``_get_top_level_object`` checks
+  for it by hand. Both are called from the search loops in ``find_element_by_xpath`` /
+  ``find_elements_by_xpath``, which today ``continue`` past an item that failed and let the
+  caller keep the matches that did resolve; armed, a falsy read would **end the search** and
+  hand the caller an exception instead. ``getAccessibleContextInfo`` is the third: every
+  property reads it through ``_acc_info``, so it is on the path of every ``except
+  JABException`` block in the package. Arming a row whose failure is already handled replaces
+  the handling with an uncaught exception, which is worse than the failure it reports.
+
+  **Affects: pyjab-mcp**, first released in **1.11.0**. A JAB call that returns falsy now
+  raises ``RuntimeError`` **from inside the call** where it previously returned the value.
+  A dependent that wrapped such a call in ``except JABException`` will stop catching it;
+  catch ``RuntimeError`` as well, or check the result yourself instead of relying on the raise.
+
 * **``visible_children_count`` answers with the number the bridge returned, ``0`` included,
   instead of raising on a refusal.** The property is new in this release, and it was written
   to raise ``JABException`` when ``getVisibleChildrenCount`` came back falsy — expecting the
