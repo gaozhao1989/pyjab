@@ -319,6 +319,30 @@ Added
 
   No behaviour changed. What changed is that a caller can find out.
 
+* **The bridge DLL is now looked for beside a running JVM, not only in install
+  locations.** An application bundled with its own private JRE keeps that JRE somewhere no
+  search of ``JAVA_HOME``, ``Program Files`` or ``~/.jdks`` would guess. The application is
+  running, so it can be asked: pyjab enumerates top-level windows, reads the image path of
+  each process that owns one, and adds the bridge directories those paths imply.
+
+  **This also makes the DLL the right one.** The client DLL pairs with the bridge inside the
+  target JVM, and a mismatched pair fails as "pyjab cannot see my window" — the hardest
+  failure in this project to tell apart from the bridge simply not being enabled. Using the
+  target's own DLL makes the pairing true by construction.
+
+  It runs **after** the environment variables and **before** the vendor sweep: an explicitly
+  configured ``JAVA_HOME`` is what the user meant, and this is an inference from what happens
+  to be running.
+
+  The search is **best effort** and cannot make discovery worse. Anything that fails while
+  asking — no windows, a process that refuses, a platform without the call — leaves the
+  existing search untouched, because this only ever adds candidates. There is a test whose
+  counter-example is exactly that: removing the guard makes it fail.
+
+  Enumerating windows is plain Win32 and needs nothing from Java, which is what makes this
+  possible at all — the DLL is loaded *before* any window can be asked anything, because
+  ``isJavaWindow`` needs the DLL.
+
 Changed
 ~~~~~~~
 

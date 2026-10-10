@@ -1,7 +1,7 @@
 import ctypes
 import fnmatch
 import time
-from ctypes.wintypes import HWND
+from ctypes.wintypes import DWORD, HWND
 from typing import Dict, List, Optional
 import pythoncom
 import win32api
@@ -9,6 +9,7 @@ import win32clipboard
 import win32com.client
 import win32con
 import win32gui
+import win32process
 from pyjab.common.logger import Logger
 from pyjab.common.singleton import singleton
 from pyjab.config import TIMEOUT
@@ -395,6 +396,80 @@ class Win32Utils(object):
             # Windows_run().  Nothing to service; not an error.
             self.logger.debug("no COM message queue on this thread, nothing to pump")
             return False
+
+    #: Process access right needed to ask a process for its image path. The *limited*
+    #: information right rather than PROCESS_QUERY_INFORMATION, because it is the one that
+    #: works on a process owned by another user and does not ask for anything more than
+    #: this needs.
+    _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+
+    @staticmethod
+    def java_process_image_paths() -> List[str]:
+        """Image paths of running JVMs, taken from the windows they own.
+
+        **Why this can run before the bridge DLL is loaded.** Enumerating windows is plain
+        Win32 and needs nothing from Java; `isJavaWindow`, by contrast, is a bridge call and
+        therefore needs the DLL. Since the DLL search happens *before* a window can be asked
+        anything, looking at windows is the only way to learn where a running JVM's own DLL
+        is -- which is the case that matters, an application bundled with a private JRE that
+        no install-location search would guess.
+
+        Using the target JVM's own DLL is also the correct one to use: the client DLL pairs
+        with the bridge inside the JVM, and a mismatched pair fails as "pyjab cannot see my
+        window" -- the hardest failure in this project to tell apart from the bridge simply
+        not being enabled.
+
+        Returns:
+            list: Image paths, de-duplicated, in enumeration order. Empty when nothing
+            looks like a JVM, which is a normal answer rather than an error.
+        """
+        found: List[str] = []
+        seen = set()
+
+        def visit(hwnd, _):
+            try:
+                _thread_id, pid = win32process.GetWindowThreadProcessId(hwnd)
+                if not pid or pid in seen:
+                    return
+                seen.add(pid)
+                path = Win32Utils._process_image_path(pid)
+            except Exception:
+                # A window that dies mid-enumeration, or a process that refuses to be
+                # asked. Neither is a reason to abandon the ones that answer.
+                return
+            if not path:
+                return
+            if path.lower().endswith(("\\java.exe", "\\javaw.exe")):
+                if path not in found:
+                    found.append(path)
+
+        win32gui.EnumWindows(visit, 0)
+        return found
+
+    @staticmethod
+    def _process_image_path(pid: int) -> Optional[str]:
+        """The full image path of *pid*, or None if it cannot be read.
+
+        ctypes rather than ``win32process.GetModuleFileNameEx``: the latter wants
+        ``PROCESS_VM_READ``, which is a larger right than this needs and is refused in more
+        situations.
+        """
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(
+            Win32Utils._PROCESS_QUERY_LIMITED_INFORMATION, False, pid
+        )
+        if not handle:
+            return None
+        try:
+            size = DWORD(32768)
+            buffer = ctypes.create_unicode_buffer(size.value)
+            if not kernel32.QueryFullProcessImageNameW(
+                handle, 0, buffer, ctypes.byref(size)
+            ):
+                return None
+            return buffer.value or None
+        finally:
+            kernel32.CloseHandle(handle)
 
     @staticmethod
     def enum_windows() -> Dict[HWND, str]:

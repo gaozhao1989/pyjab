@@ -8,6 +8,19 @@ fixing.
 
 ---
 
+### An application that bundles its own JRE
+
+Some applications ship their own private Java runtime, in a directory no install-location
+search would find. pyjab now handles that: since the application is **running**, it asks the
+processes that own windows where their JVM is, and looks for the bridge DLL beside it.
+
+That is also the **correct** DLL to use, not merely a convenient one. The client DLL pairs
+with the bridge inside the target JVM, and a mismatched pair fails in the least helpful way
+available — it looks exactly like pyjab not being able to see your window.
+
+If it still cannot be found, `JAB_HOME` or an explicit `bridge_dll=` remains the answer, and
+the error message lists every directory that was searched.
+
 ## `FileNotFoundError: Java Access Bridge DLL ... could not be located`
 
 pyjab could not find `WindowsAccessBridge-64.dll`.
