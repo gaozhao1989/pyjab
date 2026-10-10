@@ -149,12 +149,16 @@ def test_the_accelerator_invokes_it_with_the_same_effect_as_clicking(driver):
 
     That is worth having in a test rather than in a comment: a caller who attaches and then
     sends a shortcut without touching anything first gets silence, and `send_keys`'s own
-    docstring says so. There is no public way to focus a window directly; see #180.
+    docstring says so. There is no public way to focus a window directly, and the only way
+    to get focus is to click something that *has* an accessible action -- a label does not,
+    so "click a label to be harmless" does not even work. See #180.
     """
     item = driver.find_element_by_name("Accelerated item")
 
-    # Foregrounds the window. Harmless: it is a label.
-    driver.find_element_by_name("A Label").click()
+    # Foregrounds the window. A **button**, not a label: a JLabel has no accessible action
+    # and cannot be clicked at all ("JABElement does not support Accessible Action"), which
+    # is the second thing this test found. The toolbar button's own action is inert.
+    driver.find_element_by_name("Toolbar Button").click()
 
     driver.send_keys("alt+y")
 
