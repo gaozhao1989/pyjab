@@ -51,6 +51,30 @@ dependency JARs, launch parameters and classpaths stay exactly as they are.
 pyjab's position is the third row: near-injection depth without having to change
 how the application starts.
 
+The second row's limitation is measured rather than assumed. On a JDK 17 Swing
+application, through the same `UIAutomationCore` API that FlaUI and WinAppDriver use:
+
+| | elements | named | depth |
+|---|---|---|---|
+| UIA, the whole desktop | 147 | 99 | — |
+| UIA, the Java window | 6 | 5 | 3 |
+| pyjab, the same window | 601 | 513 | 12 |
+
+The first row is the control, and it is the point: the same UIA client enumerated **147
+elements across the desktop** and **finished rather than truncating**, so the six it
+reports for the Java window are about Java rather than about the client. Those six are
+the title bar, the menu bar, one menu item and three buttons — the window's own frame.
+The table, the cells' text, the tree and all 35 buttons are not there, and neither is
+anything else in the content pane.
+
+The bridge is working: a Swing menu bar is drawn by Java, so the `MenuBarControl` in
+those six can only have arrived through the Java accessibility path. It surfaces very
+little of the tree, which is a different problem from surfacing none of it.
+
+One measurement, one machine, one application. It is evidence for the row above and not
+a general law; the application was pyjab's own test app, and "large table" for that app
+is a twenty-cell table rather than a real one.
+
 ## Is it for you?
 
 **Probably yes if you:**

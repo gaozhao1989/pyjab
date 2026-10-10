@@ -252,6 +252,23 @@ Fixed
   quoted in an issue. ``status`` is still there as an attribute; it is no longer a second
   value in the same tuple.
 
+* **``tools/verify_m0.py`` measures a control, without which its result meant nothing.**
+  M0 asks whether JAB sees more of a Java application than generic UI Automation does.
+  The first run answered 601 elements against 6 and looked decisive — but a UIA client
+  that **cannot enumerate at all** produces the same six elements, and UIA reaches Java
+  through the MSAA proxy, whose presence is a property of the machine.
+
+  So the same client now walks the **desktop root** as well, and reports what it found
+  there. Measured: **147 elements, 99 named, 17 roles, and it finished rather than
+  truncating**. The six it reports for the Java window are therefore about Java rather
+  than about the client.
+
+  A missing control is ``INCONCLUSIVE`` rather than assumed healthy, and an unmeasured
+  one makes the run incomplete, so the exit status matches the conclusion. Both are
+  tested, and so is the call itself — the first version of the control defined the
+  function and never called it, which no test noticed because every test passed a
+  fixture that already had a control in it.
+
 Changed
 ~~~~~~~
 
