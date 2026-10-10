@@ -42,6 +42,33 @@ Unreleased
 Added
 ~~~~~
 
+* **``tools/gui_run.py`` — one command to dispatch a GUI task, wait for it, print what it
+  measured, and return its status.** Tracing a ``windows-gui.yml`` run by hand was four
+  commands, a guessed ``sleep 40``, and a final ``awk -F'\t' '$2 ~ /task=.../'`` that
+  matched on a *job* name — so a renamed job printed nothing, which looks like "nothing to
+  report" (Gaozhao1989/pyjab#190).
+
+  ``python tools/gui_run.py m0 --artifact-file m0.json --java 8`` replaces all of it. The
+  task names are read out of ``.github/workflows/windows-gui.yml`` itself, so a renamed
+  task is refused here, by name, instead of dispatching a step whose ``if:`` matches
+  nothing. ``gh workflow run`` returns no run id, so the tool records its start time,
+  dispatches, and polls the run list on a bounded interval for the newest run created at or
+  after that moment — **and prints the id it chose**, because two dispatches on one commit
+  is a real case and a wrong pick must be visible rather than silent.
+
+  It reads the **artifact** rather than the run log: the workflow uploads it under
+  ``if: always()`` precisely so a failed run's measurement can still be read, and its
+  contents are the same between runs. ``--artifact-file`` selects one file for the tasks
+  whose output is not ``<task>.log``; with no flag, every file is printed.
+
+  Exit ``0`` when the run succeeded, ``1`` when it failed or its artifact could not be
+  read, ``2`` for an unknown task or a dispatch that never appeared. The artifact goes to
+  stdout and the diagnostics to stderr.
+
+  Covered by ``tests/test_gui_run_tool.py``, which drives the whole flow against a scripted
+  ``gh``: the task reader against the real workflow file, the run picker (including the
+  same-commit case), the artifact-file chooser, and the exit codes.
+
 * **``send_keys()``, for sending a shortcut rather than typing text.** ``send_text()``
   types one character at a time, so ``send_text("alt+y")`` types the four characters
   ``a``, ``l``, ``t``, ``+`` — text has no modifiers. The chord form was reachable only
