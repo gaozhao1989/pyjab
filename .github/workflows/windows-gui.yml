@@ -69,6 +69,7 @@ on:
           - test-app
           - soak
           - jvm-discovery
+          - visible-children-count
           - screenshot
           - detach
           - environment
@@ -262,6 +263,15 @@ jobs:
         shell: pwsh
         run: |
           python tools/verify_jvm_discovery.py 2>&1 | Tee-Object -FilePath jvm-discovery.log
+          exit $LASTEXITCODE
+
+      - name: "task=visible-children-count"
+        if: inputs.task == 'visible-children-count'
+        shell: pwsh
+        run: |
+          # Launches and owns its own application; needs no external title.
+          # It measures what the bridge returns for #191; it does not fix anything.
+          python tools/verify_visible_children_count.py 2>&1 | Tee-Object -FilePath visible-children-count.log
           exit $LASTEXITCODE
 
       - name: "task=test-app"
