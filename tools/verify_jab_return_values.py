@@ -73,6 +73,7 @@ import shutil
 import subprocess
 import sys
 import time
+import traceback
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
@@ -235,12 +236,17 @@ def raw_measure(bridge, symbol: str, call) -> Tuple[object, Optional[str]]:
 
     Separated from any pyjab wrapper on purpose: a wrapper's ``JABException`` would replace
     the value being measured with an exception, which is exactly the masking this tool
-    exists to avoid.
+    exists to avoid. The traceback location is kept because the first two dispatches each
+    died on a bug *in this file* that the bare message could not name -- one word in a field
+    name, and a ``KeyError`` from the wrong mapping -- and a run costs twenty minutes.
     """
     try:
         return call(), None
     except Exception as error:                            # noqa: BLE001 - reported
-        return None, f"{type(error).__name__}: {error}"
+        where = traceback.extract_tb(error.__traceback__)[-1]
+        return None, (f"{type(error).__name__}: {error} "
+                      f"(at {Path(where.filename).name}:{where.lineno} in "
+                      f"{where.name})")
 
 
 def outcome(call) -> str:
@@ -379,6 +385,7 @@ def drive_get_top_level_object(driver, ctx) -> Reach:
     is exercised separately, in :func:`drive_get_hwnd_from_accessible_context`.
     """
     label = hold(find(driver, LABEL_NAME), ctx)
+    ctx["element"] = label
     top = label._get_top_level_object()
     try:
         ctx["outcome"] = f"_get_top_level_object() returned {top!r}"
@@ -398,6 +405,7 @@ def drive_set_text_contents(driver, ctx) -> Reach:
     was found for the probes that come after.
     """
     field = hold(find(driver, TEXT_FIELD_NAME), ctx)
+    ctx["text_element"] = field
     ctx["outcome"] = outcome(lambda: field.send_text(TEXT_FIELD_TEXT + "_measurement"))
     ctx["outcome"] += "; " + outcome(lambda: field.send_text(TEXT_FIELD_TEXT))
     return Reach(True, f"called send_text twice on {TEXT_FIELD_NAME!r}, leaving "
@@ -465,30 +473,40 @@ def drive_get_accessible_context_from_hwnd(driver, ctx) -> Reach:
     """``getAccessibleContextFromHWND`` is how a driver attaches, and attaching is public.
 
     ``JABDriver.__init__`` reaches the call through ``_get_accessible_context_from_hwnd``,
-    which is private -- and the documentation checker has a test that a tool must not
-    reach into private API (``tests/test_documented_api.py::test_every_tool_is_clean``).
-    Binding a driver by hwnd is the public way to make the same call, and it is the real
-    path: the tool does not need the vmid and context back, only the call to happen.
+    which is private -- and the documentation checker has a test that a tool must not reach
+    into private API (``tests/test_documented_api.py::test_every_tool_is_clean``). Binding a
+    driver by **window handle** is the public way to make the same call.
 
-    The extra driver is detached straight away: ``detach()`` releases the reference it
-    took and clears its pid, so it can neither leak a Java object nor SIGTERM the process
-    this run is measuring.
+    The handle has to be a real one: a driver bound to a title leaves ``driver.hwnd`` set
+    but *bound*, and handing that handle to a second driver does make the call -- the first
+    dispatch of this tool claimed the symbol was reached while the recorder counted nothing,
+    which is exactly the "reached" claim this tool exists to refuse. So the window handle is
+    resolved first, through pyjab's own public lookup, and the reach check then has to see
+    the call.
+
+    The extra driver is detached straight away: ``detach()`` releases the reference it took
+    and clears its pid, so it can neither leak a Java object nor SIGTERM the process this run
+    is measuring.
     """
     try:
-        attached = _attach_by_hwnd(driver)
+        hwnd = driver.get_java_window_hwnd(driver.title)
+        if not hwnd:
+            return Reach(False, f"no Java window handle for {driver.title!r} to bind to",
+                         no_component=True)
+        attached = _attach_by_hwnd(hwnd)
     except Exception as error:                            # noqa: BLE001 - reported
         return Reach(False, f"binding a JABDriver by hwnd raised "
                             f"{type(error).__name__}: {error}")
     try:
-        ctx["outcome"] = (f"JABDriver(hwnd=...) attached, resolving vmid="
+        ctx["outcome"] = (f"JABDriver(hwnd={hwnd!r}) attached, resolving vmid="
                           f"{attached.vmid!r}")
-        return Reach(True, "constructed a JABDriver from the window handle, which is how "
-                           "the call site is reached")
+        return Reach(True, f"constructed a JABDriver from the window handle {hwnd!r}, "
+                           f"which is how the call site is reached")
     finally:
         attached.detach()
 
 
-def _attach_by_hwnd(driver):
+def _attach_by_hwnd(hwnd):
     """A driver bound by window handle: the public path to the call site.
 
     Not a context manager: ``__exit__`` SIGTERMs the bound pid, and this is the same
@@ -496,7 +514,7 @@ def _attach_by_hwnd(driver):
     """
     from pyjab.jabdriver import JABDriver
 
-    return JABDriver(hwnd=driver.hwnd, timeout=10)
+    return JABDriver(hwnd=hwnd, timeout=10)
 
 
 def drive_get_hwnd_from_accessible_context(driver, ctx) -> Reach:
@@ -744,7 +762,9 @@ def raw_get_accessible_actions(bridge, ctx):
 
     from pyjab.accessibleinfo import AccessibleActions
 
-    element = ctx["element"]
+    # The element the two action symbols share: click() finds it and the drive does not
+    # record it, so the harness publishes it under one name for both.
+    element = ctx["actions_element"]
     actions = AccessibleActions()
     return bridge.getAccessibleActions(element.vmid, element.accessible_context,
                                        byref(actions))
@@ -1093,9 +1113,11 @@ def measure_one_in_this_process(driver, symbol: str) -> Verdict:
                              f"asked for {symbol}; that is a gap in this tool")
             return verdict
 
-        # doAccessibleActions is performed by click(), which finds its own element; the raw
-        # call needs one of its own rather than the one the drive released.
-        if symbol == "doAccessibleActions":
+        # The two action symbols are performed by click(), which finds its own element and
+        # does not hand it to the drive. Both take the same one here, so the raw call asks
+        # about the control the pyjab path just acted on rather than reusing a released
+        # handle.
+        if symbol in ("doAccessibleActions", "getAccessibleActions"):
             ctx["actions_element"] = hold(driver.find_element_by_name(BUTTON_NAME), ctx)
 
         verdict.raw, verdict.error = raw_measure(
@@ -1368,7 +1390,26 @@ def main() -> int:
     if args.child:
         if args.painted:
             args.symbol = "getVisibleChildren"
-        return child_main(args)
+        try:
+            return child_main(args)
+        except Exception as error:                        # noqa: BLE001 - reported
+            # A crash in the child must still leave one JSON row behind. Twice now the
+            # tool's own bug arrived at the parent as "no JSON row", which reads like a
+            # broken bridge rather than like a line in this file -- the attribute typo cost
+            # a whole dispatch to find.
+            where = traceback.extract_tb(error.__traceback__)[-1]
+            print(json.dumps({"verdict": {
+                "symbol": args.symbol or "control",
+                "arguments": "the child crashed before it could drive anything",
+                "candidate": True,
+                "raw": None,
+                "raw_type": None,
+                "raw_error": (f"the harness could not drive it: {type(error).__name__}: "
+                              f"{error} (at {Path(where.filename).name}:{where.lineno} in "
+                              f"{where.name})"),
+                "outcome": None,
+            }}))
+            return 1
     return parent_main(args)
 
 

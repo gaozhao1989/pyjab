@@ -599,6 +599,64 @@ def _enclosing_function(tree, target):
 
 
 # ---------------------------------------------------------------------------
+# Every raw call has to find what its drive recorded
+# ---------------------------------------------------------------------------
+
+def test_every_raw_call_finds_what_its_drive_recorded():
+    """The second dispatch's bug: two drives never set the ``ctx`` key their raw call reads.
+
+    ``raw_get_top_level_object`` reads ``ctx["element"]`` and ``raw_set_text_contents`` reads
+    ``ctx["text_element"]``, and neither drive wrote its key -- so the report said
+    ``KeyError: 'element'`` for a symbol the drive had clearly reached, and the value being
+    measured was lost.
+
+    Read from the two functions' own source, so a symbol added later is covered too: whatever
+    keys a raw helper reads, its drive has to write.
+    """
+    source = (REPO_ROOT / "tools" / "verify_jab_return_values.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+
+    def function(name):
+        return next(node for node in ast.walk(tree)
+                    if isinstance(node, ast.FunctionDef) and node.name == name)
+
+    def writes(function_name):
+        found = set()
+        for item in ast.walk(function(function_name)):
+            target = None
+            if isinstance(item, ast.Assign):
+                target = item.targets[0]
+            if (isinstance(target, ast.Subscript) and isinstance(target.value, ast.Name)
+                    and target.value.id == "ctx"
+                    and isinstance(target.slice, ast.Constant)):
+                found.add(target.slice.value)
+        return found
+
+    def reads(function_name):
+        found = set()
+        for item in ast.walk(function(function_name)):
+            if (isinstance(item, ast.Subscript) and isinstance(item.value, ast.Name)
+                    and item.value.id == "ctx"
+                    and isinstance(item.slice, ast.Constant)):
+                found.add(item.slice.value)
+        return found
+
+    # Keys the harness publishes rather than the drive recording them: "driver" is passed
+    # in, and "actions_element" is found by the harness for the two action symbols because
+    # click() finds its own element instead of handing it to the drive.
+    provided = {"driver", "actions_element"}
+
+    missing = {}
+    for symbol in tool.SYMBOLS:
+        gap = reads(tool.RAW[symbol].__name__) - writes(tool.DRIVERS[symbol].__name__)
+        gap -= provided
+        if gap:
+            missing[symbol] = sorted(gap)
+
+    assert not missing, f"a raw call reads a key its drive never sets: {missing}"
+
+
+# ---------------------------------------------------------------------------
 # It must not run off Windows
 # ---------------------------------------------------------------------------
 
