@@ -267,10 +267,19 @@ def run(driver, report: Report, timeout: int) -> None:
     print("    Swing table has no column selection to add cells to.")
 
     report.scenario(8, "select_all()")
+    # Clear first, deliberately.  Without this the previous scenario's selection is
+    # still in place, so "selected_rows" says nothing about whether select_all did
+    # anything -- which is how this scenario read as a pass for a call that is a
+    # no-op on a Swing table in row-selection mode.
+    table.clear_selection()
+    time.sleep(0.3)
     table.select_all()
     time.sleep(0.3)
     report.observed("selected_row_count", table.selected_row_count)
     report.observed("selected_rows", table.selected_rows)
+    if not table.selected_rows:
+        print("    (nothing was selected -- on a JTable this call is a no-op")
+        print("     unless cell selection is enabled; see JABElement.select_all)")
 
     report.scenario(9, "clear_selection()")
     table.clear_selection()

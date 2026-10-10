@@ -155,6 +155,13 @@ SIGNATURES = (
     # "is row 3 selected?" could only ever be answered yes.
     ("isAccessibleTableRowSelected", BOOL, (c_long, JOBJECT64, c_int), False),
     ("isAccessibleTableColumnSelected", BOOL, (c_long, JOBJECT64, c_int), False),
+    # Same reasoning a third time: False means "this cell is not selected", which is
+    # an ordinary answer about a table rather than a failed call.  This is the
+    # predicate that makes addAccessibleSelection's toggle usable -- for a JTable it
+    # is isCellSelected(row, column), which is the same question changeSelection asks
+    # itself, so select_row can stop after the first cell instead of toggling the row
+    # back off.  See JABElement.select_row.
+    ("isAccessibleChildSelectedFromContext", BOOL, (c_long, JOBJECT64, c_int), False),
     ("getAccessibleKeyBindings", BOOL, (c_long, JOBJECT64, POINTER(AccessibleKeyBindings)), True),
     ("setTextContents", BOOL, (c_long, JOBJECT64, POINTER(c_wchar)), True),
     ("clearAccessibleSelectionFromContext", None, (c_long, JOBJECT64), False),

@@ -23,12 +23,21 @@ import _win32stubs  # noqa: F401  -- installs the pywin32 stand-ins on import
 from pyjab.common.exceptions import JABException
 from pyjab.jabfixedfunc import SIGNATURES
 from pyjab.common.types import JOBJECT64
-from tests._fakejab import bind, node, table
+from tests._fakejab import bind, column_selecting_table, node, row_selecting_table, table
 
 
 def a_table(rows=3, columns=4):
     """A bound table element and its bridge."""
     return bind(table(rows, columns, name="results"))
+
+
+def a_row_selecting_table(rows=3, columns=4):
+    """Swing's default JTable: row selection on, column selection off."""
+    return bind(row_selecting_table(rows, columns, name="results"))
+
+
+def a_column_selecting_table(rows=3, columns=4):
+    return bind(column_selecting_table(rows, columns, name="results"))
 
 
 # ---------------------------------------------------------------------------
@@ -184,6 +193,72 @@ def test_selecting_a_column_adds_every_cell_in_it():
     assert bridge.count("addAccessibleSelectionFromContext") == 3
     assert element.selected_columns == [2]
     assert element.selected_rows == [0, 1, 2]
+
+
+def test_selecting_a_row_on_a_row_selecting_table_adds_one_cell():
+    """The add is a toggle, so one add is the whole row and a second undoes it.
+
+    ``AccessibleJTable.addAccessibleSelection(i)`` calls
+    ``JTable.changeSelection(row, column, true, false)``, and ``changeSelection``
+    toggles that same ``selected`` value into *both* selection models -- with the
+    column model updated unconditionally.  Adding every cell of the row therefore
+    turns the row off again: four adds on a 3x4 table left
+    ``selected_rows == []`` and ``selected_columns == [0, 2]``, measured on a real
+    JDK 17 table through a real bridge.
+    """
+    element, bridge = a_row_selecting_table(rows=3, columns=4)
+
+    element.select_row(1)
+
+    assert bridge.count("addAccessibleSelectionFromContext") == 1
+    assert element.selected_rows == [1]
+    assert element.is_row_selected(1) is True
+    assert element.selected_row_count == 1
+
+
+def test_selecting_an_already_selected_row_again_leaves_it_selected():
+    """``clear=False`` must not toggle off what is already there."""
+    element, bridge = a_row_selecting_table(rows=3, columns=4)
+
+    element.select_row(1)
+    added = bridge.count("addAccessibleSelectionFromContext")
+    element.select_row(1, clear=False)
+
+    assert bridge.count("addAccessibleSelectionFromContext") == added
+    assert element.selected_rows == [1]
+
+
+def test_selecting_a_column_on_a_column_selecting_table_adds_one_cell():
+    """The mirror of the row case, and it failed the same way.
+
+    With an even row count the toggling loop ended on ``selected_columns == []``
+    and ``selected_rows == [0, 2]`` -- four adds that selected no column at all.
+    """
+    element, bridge = a_column_selecting_table(rows=4, columns=3)
+
+    element.select_column(2)
+
+    assert bridge.count("addAccessibleSelectionFromContext") == 1
+    assert element.selected_columns == [2]
+    assert element.is_column_selected(2) is True
+
+
+def test_the_fake_reproduces_the_measurement_from_the_runner():
+    """A guard on the fake, not on the library.
+
+    Driving the raw adds the old ``select_row`` made must land on exactly what the
+    runner reported, or the fake is not a faithful model and the three tests above
+    prove nothing.  This one does not exercise the old code path on purpose -- a
+    regression test for that is the first test in this group.
+    """
+    element, _bridge = a_row_selecting_table(rows=5, columns=4)
+
+    for index in (4, 5, 6, 7):
+        element._select_accessible_table_index(index)
+
+    assert element.selected_rows == []
+    assert element.selected_columns == [0, 2]
+    assert element.is_row_selected(1) is False
 
 
 def test_select_all_takes_the_selection_the_table_offers():

@@ -439,11 +439,20 @@ table.is_row_selected(2)             # True
 table.is_column_selected(0)          # False
 ```
 
-**JAB has no call that selects a row or a column.** `select_row()` adds each cell
-of that row to the selection, one index at a time. Whether the application then
-reports the *row* as selected is its own decision — some do, some only ever report
-cells. Check `selected_rows` after selecting rather than building on the
-assumption.
+**JAB has no call that selects a row or a column.** `select_row()` selects a row by
+adding its cells to the table's selection — but adding a cell is a **toggle**, so a
+cell that is already selected is skipped rather than added again. On a Swing table in
+its default row-selection mode the first cell selects the whole row and the rest are
+then found to be selected already; on a table with individual cell selection enabled
+every cell is added. Whether the application then reports the *row* as selected is its
+own decision — some do, some only ever report cells. Check `selected_rows` after
+selecting rather than building on the assumption.
+
+`select_all()` is the one to watch: on a Swing `JTable` it does **nothing unless
+individual cell selection is enabled**, because
+`AccessibleJTable.selectAllAccessibleSelection()` falls through in row-selection mode.
+It raises nothing, so read `selected_rows` back rather than assuming the table is
+selected.
 
 ### The selected cells
 
