@@ -577,6 +577,26 @@ property when you need it.
 
 `visible_children_count` **raises** if the bridge refuses the call. A refused count is not a
 count of zero, and that distinction is the same one the canvas note below is about.
+## Bringing a window forward
+
+```python
+if driver.focus():
+    driver.send_keys("alt+y")
+```
+
+`focus()` returns **whether the window is the foreground window afterwards** — not whether
+the call was made. `SetForegroundWindow` returns nothing useful and `pywin32` raises rather
+than reporting a status, so the state left behind is the only honest answer.
+
+**`False` is a normal result, and nothing raises.** Windows refuses foreground activation
+from a service session, so a caller that does not need the window in front does not have to
+care about the answer. Every interactive method — `click()`, `send_text()`, the screenshots —
+already brings the window forward as a side effect, so this is for the case that has none:
+**sending a shortcut**, which goes wherever the focus happens to be.
+
+A window that is already in front costs nothing: no keystroke is sent, because taking the
+foreground means sending a space bar to whatever currently has focus.
+
 ## Shortcuts
 
 `send_text()` types text, one character at a time, so it cannot express a modifier chord —

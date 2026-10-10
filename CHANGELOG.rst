@@ -25,6 +25,23 @@ Unreleased
   the call — a refused count is not an answer of zero, which is the same distinction issue
   #73 is about.
 
+* **``focus()``, so a caller can bring a window forward and find out whether it worked.**
+  ``send_keys()``'s own docstring told callers to bring the window forward first, and there
+  was **no public way to do it**: the twelve call sites of ``_set_window_foreground`` were all
+  inside ``jabelement.py``. Reported as #180.
+
+  ``driver.focus()``, ``element.focus()`` and ``Win32Utils().set_window_foreground(hwnd)``
+  return **whether the window is the foreground window afterwards**. ``SetForegroundWindow``
+  returns nothing useful and pywin32 raises rather than reporting a status, so the state left
+  behind is the only honest answer.
+
+  **``False`` is a normal answer.** Windows refuses foreground activation from a service
+  session; that is recorded on #68, and a caller that does not need the window in front does
+  not have to care. Nothing raises.
+
+  A window already in front costs nothing — **no keystroke is sent** — which matters because
+  taking the foreground means sending a space bar to whatever currently has focus.
+
 Added
 ~~~~~
 
