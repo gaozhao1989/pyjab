@@ -1,9 +1,11 @@
 """Two counts of children, named, because they come from different calls.
 
-`children_count` is the **total**, from the accessibility context info. What a traversal
-yields is the **visible** count, from `getVisibleChildrenCount`. Both are correct and they
-differ whenever an element has hidden children, so a caller who read one and walked the
-other had no way to tell that difference from a bug or a truncated walk.
+`children_count` is the **total**, from the accessibility context info; `visible_children_count`
+is the count the bridge calls visible. Both are correct and they differ whenever an element has
+hidden children.
+
+**A walk uses `children_count`, not the visible one** -- this file said otherwise when it was
+written, and a measurement said otherwise in turn. See #179.
 
 The tests here pin the distinction and the reason `as_record()` carries only one of them.
 """

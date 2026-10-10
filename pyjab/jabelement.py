@@ -136,10 +136,9 @@ class JABElement(object):
         whose info has already been fetched -- which is why it is the one :meth:`as_record`
         carries.
 
-        **Not the same number as** :attr:`visible_children_count`, which is what a
-        traversal yields and can be smaller when some children are hidden. Both are
-        correct; a caller comparing this against ``len(list(element.walk()))`` and finding
-        them different has found that difference rather than a bug.
+        **Not the same number as** :attr:`visible_children_count`, which counts the
+        children the bridge calls visible. A walk uses **this** one, so a walk yields the
+        same children this counts, hidden ones included.
         """
         return self._acc_info().childrenCount
 
@@ -151,13 +150,16 @@ class JABElement(object):
 
         * :attr:`children_count` comes from ``getAccessibleContextInfo`` and is the
           **total**, visible or not.
-        * this one comes from ``getVisibleChildrenCount``, and it is what a traversal
-          yields — :meth:`walk` steps through the visible children.
+        * this one comes from ``getVisibleChildrenCount``.
 
-        So for an element with hidden children, ``children_count`` is larger than either
-        this or ``len(list(element.walk()))``, and **both are correct**. Before this
-        existed, a caller reading one and walking the other had no way to tell that apart
-        from a bug or a truncated walk.
+        **:meth:`walk` does not use this.** It iterates ``children_count`` and
+        ``getAccessibleChildFromContext``, so a walk yields the same children the total
+        counts, hidden ones included. An earlier version of this docstring said a walk
+        steps through the visible children, which was wrong -- verified by walking against
+        a bridge that has no ``getVisibleChildrenCount`` at all.
+
+        So the two numbers answer different questions and this one is not the one a
+        snapshot renders. Nothing currently reads both; #179 was closed with that finding.
 
         Raises:
             JABException: the bridge refused the call. **A refused count is not a count of
