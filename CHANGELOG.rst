@@ -42,6 +42,45 @@ Unreleased
 Added
 ~~~~~
 
+* **``tools/verify_jab_return_values.py`` — the measurement #195 needs before any
+  ``SIGNATURES`` row is armed.** Arming a row installs ctypes' ``errcheck`` hook, which
+  raises ``RuntimeError`` on a falsy return. That is decided **per row**, and the decision
+  cannot be made by reading: the hook would make the hand-written ``if not result:`` checks
+  at seven of the fifteen call sites unreachable and would start raising at the eight that
+  ignore the return, and only a real JVM can say what each of the fourteen symbols actually
+  returns.
+
+  The tool drives ``PyjabTestApp`` into a state where each call site runs — a label, the
+  text field, a table cell, the childless painted panel from #191 — and then makes **the
+  same call directly, on the arguments the call arrived with**, printing the raw value, its
+  type, and ``falsy?``/``nonzero?``. The direct call is what stops a ``JABException`` from
+  hiding the value underneath.
+
+  **"Not reached" is not "not falsy", and the run says which it is.** A bridge wrapper
+  counts the calls to each symbol while the pyjab method runs, so reach is observed rather
+  than inferred; a symbol that was not reached is printed with the reason, and the run exits
+  ``INCONCLUSIVE`` rather than reporting a partial sweep as a clean one. The reasons are
+  distinguished: "no such component in this application" is a fact about the application,
+  "the harness could not drive it" is a fact about the tool.
+
+  Two controls: a **direct** ``getAccessibleContextInfo`` on the root element, which must
+  come back truthy or nothing below it is measuring a working bridge; and the childless
+  panel's ``getVisibleChildren``, which must come back falsy — if this run never produced a
+  falsy return at all then "no candidate returned falsy" means nothing, so that fails the
+  run too. The summary also prints that ``-1`` is **truthy**, so a row armed with the hook
+  would pass the documented error value straight through.
+
+  **Each symbol is measured in its own process, on a wall-clock budget.** The first version
+  ran the whole sweep in one process, and its first dispatch sat for fifty minutes inside a
+  JAB call, losing the run with nothing to say which symbol blocked. Only the parent can
+  kill a call parked inside the DLL, so it compiles, launches and waits for the window with
+  Win32 alone, then spawns one child per symbol and reads one JSON row back; a child that
+  does not report is printed as ``not reached`` with the budget it missed and the run exits
+  ``INCONCLUSIVE``.
+
+  Pure parts covered by ``tests/test_verify_jab_return_values.py``. Dispatched, never run
+  locally: ``python tools/gui_run.py jab-return-values``.
+
 * **``tools/gui_run.py`` — one command to dispatch a GUI task, wait for it, print what it
   measured, and return its status.** Tracing a ``windows-gui.yml`` run by hand was four
   commands, a guessed ``sleep 40``, and a final ``awk -F'\t' '$2 ~ /task=.../'`` that
