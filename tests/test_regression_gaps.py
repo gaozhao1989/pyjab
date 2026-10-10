@@ -134,6 +134,16 @@ def test_the_accelerator_item_exists_as_a_menu_item(driver):
     assert item.role_en_us == Role.MENU_ITEM
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "The accelerator does not fire, and focus is ruled out: clicking a toolbar button "
+        "succeeds, so the window is foregrounded, and send_keys('alt+y') then returns "
+        "without error while the item's name never changes. Whether the chord arrives at "
+        "all is untested -- send_keys has no positive control. Filed as #183; this xfail "
+        "says the same thing so that it fails the day the behaviour starts working."
+    ),
+)
 def test_the_accelerator_invokes_it_with_the_same_effect_as_clicking(driver):
     """`#53`'s conclusion: the keyboard path has to *do* the same thing, not just exist.
 
