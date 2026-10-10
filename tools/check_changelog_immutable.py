@@ -53,7 +53,13 @@ CHANGELOG = REPO_ROOT / "CHANGELOG.rst"
 RECORD = REPO_ROOT / "tools" / "released_changelog_sections.json"
 
 #: `1.2.3 (2026-01-01)` on its own line, with the underline beneath it.
-HEADING = re.compile(r"(?m)^(\d+\.\d+\.\d+) \(\d{4}-\d{2}-\d{2}\)\n-{2,}\n")
+#:
+#: The date separator is `(` throughout this file's history and `-` for 1.9.0, which was
+#: tagged and published before anyone noticed the difference. Both are matched rather than
+#: rewriting a published section: a tag whose version is already on PyPI never moves, and
+#: what gets frozen has to be the text that actually shipped. It is a reading of the file,
+#: not a licence to write a third style -- `(date)` is the one to use.
+HEADING = re.compile(r"(?m)^(\d+\.\d+\.\d+)\s*[(\-]\s*\d{4}-\d{2}-\d{2}\)?\s*\n-{2,}\n")
 
 
 def sections(text: str) -> dict:
