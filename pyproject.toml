@@ -75,6 +75,12 @@ dev = [
     # guard that skips is not a guard -- the same reason check_dco.py is worth
     # having even though it cannot run in CI.
     "PyYAML>=6.0",
+    # tools/check_local_only_files.py builds an sdist to prove the archive does
+    # not contain the local-only files, and the release workflow builds the
+    # distribution. Both used to `pip install build` inside a workflow step --
+    # which is how ci.yml and release.yml drifted apart once already, and a
+    # release failed after its tag had already been pushed.
+    "build>=1.0",
 ]
 
 [project.urls]
