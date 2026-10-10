@@ -25,7 +25,7 @@ logic can be unit tested on any platform.
 
 import os
 import struct
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Iterator, List, Optional
 
 MAX_STRING_SIZE = 1024
@@ -138,11 +138,62 @@ def _iter_subdirs(root: Path) -> Iterator[Path]:
             continue
 
 
-def get_bridge_dll_search_dirs() -> List[Path]:
+def bridge_dirs_from_image(image: str) -> List[Path]:
+    """The directories a JVM's own executable path implies for the bridge DLL.
+
+    Given ``C:\\Program Files\\App\\jre\\bin\\java.exe`` this returns that ``bin`` and
+    the ``jre\\bin`` beside it, which between them cover JDK 8-10 and JDK 11+ layouts.
+
+    **Pure on purpose.** It takes a string and returns paths, imports nothing from Windows,
+    and is therefore testable on any platform -- which is this module's standing rule and
+    the reason the portable suite can cover it at all. The Windows half, asking running
+    processes for their image paths, lives in :mod:`pyjab.common.win32utils`.
+
+    Why this exists: the search below covers the usual JDK install locations, and misses
+    the case of an application bundled with its **own private JRE** in a directory nothing
+    would guess. That application is running, so its JVM can be asked where it is -- and
+    using *that* JVM's DLL is also the correct one to use, because the client DLL pairs
+    with the bridge inside the target JVM. A mismatched pair fails as "pyjab cannot see my
+    window", which is the hardest failure in this project to diagnose.
+    """
+    if not image:
+        return []
+    # PureWindowsPath, not Path: this function is platform independent by this module's
+    # standing rule, and it is tested on macOS and Linux. On POSIX `Path(r"C:\\a\\java.exe")
+    # has no separator in it at all, so `.name` is the whole string and the function
+    # returned nothing -- on the two platforms where nobody would have noticed, about paths
+    # that only occur on the one where it is not tested.
+    path = PureWindowsPath(image)
+    if path.name.lower() not in ("java.exe", "javaw.exe", "java", "javaw"):
+        return []
+    bin_dir = path.parent
+    if str(bin_dir) in ("", "."):
+        # A bare "java.exe" with no directory. Returning "." would send the DLL search to
+        # the current working directory, which is a different kind of wrong from finding
+        # nothing -- it would succeed occasionally, from a directory that has nothing to do
+        # with any JVM.
+        return []
+    # `.../jdk/bin/java.exe` also has a `.../jdk/jre/bin` on JDK 8-10; `.../jre/bin/java.exe`
+    # has nothing further to add. De-duplicated by the caller.
+    dirs = [bin_dir, bin_dir.parent / "jre" / "bin"]
+    # Back to Path: the callers do `path / name` and then `.is_file()`, and a Pure path has
+    # no filesystem methods. On Windows Path is WindowsPath and parses the backslashes for
+    # real; elsewhere the string round-trips, which is what makes this testable.
+    return [Path(str(directory)) for directory in dirs]
+
+
+def get_bridge_dll_search_dirs(extra_dirs: Optional[List[Path]] = None) -> List[Path]:
     """Return every directory that may hold the JAB bridge DLL.
 
     Directories are ordered by likelihood and de-duplicated case-insensitively
     (Windows paths are case-insensitive).
+
+    Args:
+        extra_dirs (list, optional): Directories to consider before the vendor sweep,
+            typically derived from the JVMs of running processes by
+            :func:`bridge_dirs_from_image`. They come after the environment variables
+            because an explicitly configured JDK is a statement of intent and a running
+            process is an inference.
     """
     dirs: List[Path] = []
     seen = set()
@@ -209,7 +260,8 @@ def _recursive_candidates(dll_bit: int) -> Iterator[Path]:
             continue
 
 
-def find_bridge_dll(dll_bit: Optional[int] = None) -> Optional[Path]:
+def find_bridge_dll(dll_bit: Optional[int] = None,
+                    extra_dirs: Optional[List[Path]] = None) -> Optional[Path]:
     """Locate the JAB bridge DLL.
 
     Args:

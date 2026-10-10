@@ -1,14 +1,14 @@
 from ctypes import cdll
 from ctypes import CDLL
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 from pyjab.common.logger import Logger
 from pyjab.common.singleton import singleton
 from pyjab.config import A11Y_PROPS_CONTENT
 from pyjab.config import A11Y_PROPS_PATH
 from pyjab.config import describe_bridge_dll_search
-from pyjab.config import find_bridge_dll
+from pyjab.config import bridge_dirs_from_image, find_bridge_dll
 
 
 @singleton
@@ -83,7 +83,45 @@ class Service(object):
                 "The explicit bridge_dll path does not exist: '{}'. "
                 "Falling back to automatic discovery.".format(bridge_dll)
             )
-        return find_bridge_dll()
+        return find_bridge_dll(extra_dirs=self._dirs_from_running_jvms())
+
+    def _dirs_from_running_jvms(self) -> List[Path]:
+        """Directories implied by the JVMs of processes that own a window.
+
+        **Best effort, and deliberately silent about failure.** This only *adds*
+        candidates to a search that already works, so anything going wrong here -- no
+        windows, a process that refuses to be asked, a platform with no such call -- must
+        leave the original search intact rather than replace one failure with another.
+
+        It exists for the case the install-location search cannot cover: an application
+        bundled with its own private JRE, in a directory nothing would guess. That
+        application is running, so its JVM can be asked where it is. And using *that* JVM's
+        DLL is the correct one to use as well, because the client DLL pairs with the bridge
+        inside the target JVM.
+
+        Imported inside the function: ``win32utils`` pulls in pywin32 at module scope, and
+        this module is deliberately importable anywhere.
+        """
+        try:
+            from pyjab.common.win32utils import Win32Utils
+
+            images = Win32Utils().java_process_image_paths()
+        except Exception:
+            self.logger.debug("could not ask running processes for their JVM paths")
+            return []
+
+        dirs: List[Path] = []
+        for image in images:
+            for directory in bridge_dirs_from_image(image):
+                if directory not in dirs:
+                    dirs.append(directory)
+        if dirs:
+            self.logger.debug(
+                "{} JVM(s) found in running processes, {} candidate director(ies)".format(
+                    len(images), len(dirs)
+                )
+            )
+        return dirs
 
     def load_library(self, bridge_dll: str = "") -> CDLL:
         """Load the Java Access Bridge DLL.
