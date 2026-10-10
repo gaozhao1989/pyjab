@@ -1,7 +1,12 @@
 name: CI
 
 on:
+  # `master` only. A branch push fired a full run *and* the pull request fired
+  # another, on the same headSha, seconds apart: 38 of the last 65 push runs had
+  # a PR twin. That is 8.6 job-minutes of runners per branch commit for a run
+  # nothing waits on -- the required checks are reported by the PR run.
   push:
+    branches: [master]
   pull_request:
   workflow_dispatch:
 
