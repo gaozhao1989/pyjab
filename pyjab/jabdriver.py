@@ -26,7 +26,7 @@ from ctypes.wintypes import HWND
 from pathlib import Path
 from subprocess import Popen
 from time import sleep, time
-from typing import Any, Dict, Tuple, Optional
+from typing import Any, Dict, List, Tuple, Optional
 
 import win32process
 from pyjab.accessibleinfo import AccessBridgeVersionInfo
@@ -95,6 +95,48 @@ class JABDriver(object):
 
     def __enter__(self):
         return self
+
+    def detach(self) -> None:
+        """Release the bound window **without terminating its process**.
+
+        :meth:`__exit__` sends ``SIGTERM`` to the bound pid, which is right for an
+        application this driver launched and wrong for one it merely attached to. A caller
+        that has to stop using a window — ending a session, releasing a slot, handing the
+        application to something else — had no way to say that, so its only options were to
+        keep the binding or to kill the application.
+
+        What this does:
+
+        * releases the root element's JAB reference, which the driver owns;
+        * forgets the hwnd, vmid, accessible context and pid.
+
+        Forgetting the pid is what makes :meth:`__exit__` a no-op afterwards, rather than
+        adding a second condition to it — the guard that skips ``os.kill(None)`` is already
+        there and already tested. So a detached driver can still be used as a context
+        manager, and leaving that block will not kill anything.
+
+        **The bridge stays loaded.** It is process-wide, several drivers may share it, and
+        loading it arms COM on the calling thread; unloading it is not a thing pyjab does.
+        Nothing else about the process changes.
+
+        Idempotent: detaching twice is the same as detaching once.
+        """
+        root = getattr(self, "root_element", None)
+        if root is not None:
+            try:
+                root.release_jabelement()
+            except Exception:                            # pragma: no cover - JAB
+                # Releasing twice, or releasing something the bridge has already dropped,
+                # is not a reason to fail the detach -- the caller asked to let go, and
+                # the state it asked for is the state it gets.
+                #
+                # `getattr` on the logger as well: a driver that never finished __init__
+                # has no logger, and detaching such a driver is a normal thing to want.
+                logger = getattr(self, "logger", None)
+                if logger is not None:
+                    logger.debug("releasing the root element during detach failed")
+        for attribute in ("root_element", "accessible_context", "hwnd", "vmid", "pid"):
+            setattr(self, attribute, None)
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         # self.pid stays None if init_jab() raised before it resolved the window
@@ -825,3 +867,91 @@ class JABDriver(object):
             return None
 
         return vmid.value, accessible_context
+
+
+def list_java_windows() -> List[dict]:
+    """Every top-level window the bridge recognises as a Java window.
+
+    The listing a caller needs *before* it has a driver: :class:`JABDriver` binds to one
+    window and cannot enumerate, so without this there was no public way to find out what
+    could be attached to.
+
+    Returns:
+        list: one dict per window, with ``hwnd``, ``title``, ``pid`` and ``vmid``. ``vmid``
+        and ``pid`` are ``None`` when they cannot be read — a window can disappear between
+        being listed and being asked about, and that is not an error.
+
+    :Usage:
+        for window in pyjab.list_java_windows():
+            print(window["title"], window["hwnd"])
+
+    Note:
+        This loads and arms the bridge, so it needs Windows and a JAB DLL like everything
+        else here. It **does not bind** anything: the windows it reports are left exactly
+        as they were, and no driver is created. Use :meth:`JABDriver.detach` to let go of
+        one afterwards without ending its process.
+    """
+    from pyjab.common.service import Service
+    from pyjab.common.win32utils import Win32Utils
+    from pyjab.jabfixedfunc import JABFixedFunc
+
+    service = Service()
+    bridge = service.load_library()
+    bridge.Windows_run()
+    # Once, so COM events have a thread to arrive on. Same sequence init_jab runs, minus
+    # the window -- see pyjab/inspector.py, which needs the identical thing.
+    Win32Utils().pump_messages()
+    # Not optional: isJavaWindow takes an HWND, and without argtypes ctypes masks it to a
+    # C int, so on 64-bit Windows the answer would be about a truncated handle -- silently
+    # a different window. AGENTS.md 2.8.
+    JABFixedFunc(bridge)._fix_bridge_functions()
+
+    found: List[dict] = []
+    win32 = Win32Utils()
+    for hwnd, title in win32.enum_windows().items():
+        if not title:
+            continue
+        try:
+            if not bridge.isJavaWindow(hwnd):
+                continue
+        except Exception:                                # pragma: no cover - JAB
+            continue
+        found.append({
+            "hwnd": hwnd,
+            "title": title,
+            "pid": _pid_of_hwnd(hwnd),
+            "vmid": _vmid_of_hwnd(bridge, hwnd),
+        })
+    return found
+
+
+def _pid_of_hwnd(hwnd: HWND) -> Optional[int]:
+    """The process id owning *hwnd*, or None."""
+    try:
+        import win32process
+
+        _thread_id, pid = win32process.GetWindowThreadProcessId(hwnd)
+        return pid or None
+    except Exception:                                    # pragma: no cover - Windows
+        return None
+
+
+def _vmid_of_hwnd(bridge, hwnd: HWND) -> Optional[int]:
+    """The JVM id behind *hwnd*, or None.
+
+    Best effort on purpose: a window that closed between being listed and being asked
+    about is a normal race, not an error, and reporting the window with a null vmid is
+    more useful than dropping it.
+    """
+    try:
+        vm_id = c_long()
+        context = JOBJECT64()
+        if bridge.getAccessibleContextFromHWND(
+            hwnd, byref(vm_id), byref(context)
+        ):
+            if context.value:
+                bridge.releaseJavaObject(vm_id.value, context)
+            return vm_id.value
+    except Exception:                                    # pragma: no cover - JAB
+        return None
+    return None

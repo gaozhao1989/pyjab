@@ -10,6 +10,34 @@ This project adheres to `Semantic Versioning`_ and `Keep a Changelog`_.
 Unreleased
 ----------
 
+Added
+~~~~~
+
+* **``pyjab.list_java_windows()`` — every Java window the bridge can see.** A caller could
+  not find out what was available to attach to: ``JABDriver`` binds to one window and cannot
+  enumerate, and the only listing was behind the ``pyjab-inspect`` console script. Returns
+  one dict per window with ``hwnd``, ``title``, ``pid`` and ``vmid``; ``pid`` and ``vmid``
+  are ``None`` when they cannot be read, because a window can close between being listed and
+  being asked about and that is a race rather than an error.
+
+  Defined in ``pyjab/__init__.py`` as a wrapper that imports the Windows body inside the
+  call, so ``import pyjab`` stays harmless on every OS — the same rule that keeps
+  ``pyjab.config`` platform independent.
+
+* **``JABDriver.detach()`` — let go of a window without ending its process.**
+  ``__exit__`` sends ``SIGTERM`` to the bound pid, which is right for an application pyjab
+  launched and wrong for one it merely attached to. A caller that needed to stop using a
+  window had no way to say so: the only options were to keep the binding or to kill the
+  application.
+
+  It releases the root element's reference, which the driver owns, and forgets the hwnd,
+  vmid, context and pid. **Forgetting the pid is what makes ``__exit__`` a no-op
+  afterwards**, reusing the guard that already skips ``os.kill(None)`` rather than adding a
+  second condition to it. The bridge stays loaded: it is process-wide and arming COM on the
+  calling thread is not something pyjab undoes.
+
+  Idempotent, and safe on a driver whose ``__init__`` raised before it bound anything.
+
 Changed
 ~~~~~~~
 
