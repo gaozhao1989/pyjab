@@ -390,8 +390,12 @@ def verdict(jab_report: dict, uia_report: dict, complete: bool) -> str:
                 "decision table needs both; see the UNANSWERED rows above.")
 
     def cell_text(report):
-        cell = report.get("cell")
-        return cell.get("text", "") if isinstance(cell, dict) else None
+        # Not `cell`: check_documented_api.py's TOOL_VARIABLES maps that name to
+        # JABElement on purpose, so `cell.get(...)` reads to it as an attribute a
+        # JABElement does not have.  The name is internal; the printed prose was
+        # what mattered.
+        cell_entry = report.get("cell")
+        return cell_entry.get("text", "") if isinstance(cell_entry, dict) else None
 
     jab_text, uia_text = cell_text(jab_report), cell_text(uia_report)
 
