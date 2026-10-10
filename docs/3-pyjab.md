@@ -557,19 +557,22 @@ and the accessibility action path is the only option — see
 | | where it comes from | what it is |
 |---|---|---|
 | `children_count` | the accessibility context info | the **total**, visible or not |
-| `visible_children_count` | `getVisibleChildrenCount` | the **visible** ones — what a walk yields |
+| `visible_children_count` | `getVisibleChildrenCount` | the **visible** ones |
 
 So for an element with hidden children:
 
 ```python
 element.children_count            # e.g. 5
 element.visible_children_count    # e.g. 2
-len(list(element.walk()))         # 2, because a walk steps through the visible ones
+len(list(element.walk()))         # 5 -- a walk uses children_count, not the visible count
 ```
 
-`children_count > len(list(element.walk()))` is therefore **normal**, not a bug and not a
-truncated walk. If you need to know whether a walk was cut short, that is what
-`JABTree.truncated` is for — a different question from this one.
+**`walk()` does not use `visible_children_count`.** It iterates `children_count` and
+`getAccessibleChildFromContext`, so it yields hidden children too. An earlier version of
+this page said a walk steps through the visible ones; that was wrong, and it was wrong in
+the docstring as well.
+
+If a walk was cut short, that is `JABTree.truncated` — a different question from this one.
 
 `as_record()` carries **only `children_count`**, deliberately: it is the record a walk
 produces for every node, and the visible count is a second bridge call per node. Ask for the
