@@ -19,6 +19,7 @@ whose behaviour is observable on this machine.
 
 from __future__ import annotations
 
+import ast
 import importlib.util
 import sys
 from pathlib import Path
@@ -524,6 +525,77 @@ def test_the_child_argv_names_the_symbol_and_keeps_the_budget(monkeypatch):
     assert "--symbol" in captured["argv"]
     assert "getVersionInfo" in captured["argv"]
     assert captured["timeout"] == 11
+
+
+# ---------------------------------------------------------------------------
+# Every attribute the tool reads of a pyjab object has to exist
+# ---------------------------------------------------------------------------
+
+def test_every_structure_field_the_tool_reads_exists():
+    """The first dispatch died on ``info.role_EN_US``.
+
+    ``AccessibleContextInfo`` spells it ``role_en_US``, and the control child raised
+    ``AttributeError`` before one symbol had been measured -- the failure arrived as "the
+    control child did not report", which is exactly the case a control is there to surface,
+    but a whole dispatch was spent getting there.
+
+    Checked against the real ctypes structures rather than a copy of their field names, so a
+    structure that gains or renames a field is covered without editing this.
+    """
+    import ast
+
+    from pyjab.accessibleinfo import AccessibleContextInfo
+    from pyjab.accessibleinfo import AccessibleTextInfo
+    from pyjab.accessibleinfo import AccessibleTableCellInfo
+    from pyjab.accessibleinfo import AccessBridgeVersionInfo
+    from pyjab.accessibleinfo import VisibleChildrenInfo
+
+    structures = {
+        "AccessibleContextInfo": AccessibleContextInfo,
+        "AccessibleTextInfo": AccessibleTextInfo,
+        "AccessibleTableCellInfo": AccessibleTableCellInfo,
+        "AccessBridgeVersionInfo": AccessBridgeVersionInfo,
+        "VisibleChildrenInfo": VisibleChildrenInfo,
+    }
+    source = (REPO_ROOT / "tools" / "verify_jab_return_values.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+
+    # Local variables bound to a structure instance, per function.
+    instances = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef):
+            continue
+        for item in ast.walk(node):
+            if (isinstance(item, ast.Assign) and isinstance(item.value, ast.Call)
+                    and isinstance(item.value.func, ast.Name)
+                    and item.value.func.id in structures):
+                for target in item.targets:
+                    if isinstance(target, ast.Name):
+                        instances.setdefault(node.name, {})[target.id] = \
+                            item.value.func.id
+
+    offenders = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Attribute) or not isinstance(node.value, ast.Name):
+            continue
+        where = instances.get(_enclosing_function(tree, node)) or {}
+        structure = where.get(node.value.id) or structures.get(node.value.id)
+        if structure is None:
+            continue
+        fields = {name for name, _type in structures[structure]._fields_}
+        if node.attr not in fields:
+            offenders.append(f"{structure}.{node.attr}")
+
+    assert not offenders, f"the tool reads fields that do not exist: {offenders}"
+
+
+def _enclosing_function(tree, target):
+    """The name of the function a node lives in, or None for module level."""
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and any(
+                child is target for child in ast.walk(node)):
+            return node.name
+    return None
 
 
 # ---------------------------------------------------------------------------

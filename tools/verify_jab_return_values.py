@@ -1183,6 +1183,12 @@ def direct_control(driver) -> Tuple[str, str]:
 
     Deliberately *not* one of the fourteen candidates: this is the bridge working, not a
     row under test.
+
+    The role it reports is read from the structure the call filled in, so the line says
+    something about the window that was bound rather than only that a number came back. The
+    field is ``role_en_US`` -- the structure's own spelling, which ``JABElement`` also uses;
+    the first dispatch of this tool spelled it ``role_EN_US`` and the control child died on
+    the ``AttributeError`` before one symbol had been measured.
     """
     from ctypes import byref
 
@@ -1200,7 +1206,7 @@ def direct_control(driver) -> Tuple[str, str]:
                 f"FAIL {type(error).__name__}: {error}")
     state = "ok  " if not is_falsy(result) else "FAIL"
     return (f"direct getAccessibleContextInfo on the root element (role "
-            f"{info.role_EN_US!r})",
+            f"{info.role_en_US!r})",
             f"{state} {describe(result)}  "
             f"{'falsy?' if is_falsy(result) else 'nonzero?'}")
 
