@@ -144,6 +144,26 @@ Added
 Changed
 ~~~~~~~
 
+* **Seven JAB calls now raise when they fail, instead of returning a value the caller has to
+  check.** The ``errorcheck`` flag in ``SIGNATURES`` installs ctypes' ``errcheck`` hook, and
+  no row was armed until now. The seven are ``getAccessibleTextInfo``,
+  ``getAccessibleTextRange``, ``getAccessibleTableCellInfo``, ``getVisibleChildren``,
+  ``getTopLevelObject``, ``setTextContents`` and ``getVersionInfo`` — **each cleared by a
+  measurement**: a real run through pyjab's own call sites found every one of them returning
+  truthy, so arming cannot turn an ordinary call into a failure.
+
+  **``getAccessibleContextInfo`` is deliberately not among them**, and the test suite asserts
+  that. It is read by every property through ``_acc_info``, so it is reachable from all twelve
+  ``except JABException`` blocks in the package — two of which are search loops
+  (``find_element_by_xpath``, ``find_elements_by_xpath``) that today skip a bad item and keep
+  searching. Armed, a falsy read would **end the search**, and a caller would get an exception
+  instead of the partial result it used to get. That is worse than the failure it reports.
+
+  **Affects: pyjab-mcp**, first released in **1.11.0**. A JAB call that returns falsy now
+  raises ``RuntimeError`` **from inside the call** where it previously returned the value.
+  A dependent that wrapped such a call in ``except JABException`` will stop catching it;
+  catch ``RuntimeError`` as well, or check the result before the call rather than after.
+
 * **``visible_children_count`` answers with the number the bridge returned, ``0`` included,
   instead of raising on a refusal.** The property is new in this release, and it was written
   to raise ``JABException`` when ``getVisibleChildrenCount`` came back falsy — expecting the
