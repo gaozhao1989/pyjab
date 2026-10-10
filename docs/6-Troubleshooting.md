@@ -266,12 +266,36 @@ panel.find_element_by_xpath(".//push button")
 
 ## Clicks miss on a high-DPI display
 
-On a display at 125% or 150% scaling, Java Access Bridge reports logical
-coordinates while the mouse API expects physical ones. pyjab does not convert
-between them yet, so `simulate=True` can land in the wrong place.
+On a display at 125% or 150% scaling, Java Access Bridge reports the **target's** coordinates
+while the mouse API expects **the caller's** physical ones. A caller that is itself DPI aware
+has its mouse coordinates taken as physical, so the two stop agreeing and `simulate=True`
+lands in the wrong place.
 
-Workarounds: run at 100% scaling, mark the target application as per-monitor DPI
-aware, or use the default `simulate=False` and avoid coordinates entirely.
+**pyjab converts between them.** `pyjab.common.win32utils.physical_point` is applied at every
+site that moves the real mouse, so `element.click(simulate=True)` works from an aware thread
+against an unaware target — which is the case that failed before.
+
+If a click still misses, it is not this, and the usual causes are in the sections around this
+one: the window is not where the coordinates say, or the element moved between the lookup and
+the click.
+
+### What is verified, and what is not
+
+**Verified on a real 150% display**, by hand. `tools/verify_dpi.py` reproduces the fault and
+shows both halves of it — as an unaware caller the click at the JAB position lands, as an
+aware caller it does not and the position scaled by the display scale does. A run at 125% and
+two at 150% are archived on issue #169.
+
+**It cannot be automated on a hosted runner**, and that is measured rather than assumed: the
+runner's display is 96 DPI, and setting the per-user `LogPixels` value to 144 has no effect
+without a logoff that a hosted runner cannot perform.
+
+**One combination is unmeasured**: an **aware target** against an unaware caller. The
+arithmetic is unit tested and there has been no display to try it on. If you have one and it
+misbehaves, that is the case to report.
+
+The four awareness combinations are unit tested; `tools/verify_dpi.py --ui-scale` runs against
+a JVM that scales its own layout, which is a **different** situation and is not a test of this.
 
 ---
 
