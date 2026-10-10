@@ -438,3 +438,144 @@ def test_main_actually_measures_the_control():
     assert "uia_control" in called, (
         "main() never calls uia_control(), so no run carries a control"
     )
+
+
+# ---------------------------------------------------------------------------
+# The walk records what it could not read (issue #146)
+# ---------------------------------------------------------------------------
+#
+# Four paths used to drop data without recording it, which matters more after Absent
+# existed: a skipped subtree is reported as "measured, and it is not there", and a missing
+# table is the answer that most flatters pyjab. These tests are the four paths.
+
+class FakeControl:
+    """A UIA element, with whichever of the four failure modes the test wants.
+
+    ``ControlTypeName`` and ``Name`` are properties rather than attributes, and that is
+    the point: the first version assigned them in ``__init__`` and tried to make them
+    raise from ``__getattr__``, which is only consulted when normal lookup *fails* -- so
+    the "broken" child was never broken and the test passed for the wrong reason.
+    """
+
+    def __init__(self, role="Pane", name="", children=(), raise_on_children=False,
+                 raise_on_properties=False):
+        self._role = role
+        self._name = name
+        self._children = list(children)
+        self._raise_children = raise_on_children
+        self._raise_properties = raise_on_properties
+
+    @property
+    def ControlTypeName(self):
+        if self._raise_properties:
+            raise RuntimeError("property failed")
+        return self._role
+
+    @property
+    def Name(self):
+        if self._raise_properties:
+            raise RuntimeError("property failed")
+        return self._name
+
+    def GetChildren(self):
+        if self._raise_children:
+            raise RuntimeError("GetChildren failed")
+        return self._children
+
+    def GetSupportedPatterns(self):
+        return []
+
+
+def walk_of(control, limit=4000):
+    walk = verify_m0.UiaWalk(limit)
+    verify_m0._uia_walk(control, 0, walk)
+    return walk
+
+
+def test_a_skipped_child_takes_its_subtree_and_is_counted():
+    """Path 1: a child whose properties raise, and the recursion is inside that loop."""
+    broken = FakeControl(raise_on_properties=True,
+                         children=[FakeControl(role="Table")])
+    root = FakeControl(children=[FakeControl(role="Button"), broken])
+
+    walk = walk_of(root)
+
+    assert [e["role"] for e in walk.elements] == ["Button"]
+    assert walk.skipped == 1
+    assert walk.incomplete is True
+    assert "properties raised" in walk.why()
+
+
+def test_a_getchildren_that_raises_truncates_and_is_counted():
+    """Path 2: an exception there drops the whole subtree."""
+    root = FakeControl(children=[FakeControl(role="Table", raise_on_children=True)])
+
+    walk = walk_of(root)
+
+    assert walk.truncated == 1
+    assert walk.incomplete is True
+
+
+def test_the_depth_cap_is_counted():
+    """Path 3, and it is reached by building a chain deeper than the cap."""
+    node = FakeControl(role="Leaf")
+    for _ in range(35):
+        node = FakeControl(children=[node])
+
+    walk = walk_of(node)
+
+    assert walk.too_deep >= 1
+    assert walk.incomplete is True
+
+
+def test_the_element_cap_is_real():
+    """Path 4, which was dead code.
+
+    ``collected`` was assigned ``[]`` on the line above the test, so it was ``0 > limit``
+    at every entry and never fired. A parameter that looks like a guard and is not one is
+    worse than no guard, because the docstring reads as though it is one.
+    """
+    root = FakeControl(children=[FakeControl(role="Pane") for _ in range(50)])
+
+    walk = walk_of(root, limit=10)
+
+    assert len(walk.elements) <= 10
+    assert walk.limit_hit is True
+    assert walk.incomplete is True
+
+
+def test_a_complete_walk_records_nothing_missing():
+    """And the ordinary case stays quiet, or the marker means nothing."""
+    root = FakeControl(children=[FakeControl(role="Table", name="Grid"),
+                                 FakeControl(role="Button")])
+
+    walk = walk_of(root)
+
+    assert len(walk.elements) == 2
+    assert walk.incomplete is False
+    assert walk.why() == ""
+
+
+def test_an_incomplete_walk_makes_absence_unproven():
+    """The consequence, which is the point of recording it.
+
+    "UIA has no table" is an answer; "the walk skipped something and no table was among
+    what it read" is not. The two used to be the same output.
+    """
+    uia = {"elements": 3, "named": 1, "roles": 1, "depth": 2,
+           "windows": {"top_level": 2},
+           "table": verify_m0.Absent("no UIA element with 'table' in its type"),
+           "cell": verify_m0.Absent("no UIA table, so no cell to read"),
+           "tree": verify_m0.Absent("no UIA element with 'tree' in its type"),
+           "button": verify_m0.Absent("no UIA button found"),
+           "_walk": {"elements": 3, "incomplete": True,
+                     "reason": "the UIA walk did not finish: 1 child(ren) whose "
+                               "properties raised"},
+           "_control": {"elements": 147, "named": 99, "roles": 17}}
+    jab = {"elements": 601, "named": 513, "cell": {"text": "true"}}
+
+    _lines, complete = verify_m0.report(jab, uia)
+    conclusion = verify_m0.verdict(jab, uia, complete)
+
+    assert "CLEARLY BETTER" not in conclusion
+    assert "INCONCLUSIVE" in conclusion
