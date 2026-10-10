@@ -377,7 +377,7 @@ def verdict(jab_report: dict, uia_report: dict, complete: bool) -> str:
     """The plan's three outcomes, from the numbers -- not from an impression.
 
     Ordered so that the one unambiguous answer wins first: whether each side can read a
-    table cell_report's text. That is the plan's own example of a clear win, and it does not
+    table cell's text. That is the plan's own example of a clear win, and it does not
     depend on counting anything.
 
     Where both can, the comparison is on **named** elements rather than on the total. A
@@ -390,13 +390,13 @@ def verdict(jab_report: dict, uia_report: dict, complete: bool) -> str:
                 "decision table needs both; see the UNANSWERED rows above.")
 
     def cell_text(report):
-        cell_report = report.get("cell")
-        return cell_report.get("text", "") if isinstance(cell_report, dict) else None
+        cell = report.get("cell")
+        return cell.get("text", "") if isinstance(cell, dict) else None
 
     jab_text, uia_text = cell_text(jab_report), cell_text(uia_report)
 
     if jab_text and not uia_text:
-        return ("JAB CLEARLY BETTER on the plan's own test: pyjab reads a table cell_report's "
+        return ("JAB CLEARLY BETTER on the plan's own test: pyjab reads a table cell's "
                 "text and UIA reports none. Continue the MCP direction.")
     if uia_text and not jab_text:
         return ("UIA LOOKS BETTER: it reads a table cell's text and pyjab reports none. "
