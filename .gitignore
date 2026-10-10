@@ -63,3 +63,9 @@ docs/MCP_ENABLING_PLAN.md
 # A screenshot downloaded from a CI run for a human to look at; not part of the repository.
 screenshot-from-ci.png
 screenshot.png
+
+# Written by the bridge-enablement code when A11Y_PROPS_PATH is not expanded, so the name
+# is literally '~\.accessibility.properties'. It is a user-home artefact that landed in
+# the working tree once and was swept into a commit by `git add -A`; CI caught it as an
+# invalid path on checkout.
+~*.accessibility.properties
