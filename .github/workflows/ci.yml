@@ -256,7 +256,7 @@ jobs:
       - name: Install pyjab and pip-licenses
         run: |
           python -m pip install --upgrade pip
-          python -m pip install . pip-licenses
+          python -m pip install ".[dev]" pip-licenses
 
       - name: Check that every dependency is permissively licensed
         run: python tools/check_dependency_licences.py
@@ -295,10 +295,9 @@ jobs:
         # Two facts, checked by behaviour: that git ignores each path, and that
         # the archive this builds does not contain it. `.gitignore` does not
         # protect an sdist -- an sdist is built from the working tree. The
-        # archive half needs `build`, which this job did not previously install.
-        run: |
-          python -m pip install --upgrade build
-          python tools/check_local_only_files.py
+        # archive half needs `build`, which now comes from `.[dev]` above
+        # rather than from a `pip install` in this step.
+        run: python tools/check_local_only_files.py
 
   # ---------------------------------------------------------------------------
   # Build the distributions and validate the metadata, so a broken release is
