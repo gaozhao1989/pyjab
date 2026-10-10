@@ -140,20 +140,31 @@ def hs_err(where: Path):
     """The target JVM's crash log, if it left one.  A dead target is the finding.
 
     ``jab-return-values`` on master@d1fbf9f (run 38069167939) shows the target dying with
-    ``EXCEPTION_ACCESS_VIOLATION`` in ``jvm.dll`` about 13s in, and that is what "the harness
-    cannot drive the application" looks like from the inside: the window vanishes, so the
-    bind times out and every later row reads as unreachable.  The JVM writes
+    ``EXCEPTION_ACCESS_VIOLATION`` in ``jvm.dll`` about 13.6s in, and that is what "the
+    harness cannot drive the application" looks like from the inside: the window vanishes, so
+    the bind times out and every later row reads as unreachable.  The JVM writes
     ``hs_err_pid<pid>.log`` beside its working directory and the workflow uploads ``*.log``,
     so the evidence is already in the artifact -- and a partial log is still evidence.
+
+    ``faulting`` is taken from the crash's register map, because it is not always the module
+    in the frame: that run's frame is ``jvm.dll+0xc940`` while the JVM had
+    ``javaaccessbridge.dll`` loaded, and a reader needs both to see where the fault was.
     """
     for log in sorted(where.glob("hs_err_pid*.log")):
-        signal = frame = ""
+        signal = frame = faulting = ""
         for line in log.read_text(encoding="utf-8", errors="replace").splitlines():
             if not signal and line.startswith("#  ") and "EXCEPTION_" in line:
                 signal = line[3:].strip()
             elif not frame and line.startswith("# V  "):
                 frame = line[3:].strip()
-        return {"path": log.name, "signal": signal, "frame": frame}
+            # The register dump's own "RIP=" line is a bare address, and it comes first;
+            # the "Register to memory mapping" section names the module.  Keep looking
+            # until one of them does.
+            elif line.startswith("RIP=") and " " in line.split("=", 1)[1]:
+                # "RIP=0x... jvm.dll" -- the module is the second field, and the address
+                # itself is already in the raw log for anyone who wants it.
+                faulting = line.split()[1]
+        return {"path": log.name, "signal": signal, "frame": frame, "faulting": faulting}
     return None
 
 
@@ -394,9 +405,11 @@ def report(rows: list, row_control: dict, crash: dict = None) -> int:
 
     control_ok = row_control["reason"] is None and not row_control["falsy"]
     jvm = ("JVM: alive at the end of the sweep" if crash is None
-           else "JVM: JVM crash -- died with {}{} ({})".format(
+           else "JVM: JVM crash -- died with {}{}{} ({})".format(
                crash["signal"] or "a crash",
-               f" at {crash['frame']}" if crash.get("frame") else "", crash["path"]))
+               f" at {crash['frame']}" if crash.get("frame") else "",
+               f", faulting module {crash['faulting']}" if crash.get("faulting") else "",
+               crash["path"]))
     print("\n" + "=" * 78)
     print("the control, without which a falsy result means nothing")
     print("=" * 78)

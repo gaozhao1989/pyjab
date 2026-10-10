@@ -441,7 +441,13 @@ HS_ERR = """\
 # Problematic frame:
 # V  [jvm.dll+0x2c1f10]
 #
+# siginfo: EXCEPTION_ACCESS_VIOLATION (0xc0000005), reading address 0x0000000074ad73e0
+#
 # Core dump will be written. Default location: C:\\Users\\runneradmin\\hs_err_pid2764.mdmp
+#
+# Register to memory mapping:
+#
+RIP=0x00007ff986bac940 jvm.dll
 """
 
 
@@ -460,6 +466,7 @@ def test_the_crash_log_is_parsed_for_the_signal_and_the_frame(tmp_path):
     assert "EXCEPTION_ACCESS_VIOLATION" in found["signal"]
     assert "0xc0000005" in found["signal"]
     assert "jvm.dll" in found["frame"]
+    assert found["faulting"] == "jvm.dll"
 
 
 def test_a_truncated_crash_log_still_gives_up_what_it_has(tmp_path):
@@ -470,6 +477,14 @@ def test_a_truncated_crash_log_still_gives_up_what_it_has(tmp_path):
 
     assert "EXCEPTION_ACCESS_VIOLATION" in found["signal"]
     assert found["frame"] == ""
+
+
+def test_the_faulting_module_is_read_even_when_the_frame_is_the_jvm(tmp_path):
+    """The frame is ``jvm.dll`` but the JVM had ``javaaccessbridge.dll`` loaded: a reader
+    needs both, and the register map is where the faulting module is actually named."""
+    write_hs_err(tmp_path)
+
+    assert tool.hs_err(tmp_path)["faulting"] == "jvm.dll"
 
 
 def test_no_crash_log_is_no_crash(tmp_path):
