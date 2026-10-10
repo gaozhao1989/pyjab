@@ -1,22 +1,27 @@
-"""The ``errorcheck`` flag in ``SIGNATURES``: a mechanism, deliberately unarmed.
+"""The ``errorcheck`` flag in ``SIGNATURES``: a mechanism, armed on five measured rows.
 
 ``JABFixedFunc._fix_bridge_function`` used to assign ``func.errorcheck``, which is not a
 ctypes attribute -- ctypes spells it ``errcheck`` -- so the assignment set an inert Python
 attribute and no hook was ever installed. Every row marked ``True`` was therefore silent
-(#195). The first step of that issue fixes the spelling and sets every row to ``False``:
-the mechanism now works and is deliberately unarmed, so this release changes nothing
-observable.
+(#195). The spelling is fixed, and the table now arms the five symbols a real run measured
+returning truthy at pyjab's own call sites **and** that no ``except JABException`` handler is
+reachable from (``windows-gui.yml`` task ``jab-return-values``, run 38071056432, JDK 17):
+``getAccessibleTextInfo``, ``getAccessibleTextRange``, ``getAccessibleTableCellInfo``,
+``setTextContents`` and ``getVersionInfo``.
 
-That makes behavioural tests useless here. The portable suite never loads a bridge DLL, so
-no real ``_FuncPtr`` and no real ``errcheck`` hook is ever reached; and because no row is
-armed, there is nothing to observe downstream either. What *can* be asserted is the
-mechanism itself, against a stand-in bridge, plus the invariant that keeps the release a
-no-op.
+Behavioural tests are still useless here. The portable suite never loads a bridge DLL, so no
+real ``_FuncPtr`` and no real ``errcheck`` hook is ever reached. What *can* be asserted is the
+mechanism itself, against a stand-in bridge, plus the invariants that keep the decision from
+being undone in passing: **a row is armed only if a measurement cleared it**, and **the three
+symbols that handlers have to keep catching are never armed** -- ``getAccessibleContextInfo``,
+and ``getVisibleChildren`` / ``getTopLevelObject``, which the run measured truthy on the live
+path only.
 
-Why the invariant is a test and not a comment: arming a row is a per-row change with a
-non-local blast radius. It makes the caller's own ``if not result:`` check unreachable and
-stops ``except JABException`` blocks catching, so a row flipped to ``True`` in passing has
-to fail something rather than ship.
+Why the invariants are tests and not comments: arming a row is a per-row change with a
+non-local blast radius. It makes the caller's own ``if not result:`` check unreachable and it
+turns a falsy result into ``RuntimeError`` from inside the call, so ``except JABException``
+blocks stop catching. Only a dispatched run on a real JVM can measure a symbol, so the table
+is the part this suite can hold still.
 """
 
 from __future__ import annotations
@@ -27,6 +32,35 @@ import pytest
 
 from pyjab.jabfixedfunc import JABFixedFunc
 from pyjab.jabfixedfunc import SIGNATURES
+
+
+#: The five symbols a real run measured as returning truthy through pyjab's own call sites
+#: **and** that no ``except JABException`` handler is reachable from. This is the whole of the
+#: clearance -- see AGENTS.md 2.7 and issue #195.
+ARMED = {
+    "getAccessibleTextInfo",
+    "getAccessibleTextRange",
+    "getAccessibleTableCellInfo",
+    "setTextContents",
+    "getVersionInfo",
+}
+
+#: Measured truthy by the same run, and still ``False``, because the run only cleared the live
+#: path and both of these are reached by handlers that have to keep catching:
+#:
+#: * ``getVisibleChildren`` -- the ``visible=True`` walk calls it on every element, and a
+#:   childless panel answers falsy (the measurement tool's own second control). The two
+#:   xpath union loops ``continue`` past a falsy result today; the hook's ``RuntimeError``
+#:   they would not catch.
+#: * ``getTopLevelObject`` -- JAB documents ``(AccessibleContext)0`` as its error answer and
+#:   ``_get_top_level_object`` checks for it by hand. ``_xpath_search_root`` calls it fresh on
+#:   every absolute locator, which is inside five handlers.
+DECLINED = {"getTopLevelObject", "getVisibleChildren"}
+
+#: Read by every property through ``_acc_info``, so it is reachable from every
+#: ``except JABException`` in the package -- two of which are search loops that would give up
+#: rather than skip. Nothing measured clears it.
+NEVER_ARMED = {"getAccessibleContextInfo"}
 
 
 class _FakeCFunc(object):
@@ -76,21 +110,21 @@ def test_a_flagged_symbol_gets_the_errcheck_hook():
 
 
 def test_an_unflagged_symbol_gets_no_hook():
-    bridge = _FakeBridge("getVersionInfo")
-    func = bridge.getVersionInfo
+    bridge = _FakeBridge("getAccessibleContextInfo")
+    func = bridge.getAccessibleContextInfo
 
-    JABFixedFunc(bridge)._fix_bridge_function(c_int, "getVersionInfo",
+    JABFixedFunc(bridge)._fix_bridge_function(c_int, "getAccessibleContextInfo",
                                               errorcheck=False)
 
     assert func.errcheck is None
 
 
 def test_omitting_the_flag_also_leaves_the_hook_off():
-    """``errorcheck`` is opt-in; the default is the current behaviour."""
-    bridge = _FakeBridge("getVersionInfo")
-    func = bridge.getVersionInfo
+    """``errorcheck`` is opt-in; a row that omits it installs nothing."""
+    bridge = _FakeBridge("getAccessibleContextInfo")
+    func = bridge.getAccessibleContextInfo
 
-    JABFixedFunc(bridge)._fix_bridge_function(c_int, "getVersionInfo")
+    JABFixedFunc(bridge)._fix_bridge_function(c_int, "getAccessibleContextInfo")
 
     assert func.errcheck is None
 
@@ -121,11 +155,27 @@ def test_the_hook_does_not_cover_the_minus_one_sentinel():
 
 
 # ---------------------------------------------------------------------------
-# Nothing is armed
+# The armed set
 # ---------------------------------------------------------------------------
 
-def test_no_signature_row_is_flagged():
-    """The table itself: arming a row by accident fails here."""
+def test_only_the_measured_symbols_are_flagged():
+    """``True`` exactly where a measurement put it, and ``False`` everywhere else.
+
+    ``False`` rather than any falsy value, so the column stays a bool.
+    """
+    for name, _restype, _argtypes, errorcheck in SIGNATURES:
+        expected = name in ARMED
+        assert errorcheck is expected, (
+            f"{name} is flagged {errorcheck!r}, expected {expected!r}"
+        )
+
+
+def test_a_row_armed_without_a_measurement_fails():
+    """The table itself: arming a row by accident fails here.
+
+    This is the invariant that keeps the decision from being extended in passing -- it fails
+    on an extra ``True``, which is the shape a careless edit takes.
+    """
     armed = [name for name, _restype, _argtypes, errorcheck in SIGNATURES
              if errorcheck]
 
@@ -136,55 +186,25 @@ def test_no_signature_row_is_flagged():
     )
 
 
-#: The symbols a real run measured as returning truthy, so arming them cannot turn an
-#: ordinary call into a ``RuntimeError``. See AGENTS.md 2.7 and issue #195.
-ARMED = {
-    "getAccessibleTextInfo",
-    "getAccessibleTextRange",
-    "getAccessibleTableCellInfo",
-    "getVisibleChildren",
-    "getTopLevelObject",
-    "setTextContents",
-    "getVersionInfo",
-}
-
-#: Reached from all twelve ``except JABException`` blocks -- including two search loops that
-#: today ``continue`` past a bad item. Armed, a falsy read would end the search and the caller
-#: would get an exception instead of the partial result it used to get. Deliberately unarmed.
-NEVER_ARMED = {"getAccessibleContextInfo"}
-
-
-def test_only_the_measured_symbols_are_flagged():
-    """``False`` rather than any falsy value, so the column stays a bool.
-
-    Every row is either one of the seven a measurement cleared, or ``False``. A row flipped
-    without a measurement fails here.
-    """
-    for name, _restype, _argtypes, errorcheck in SIGNATURES:
-        expected = name in ARMED
-        assert errorcheck is expected, (
-            f"{name} is flagged {errorcheck!r}, expected {expected!r}"
-        )
-
-
-def test_the_symbol_on_every_except_path_is_never_armed():
-    """The decision that is easiest to undo by accident.
+def test_the_symbols_reached_by_an_except_handler_stay_unarmed():
+    """The decisions that are easiest to undo by accident.
 
     ``getAccessibleContextInfo`` is read by every property through ``_acc_info``, so it is
-    reachable from every ``except JABException`` in the package -- two of which are search
-    loops that would give up rather than skip. Nothing measured clears it.
+    reachable from every ``except JABException`` in the package. ``getVisibleChildren`` and
+    ``getTopLevelObject`` were measured truthy as well, and are still unarmed because the
+    handlers that catch a failure from them have to keep catching it -- see ``DECLINED``.
     """
     for name, _restype, _argtypes, errorcheck in SIGNATURES:
-        if name in NEVER_ARMED:
-            assert errorcheck is False, f"{name} must never be armed"
+        if name in NEVER_ARMED or name in DECLINED:
+            assert errorcheck is False, f"{name} must stay unarmed"
 
 
-def test_applying_the_table_installs_no_hook_on_any_symbol():
+def test_applying_the_table_installs_the_hook_on_exactly_the_measured_five():
     """The invariant asserted through the code that acts on it.
 
-    ``test_no_signature_row_is_flagged`` reads the table; this runs it against a
-    bridge exporting every symbol. Both are needed, because a row could be armed
-    by a change to ``_fix_bridge_functions`` rather than to the table.
+    ``test_only_the_measured_symbols_are_flagged`` reads the table; this runs it against a
+    bridge exporting every symbol. Both are needed, because a row could be armed by a change
+    to ``_fix_bridge_functions`` rather than to the table.
     """
     names = [name for name, _restype, _argtypes, _errorcheck in SIGNATURES]
     bridge = _FakeBridge(*names)
@@ -194,7 +214,7 @@ def test_applying_the_table_installs_no_hook_on_any_symbol():
     armed = sorted(name for name, func in bridge._funcs.items()
                    if func.errcheck is not None)
 
-    # Exactly the measured seven, and nothing else -- not "none", which was the old
+    # Exactly the measured five, and nothing else -- not "none", which was the old
     # invariant, and not "at least these", which would let a row be armed in passing.
     assert armed == sorted(ARMED), (
         f"hooks were installed on {armed}; expected {sorted(ARMED)}"

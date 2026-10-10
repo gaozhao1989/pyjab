@@ -47,29 +47,46 @@ from pyjab.common.types import JOBJECT64
 #: order is the one this table has always had -- the event callbacks first, then
 #: the lookups -- and is kept only so it reads in groups; ctypes does not care.
 #:
-#: **Seven rows carry ``True``, and each one is there because a real run measured
-#: that symbol returning truthy at pyjab's own call site.**  ``getVersionInfo``,
-#: ``getAccessibleTextInfo``, ``getAccessibleTextRange``, ``getTopLevelObject``,
-#: ``getAccessibleTableCellInfo``, ``setTextContents`` and ``getVisibleChildren``
-#: were measured by the ``windows-gui.yml`` task ``jab-return-values`` (run
-#: 38071056432, JDK 17): six read ``1`` and ``getTopLevelObject`` handed back a
-#: non-null ``JOBJECT64``.  That run is the measurement #195 requires; it is cited
-#: here rather than inferred.
+#: **Five rows carry ``True``, and a measurement is the only reason any of them
+#: does.**  ``getVersionInfo``, ``getAccessibleTextInfo``, ``getAccessibleTextRange``,
+#: ``getAccessibleTableCellInfo`` and ``setTextContents`` were measured by the
+#: ``windows-gui.yml`` task ``jab-return-values`` (run 38071056432, JDK 17) and every
+#: one read ``1``.  None of the five is reached from an ``except JABException``
+#: handler, so the hook cannot turn a caught failure into an uncaught one.
 #:
-#: **Every other row carries ``False``**, because arming is a per-row decision and
-#: a row is only armed against that measurement.  ``getAccessibleContextInfo`` is
-#: the deliberate exception even though the same run read it truthy: it is reached
-#: from all twelve ``except JABException`` blocks -- including the two search loops
-#: in ``find_element_by_xpath`` / ``find_elements_by_xpath`` that ``continue`` past
-#: a bad item -- and ``_acc_info`` reads it for every property, so a falsy read
-#: there would end a search that is meant to keep going.
+#: **Every other row carries ``False``**, and three of those are decisions rather
+#: than defaults.  ``getVisibleChildren`` and ``getTopLevelObject`` were measured
+#: truthy by that run too, and are still left unarmed, because the run only reached
+#: them on a live path:
+#:
+#: * ``getVisibleChildren`` is called on **every** element by the ``visible=True``
+#:   walk, and the project's own record (the measurement tool's second control, in
+#:   the unreleased changelog) is that a **childless panel comes back falsy**.  The
+#:   clearing run drove it on the root window, so the falsy case was never measured.
+#:   A falsy result there is caught by the two search loops at ``jabelement.py:2096``
+#:   and ``:2521``, which ``continue``; armed it would be ``RuntimeError`` and the
+#:   search would end instead of skipping the item -- the defect that keeps
+#:   ``getAccessibleContextInfo`` unarmed, reached the same way.
+#: * ``getTopLevelObject`` documents ``(AccessibleContext)0`` as its error answer and
+#:   ``_get_top_level_object`` checks for it by hand, and ``_xpath_search_root`` calls
+#:   it fresh -- nothing is cached, and no readable context is proven a few lines up
+#:   -- on every absolute locator.  It is reachable from five handlers
+#:   (``jabelement.py:2096``, ``:2521``, ``jabdriver.py:461``, ``:715``,
+#:   ``inspector.py:175``).  One truthy measurement on a live element does not clear
+#:   the failing path.
+#:
+#: ``getAccessibleContextInfo`` is the third deliberate ``False``: ``_acc_info`` reads
+#: it for every property, which puts it on the path of every ``except JABException``
+#: handler in the package.  All three keep their hand-written ``if not result:``
+#: check live.
 #:
 #: Arming is not free.  The hook makes the caller's own ``if not result:`` check
 #: unreachable, and it turns a falsy result into ``RuntimeError`` **from inside the
 #: call**, so the ``except JABException`` blocks in ``jabelement.py``,
 #: ``jabdriver.py`` and ``inspector.py`` stop catching.  It also covers only a
 #: falsy ``0``: ``-1`` is truthy and is how some calls report an error.  Flip one
-#: row to ``True`` only with a measurement behind it.
+#: row to ``True`` only with a measurement behind it -- of the failing path, not only
+#: of the path that worked.
 #:
 #: ``tests/test_errorcheck_binding.py`` asserts the mechanism, the armed set, and
 #: that ``getAccessibleContextInfo`` is not in it.
@@ -127,11 +144,17 @@ SIGNATURES = (
             POINTER(AccessibleTextAttributesInfo),
             POINTER(c_short),
         ), False),
-    # Armed: measured a non-null JOBJECT64 under jab-return-values.  Reachable
-    # from the xpath union loops in find_element_by_xpath / find_elements_by_xpath,
-    # from _search_from_root and from wait_until_element_exist, via
-    # _xpath_search_root; those blocks keep their except JABException untouched.
-    ("getTopLevelObject", JOBJECT64, (c_long, JOBJECT64), True),
+    # Measured a non-null JOBJECT64 (jab-return-values), and deliberately **left
+    # unarmed**: JAB documents (AccessibleContext)0 as this call's error answer, and
+    # _get_top_level_object checks for it by hand.  _xpath_search_root calls it fresh
+    # -- nothing cached, no readable context proven just above -- on every absolute
+    # locator, which puts it inside the xpath union loops in find_element_by_xpath /
+    # find_elements_by_xpath, _search_from_root, wait_until_element_exist and
+    # step_report.  Those blocks catch JABException and continue or report; the
+    # RuntimeError this hook raises they would not catch, so a failed lookup would
+    # become an uncaught one.  One truthy measurement on a live element does not clear
+    # the failing path.
+    ("getTopLevelObject", JOBJECT64, (c_long, JOBJECT64), False),
     ("getObjectDepth", c_int, (c_long, JOBJECT64), False),
     ("getActiveDescendent", JOBJECT64, (c_long, JOBJECT64), False),
     ("requestFocus", BOOL, (c_long, JOBJECT64), False),
@@ -213,12 +236,14 @@ SIGNATURES = (
     ("removeAccessibleSelectionFromContext", None, (c_long, JOBJECT64, c_int), False),
     ("selectAllAccessibleSelectionFromContext", None, (c_long, JOBJECT64), False),
     ("getVisibleChildrenCount", c_int, (c_long, JOBJECT64), False),
-    # Armed: measured 1 under jab-return-values, at get_visible_children().  It is
-    # reached from a search only on the visible=True branch of
-    # _generate_childs_from_element, which the xpath union loops, _search_from_root
-    # and step_report can reach; their except JABException blocks are left as they
-    # were, because the measurement is what says this call does not fail there.
-    ("getVisibleChildren", BOOL, (c_long, JOBJECT64, c_int, POINTER(VisibleChildrenInfo)), True),
+    # Measured 1 (jab-return-values), on the root window, and deliberately **left
+    # unarmed**.  Every element is passed through this call by the visible=True walk,
+    # and a childless panel answers falsy -- the measurement tool's own second control
+    # says so, which is why the clearing run's single truthy read does not cover it.
+    # A falsy result is caught today by the two search loops in find_element_by_xpath /
+    # find_elements_by_xpath, which continue; the hook's RuntimeError they would not
+    # catch, so the search would end instead of skipping the item.
+    ("getVisibleChildren", BOOL, (c_long, JOBJECT64, c_int, POINTER(VisibleChildrenInfo)), False),
 )
 
 
@@ -233,13 +258,14 @@ class JABFixedFunc(object):
     def _check_error(result, func, args):
         """ctypes ``errcheck`` hook: turn a falsy result into a loud failure.
 
-        Installed on the seven symbols whose :data:`SIGNATURES` row carries
-        ``True`` -- the ones a real run measured returning truthy at pyjab's own
-        call sites (``windows-gui.yml`` task ``jab-return-values``, run
-        38071056432).  Every other row stays ``False``: arming is decided per row,
-        against that measurement (#195).  ``errcheck`` is the name ctypes reads --
-        spelled ``errorcheck`` the assignment set an inert Python attribute and no
-        hook was ever installed, which is the defect this spelling fixes.
+        Installed on the five symbols whose :data:`SIGNATURES` row carries
+        ``True`` -- the ones a run measured returning truthy at pyjab's own call
+        sites *and* that no ``except JABException`` handler is reachable from
+        (``windows-gui.yml`` task ``jab-return-values``, run 38071056432).  Every
+        other row stays ``False``: arming is decided per row, against both halves
+        of that evidence (#195).  ``errcheck`` is the name ctypes reads -- spelled
+        ``errorcheck`` the assignment set an inert Python attribute and no hook was
+        ever installed, which is the defect this spelling fixes.
 
         Careful when arming a row: this makes any ``if not result:`` written
         downstream dead code, because the exception arrives first.  Pick one

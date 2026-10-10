@@ -179,13 +179,14 @@ Added
 Changed
 ~~~~~~~
 
-* **Seven JAB calls now raise when they fail, instead of returning a value the caller has to
+* **Five JAB calls now raise when they fail, instead of returning a value the caller has to
   check.** The ``errorcheck`` flag in ``SIGNATURES`` installs ctypes' ``errcheck`` hook, and
-  no row was armed until now. The seven are ``getAccessibleTextInfo``,
-  ``getAccessibleTextRange``, ``getAccessibleTableCellInfo``, ``getVisibleChildren``,
-  ``getTopLevelObject``, ``setTextContents`` and ``getVersionInfo`` — **each cleared by a
-  measurement**: a real run through pyjab's own call sites found every one of them returning
-  truthy, so arming cannot turn an ordinary call into a failure.
+  no row was armed until now. The five are ``getAccessibleTextInfo``,
+  ``getAccessibleTextRange``, ``getAccessibleTableCellInfo``, ``setTextContents`` and
+  ``getVersionInfo`` — **each cleared by a measurement**: a real run through pyjab's own call
+  sites found every one of them returning truthy, and no ``except JABException`` block is
+  reachable from any of the five, so the new ``RuntimeError`` cannot displace an exception
+  that something was catching.
 
   **``getAccessibleContextInfo`` is deliberately not among them**, and the test suite asserts
   that. It is read by every property through ``_acc_info``, so it is reachable from all twelve
