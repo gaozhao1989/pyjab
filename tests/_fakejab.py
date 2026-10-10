@@ -60,7 +60,20 @@ class Node:
         #: Cell indices in this object's accessible selection, for a table.  The
         #: real thing is a set of selected children kept by the JVM; a table is
         #: reached through it because JAB offers no select-a-row call.
+        #:
+        #: This is the simple model the traversal tests use.  A real JTable keeps
+        #: *two* ListSelectionModels and isCellSelected() is the intersection of
+        #: whichever are allowed -- see selection_mode.  The defect this file had
+        #: to be taught about is the divergence between those two models, so no
+        #: change to addAccessibleSelection over one set of indices can express it.
         self.selection = set()
+        #: "indices" -- the simple model above; "rows" -- a JTable with Swing's
+        #: default selection, row selection on and column selection off, where
+        #: addAccessibleSelection is a toggle; "columns" -- the mirror; "cells" --
+        #: cellSelectionEnabled, where both models are live.
+        self.selection_mode = "indices"
+        self.row_selection = set()
+        self.column_selection = set()
         for child in children:
             child.parent = self
             self.children.append(child)
@@ -79,9 +92,12 @@ class Node:
         return f"<{self.role} {self.name!r} children={len(self.children)}>"
 
 
-def node(role, *children, name="", row_count=0, column_count=0, bounds=None) -> Node:
-    return Node(role, name=name, children=children,
+def node(role, *children, name="", row_count=0, column_count=0, bounds=None,
+         selection_mode="indices") -> Node:
+    made = Node(role, name=name, children=children,
                 row_count=row_count, column_count=column_count, bounds=bounds)
+    made.selection_mode = selection_mode
+    return made
 
 
 def rect(x, y, width, height) -> dict:
@@ -99,12 +115,27 @@ def panel(*children, name="", index=None):
     return made
 
 
-def table(rows, columns, name="", cell_role="label"):
+def table(rows, columns, name="", cell_role="label", selection_mode="indices"):
     """A table of ``rows`` x ``columns`` cells, as Swing exposes it."""
     cells = [node(cell_role, name=f"r{r}c{c}")
              for r in range(rows) for c in range(columns)]
     return node("table", *cells, name=name,
-                row_count=rows, column_count=columns)
+                row_count=rows, column_count=columns,
+                selection_mode=selection_mode)
+
+
+def row_selecting_table(rows, columns, name=""):
+    """A JTable with Swing's default selection: row selection, not cell.
+
+    ``addAccessibleSelection`` is a toggle here, and it toggles the *column* model
+    unconditionally as well as the row model -- which is the whole defect.
+    """
+    return table(rows, columns, name=name, selection_mode="rows")
+
+
+def column_selecting_table(rows, columns, name=""):
+    """The mirror: row selection off, column selection on."""
+    return table(rows, columns, name=name, selection_mode="columns")
 
 
 def iter_nodes(root):
@@ -305,12 +336,22 @@ class CountingBridge:
 
     # -- the accessible selection, which is how a table is driven ---------
     #
-    # A model of the API's shape, not a description of any one Swing table.  What
-    # it encodes: selection is a set of cell indices; a row or column counts as
-    # selected when one of its cells is; and the objects that come back out are
-    # the cells the table holds.  Whether a real table reports a whole row as
-    # selected after its cells are added is that table's business -- which is why
-    # pyjab's documentation says to read the result back rather than assume it.
+    # In the default "indices" mode this is a model of the API's shape, not of any
+    # one Swing table: selection is a set of cell indices, a row or column counts as
+    # selected when one of its cells is, and the objects that come back out are the
+    # cells the table holds.
+    #
+    # The "rows" and "columns" modes are a model of one real table, deliberately,
+    # because a defect lived in the difference.  JTable.changeSelection ends with
+    #
+    #     boolean selected = isCellSelected(rowIndex, columnIndex);
+    #     changeSelectionModel(csm, columnIndex, toggle, extend, selected, ...);
+    #     changeSelectionModel(rsm, rowIndex,     toggle, extend, selected, ...);
+    #
+    # -- the same `selected` value toggled into *both* models, with the column call
+    # not guarded by getColumnSelectionAllowed().  That is why four adds in row mode
+    # end on rows=[] and columns=[0, 2] rather than on the row.  Modelled from the
+    # JDK source, and it reproduces the measurement taken on a real runner.
 
     def getAccessibleTableIndex(self, vmid, accessible_context, row, column):
         self.calls["getAccessibleTableIndex"] += 1
@@ -318,6 +359,21 @@ class CountingBridge:
         if not (0 <= row < item.row_count and 0 <= column < item.column_count):
             return -1
         return row * item.column_count + column
+
+    @staticmethod
+    def _cell_is_selected(item, row, column) -> bool:
+        """JTable.isCellSelected for the mode this node models.
+
+        The real one is the intersection of whichever selection models are
+        allowed, so it asks a different question in each mode.
+        """
+        if item.selection_mode == "rows":
+            return row in item.row_selection
+        if item.selection_mode == "columns":
+            return column in item.column_selection
+        if item.selection_mode == "cells":
+            return row in item.row_selection and column in item.column_selection
+        return (row * item.column_count + column) in item.selection
 
     def addAccessibleSelectionFromContext(self, vmid, accessible_context, index):
         self.calls["addAccessibleSelectionFromContext"] += 1
@@ -327,23 +383,61 @@ class CountingBridge:
                 f"index {index} is not a child of {item!r}: something tried to "
                 "select a cell that is not in the table"
             )
-        item.selection.add(index)
+        if item.selection_mode == "indices":
+            item.selection.add(index)
+            return 1
+        # AccessibleJTable.addAccessibleSelection -> changeSelection(row, col, true,
+        # false), so this is a toggle of both models on one `selected` value.
+        row, column = divmod(index, item.column_count)
+        selected = self._cell_is_selected(item, row, column)
+        for model, value in ((item.row_selection, row),
+                             (item.column_selection, column)):
+            model.discard(value) if selected else model.add(value)
         return 1
 
     def clearAccessibleSelectionFromContext(self, vmid, accessible_context):
         self.calls["clearAccessibleSelectionFromContext"] += 1
-        self._node(accessible_context).selection.clear()
+        item = self._node(accessible_context)
+        # JTable.clearSelection() clears both models, in every mode.
+        item.selection.clear()
+        item.row_selection.clear()
+        item.column_selection.clear()
         return 1
+
+    def isAccessibleChildSelectedFromContext(self, vmid, accessible_context, index):
+        self.calls["isAccessibleChildSelectedFromContext"] += 1
+        item = self._node(accessible_context)
+        row, column = divmod(index, item.column_count)
+        return int(self._cell_is_selected(item, row, column))
 
     def selectAllAccessibleSelectionFromContext(self, vmid, accessible_context):
         self.calls["selectAllAccessibleSelectionFromContext"] += 1
         item = self._node(accessible_context)
+        if item.selection_mode != "indices":
+            # AccessibleJTable.selectAllAccessibleSelection() is
+            #     if (cellSelectionEnabled) { selectAll(); }
+            # and falls through otherwise -- so on a default Swing table this is a
+            # silent no-op.  Modelled so that stays visible.
+            if item.selection_mode == "cells":
+                item.row_selection = set(range(item.row_count))
+                item.column_selection = set(range(item.column_count))
+            return 1
         item.selection = set(range(len(item.children)))
         return 1
 
     def getAccessibleSelectionCountFromContext(self, vmid, accessible_context):
         self.calls["getAccessibleSelectionCountFromContext"] += 1
-        return len(self._node(accessible_context).selection)
+        item = self._node(accessible_context)
+        # AccessibleJTable.getAccessibleSelectionCount() multiplies the row model
+        # by the column count in row-only mode, which is why one add on a 4-column
+        # table reports 4.
+        if item.selection_mode == "rows":
+            return len(item.row_selection) * item.column_count
+        if item.selection_mode == "columns":
+            return len(item.column_selection) * item.row_count
+        if item.selection_mode == "cells":
+            return len(item.row_selection) * len(item.column_selection)
+        return len(item.selection)
 
     def getAccessibleSelectionFromContext(self, vmid, accessible_context, index):
         self.calls["getAccessibleSelectionFromContext"] += 1
@@ -355,12 +449,17 @@ class CountingBridge:
 
     @staticmethod
     def _selected_rows(item) -> list:
+        if item.selection_mode != "indices":
+            # getSelectedAccessibleRows() is the row ListSelectionModel itself.
+            return sorted(item.row_selection)
         if not item.column_count:
             return []
         return sorted({index // item.column_count for index in item.selection})
 
     @staticmethod
     def _selected_columns(item) -> list:
+        if item.selection_mode != "indices":
+            return sorted(item.column_selection)
         if not item.column_count:
             return []
         return sorted({index % item.column_count for index in item.selection})

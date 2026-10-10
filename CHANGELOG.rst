@@ -134,6 +134,36 @@ Added
 Fixed
 ~~~~~
 
+* **``select_row()`` and ``select_column()`` selected nothing on a Swing table.**
+  ``addAccessibleSelection`` is a *toggle*, not an add. For a ``JTable``,
+  ``AccessibleJTable.addAccessibleSelection(i)`` calls
+  ``changeSelection(row, column, toggle=true, extend=false)``, and ``changeSelection``
+  toggles that one ``selected`` value into **both** selection models -- with the column
+  model updated unconditionally, not guarded by ``getColumnSelectionAllowed()``.
+
+  So ``select_row``'s one add per column turned the row off again on the second cell. A
+  5x4 table ended on ``selected_rows == []`` and ``selected_columns == [0, 2]``: the
+  caller got no row selected, two columns of junk selection, and no error.
+  ``select_column`` was the mirror image, and with an even row count it selected no
+  column at all. Measured through a real bridge on JDK 17
+  (``tools/verify_table_selection.py``, issue #57's scenario), then reproduced offline
+  and on the runner.
+
+  Both now ask ``isAccessibleChildSelectedFromContext`` -- a newly bound symbol, no
+  ``errorcheck`` because ``False`` is an answer rather than a failure -- and skip what is
+  already selected. In cell-selection mode nothing changes, because there every add is
+  wanted. ``clear=False`` stops toggling off a row that was already selected.
+
+  ``select_all()`` is a related defect this does **not** fix: it is a silent no-op on a
+  default Swing table, because ``AccessibleJTable.selectAllAccessibleSelection()`` is
+  ``if (cellSelectionEnabled) { selectAll(); }`` and falls through. The docstring and
+  ``docs/3-pyjab.md`` now say so rather than leaving callers to discover it.
+
+  The offline suite was green because nothing modelled this. ``tests/_fakejab.py`` kept a
+  single set of cell indices, and the defect lives in the divergence between a
+  ``JTable``'s two ``ListSelectionModel``s. It models both now, from the JDK source, and
+  reproduces the runner's exact numbers. Three tests fail on the pre-fix code.
+
 * **``tools/verify_m0.py`` could not return its own clear-win verdict.** ``report()``
   judged each row by the *rendered string*, and ``describe()`` rendered two opposite
   things identically: "the measurement could not be taken" and "the measurement was

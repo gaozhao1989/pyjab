@@ -773,14 +773,41 @@ class JABElement(object):
             self.vmid, accessible_context
         )
 
+    def _is_accessible_child_selected(
+            self, index: int, accessible_context: JOBJECT64 = None
+    ) -> bool:
+        """Whether the selection child at ``index`` is selected.
+
+        False is the bridge's answer rather than a swallowed failure: the binding
+        is declared without errorcheck, exactly as
+        :meth:`_is_accessible_table_row_selected` is.
+
+        This exists because ``addAccessibleSelectionFromContext`` is a **toggle**,
+        not an add.  ``AccessibleJTable.addAccessibleSelection(i)`` calls
+        ``JTable.changeSelection(row, column, true, false)``, so adding a cell that
+        is already selected removes it again.  Asking first is what makes a loop of
+        adds terminate on the answer the caller wanted.
+        """
+        accessible_context = accessible_context or self.accessible_context
+        return bool(
+            self.bridge.isAccessibleChildSelectedFromContext(
+                self.vmid, accessible_context, index
+            )
+        )
+
     def _get_accessible_table_index(
             self, row: int, column: int, accessible_context: JOBJECT64 = None
     ) -> int:
         """The selection index of the cell at (row, column).
 
-        This is the number ``addAccessibleSelectionFromContext`` wants; it is not
-        the same as the row-major position, which is why it is asked for rather
-        than computed.
+        This is the number ``addAccessibleSelectionFromContext`` wants.  It *is*
+        the row-major position: JAB computes it as ``row * columnCount + column``
+        (``JABAccessBridge.java``, ``getAccessibleTableIndex``), and
+        ``AccessibleJTable.getAccessibleColumnAtIndex`` divides it back the same
+        way.  It used to say here that it was not the row-major position, which was
+        wrong -- the ask is still worth making, because the column count comes from
+        the application rather than from pyjab, but not because the arithmetic
+        differs.
         """
         accessible_context = accessible_context or self.accessible_context
         return self.bridge.getAccessibleTableIndex(
@@ -2670,22 +2697,29 @@ class JABElement(object):
     def select_row(self, row: int, clear: bool = True) -> None:
         """Select every cell in one row.
 
-        There is no JAB call that selects a row: the row is selected by adding
-        each of its cells to the table's selection.  Whether the application then
-        reports the *row* as selected is up to its implementation -- check
-        :attr:`selected_rows` afterwards rather than assuming.
+        There is no JAB call that selects a row, so the row is selected by adding
+        its cells to the table's selection -- but adding a cell is a **toggle**, so
+        the cells that are already selected are skipped rather than added again.
+        On a Swing table in its default row-selection mode the first cell selects
+        the whole row, and the rest are then found to be selected already; on a
+        cell-selection table every cell is added, as before.
+
+        Whether the application reports the *row* as selected is still up to its
+        implementation -- check :attr:`selected_rows` afterwards rather than
+        assuming.
 
         Args:
             row (int): zero-based row index.
             clear (bool, optional): clear the existing selection first. Defaults
-                to True.
+                to True.  With ``clear=False``, cells already selected are left
+                alone instead of being toggled off.
         """
         self._require_table("select_row")
         if clear:
             self._clear_accessible_selection_from_context(self.accessible_context)
         for column in range(self._get_accessible_table_info().columnCount):
             index = self._get_accessible_table_index(row, column)
-            if index >= 0:
+            if index >= 0 and not self._is_accessible_child_selected(index):
                 self._select_accessible_table_index(index)
 
     def select_column(self, column: int, clear: bool = True) -> None:
@@ -2695,7 +2729,7 @@ class JABElement(object):
             self._clear_accessible_selection_from_context(self.accessible_context)
         for row in range(self._get_accessible_table_info().rowCount):
             index = self._get_accessible_table_index(row, column)
-            if index >= 0:
+            if index >= 0 and not self._is_accessible_child_selected(index):
                 self._select_accessible_table_index(index)
 
     def clear_selection(self) -> None:
@@ -2704,7 +2738,15 @@ class JABElement(object):
         self._clear_accessible_selection_from_context(self.accessible_context)
 
     def select_all(self) -> None:
-        """Ask the table to select everything it can."""
+        """Ask the table to select everything it can.
+
+        On a Swing ``JTable`` this does **nothing unless cell selection is
+        enabled**: ``AccessibleJTable.selectAllAccessibleSelection()`` is
+        ``if (cellSelectionEnabled) { selectAll(); }`` and falls through otherwise.
+        A default table is in row-selection mode, so nothing gets selected and no
+        error is raised -- check :attr:`selected_rows` afterwards rather than
+        assuming this worked.
+        """
         self._require_table("select_all")
         self.bridge.selectAllAccessibleSelectionFromContext(
             self.vmid, self.accessible_context
