@@ -69,9 +69,6 @@ on:
       title:
         description: Window title for tasks that attach to a running application
         required: false
-      title:
-        description: Window title for tasks that attach to a running application
-        required: false
         default: PyjabTestApp
 
   # TEMPORARY, and removed again in the next commit -- before this reaches master.
