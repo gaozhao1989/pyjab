@@ -60,6 +60,9 @@ dependencies = [
 pyjab-inspect = "pyjab.inspector:main"
 
 [project.optional-dependencies]
+# Deprecated, and only for `get_screenshot()`, which is removed in 2.0.0. Nothing else in
+# pyjab needs it: screenshots are taken with GDI and written with zlib.
+pillow = ["Pillow>=8.3.2"]
 dev = [
     "pytest>=7.0.1",
     # tools/check_license_consistency.py reads pyproject.toml, and the

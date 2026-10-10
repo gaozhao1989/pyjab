@@ -405,6 +405,11 @@ html = f'<img src="data:image/png;base64,{driver.get_screenshot_as_base64()}">'
 **No third-party package is involved.** The pixels come from GDI and the PNG is written
 with `zlib`, so `pip install pyjab` brings no imaging library.
 
+!!! warning "`get_screenshot()` is deprecated"
+    It returned a Pillow `Image`, and Pillow is no longer installed by default. It still
+    works if you have Pillow (`pip install pyjab[pillow]`) and warns when called; it is
+    **removed in 2.0.0**. Use `get_screenshot_as_png()` and the example below.
+
 If you want an image object rather than bytes, that is one line on your side, with the
 imaging library of your choice:
 

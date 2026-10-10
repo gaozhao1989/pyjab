@@ -214,3 +214,64 @@ def test_a_window_not_at_the_origin_is_not_reported_by_position():
     with patch.object(w.win32gui, "GetWindowRect",
                       return_value=(0, 0, 640, 480), create=True):
         assert Win32UtilsClass._get_window_size(1234) == (640, 480)
+
+
+# ---------------------------------------------------------------------------
+# The deprecated one
+# ---------------------------------------------------------------------------
+
+def test_get_screenshot_warns_that_it_is_going_away():
+    """Deprecated in 1.9.0, removed in 2.0.0, and it has to say so.
+
+    A deprecation nobody is told about is not a deprecation -- it is a removal with a delay,
+    and the point of the cycle is that nobody loses a name without a release in which they
+    were told to stop using it.
+    """
+    element = an_element()
+
+    with patch.object(Win32UtilsClass, "grab_rect",
+                      side_effect=lambda x, y, w, h: a_small_buffer(w, h)):
+        # The warning comes first, whether or not Pillow is installed -- and off this
+        # project's own dev environment it is not, since it is no longer a dependency.
+        with pytest.warns(DeprecationWarning, match="removed in 2.0.0"):
+            try:
+                element.get_screenshot()
+            except ImportError:
+                pass
+
+
+def test_get_screenshot_still_works_while_it_is_deprecated():
+    """Deprecated means "stop using it", not "it is broken"."""
+    pytest.importorskip("PIL.Image", reason="Pillow is optional now")
+    element = an_element()
+
+    with patch.object(Win32UtilsClass, "grab_rect",
+                      side_effect=lambda x, y, w, h: a_small_buffer(w, h)):
+        with pytest.warns(DeprecationWarning):
+            image = element.get_screenshot()
+
+    assert image.size == (SMALL_WIDTH, SMALL_HEIGHT)
+
+
+def test_get_screenshot_says_what_to_install_when_pillow_is_absent():
+    """The failure has to name the extra, not surface as a bare ImportError from inside.
+
+    This is the case most users will meet, because Pillow is no longer installed by
+    default -- so the message is the whole of the experience.
+    """
+    import builtins
+
+    element = an_element()
+    real_import = builtins.__import__
+
+    def refuse_pil(name, *args, **kwargs):
+        if name == "PIL" or name.startswith("PIL."):
+            raise ImportError("No module named 'PIL'")
+        return real_import(name, *args, **kwargs)
+
+    with patch.object(Win32UtilsClass, "grab_rect",
+                      side_effect=lambda x, y, w, h: a_small_buffer(w, h)):
+        with patch.object(builtins, "__import__", side_effect=refuse_pil):
+            with pytest.warns(DeprecationWarning):
+                with pytest.raises(ImportError, match=r"pyjab\[pillow\]"):
+                    element.get_screenshot()

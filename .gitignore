@@ -59,3 +59,7 @@ docs/MCP_ENABLING_PLAN.md
 /docs/ISSUE_REPLIES.md
 /docs/replies/
 /docs/CONSENT_REQUESTS.md
+
+# A screenshot downloaded from a CI run for a human to look at; not part of the repository.
+screenshot-from-ci.png
+screenshot.png

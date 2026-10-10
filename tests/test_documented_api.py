@@ -232,24 +232,20 @@ def test_the_screenshot_methods_the_docs_once_promised_now_exist():
     test now pins the opposite, for the same reason turned around: removing one
     should also be deliberate.
     """
-    # `get_screenshot` is deliberately absent, and this is the note the docstring above
-    # asks for. It returned a Pillow `Image`, which made Pillow a runtime dependency for
-    # the sake of one convenience -- and it was pyjab's own divergence rather than
-    # anything Selenium users expect, which the method's own docstring had always said
-    # (Selenium's `get_screenshot` returns base64). Removing it is what lets the
-    # dependency go. The capability is not lost: `Image.open(BytesIO(png))` is the same
-    # thing in one line, on the caller's side, where the dependency belongs.
-    for name in ("get_screenshot_as_file",
+    # `get_screenshot` is still here, and that is the deliberate decision this test
+    # exists to record -- in both directions. It was removed in a first pass, which
+    # skipped the deprecation cycle that pyjab's release policy requires: nobody should
+    # lose a name without a release in which they were told to stop using it. It is
+    # deprecated in 1.9.0 and removed in 2.0.0.
+    for name in ("get_screenshot_as_file", "get_screenshot",
                  "get_screenshot_as_png", "get_screenshot_as_base64",
                  "get_window_size"):
         assert name in MEMBERS["JABDriver"], name
-    assert "get_screenshot" not in MEMBERS["JABDriver"]
 
     # An element has no window, so it has no window size.
-    for name in ("get_screenshot_as_file",
+    for name in ("get_screenshot_as_file", "get_screenshot",
                  "get_screenshot_as_png", "get_screenshot_as_base64"):
         assert name in MEMBERS["JABElement"], name
-    assert "get_screenshot" not in MEMBERS["JABElement"]
     assert "get_window_size" not in MEMBERS["JABElement"]
 
 
