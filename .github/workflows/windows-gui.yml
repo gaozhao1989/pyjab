@@ -71,12 +71,24 @@ on:
         required: false
         default: PyjabTestApp
 
+  # TEMPORARY, and to be removed before this reaches master.
+  #
+  # GitHub only accepts a workflow_dispatch for a workflow that exists on the
+  # default branch ("HTTP 404: workflow windows-gui.yml not found on the default
+  # branch"), so a workflow being verified on a branch cannot be dispatched.  A
+  # push trigger runs it with the defaults instead, which is what makes the
+  # first verification run possible.  Every `inputs.x` below therefore carries
+  # an `|| default`, because for a push event there are no inputs at all.
+  push:
+    branches:
+      - probe/windows-gui
+
 permissions:
   contents: read
 
 jobs:
   windows-gui:
-    name: ${{ inputs.task }} (JDK ${{ inputs.java }})
+    name: ${{ inputs.task || 'gui-suite' }} (JDK ${{ inputs.java || '17' }})
     runs-on: windows-latest
     # The GUI suite drives a real JVM and waits on bounded timeouts; the soak is
     # the only genuinely long one, and it stops itself at `minutes`.  The cap
@@ -89,7 +101,7 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: ${{ inputs.java }}
+          java-version: ${{ inputs.java || '17' }}
 
       - uses: actions/setup-python@v5
         with:
@@ -144,7 +156,7 @@ jobs:
       # JDK and an interactive desktop -- all three of which are here.
       # ------------------------------------------------------------------
       - name: "task=gui-suite"
-        if: inputs.task == 'gui-suite'
+        if: (inputs.task || 'gui-suite') == 'gui-suite'
         shell: pwsh
         env:
           PYJAB_RUN_GUI_TESTS: "1"
@@ -155,7 +167,7 @@ jobs:
           exit $LASTEXITCODE
 
       - name: "task=m0"
-        if: inputs.task == 'm0'
+        if: (inputs.task || 'gui-suite') == 'm0'
         shell: pwsh
         run: |
           # Windows only, and deliberately not in pyproject.toml because one
@@ -164,16 +176,16 @@ jobs:
           javac -d tests/java/classes tests/java/PyjabTestApp.java
           $app = Start-Process java -PassThru -ArgumentList `
             '-Duser.language=en','-Duser.country=US','-cp','tests/java/classes','PyjabTestApp',`
-            "--title=${{ inputs.title }}"
+            "--title=${{ inputs.title || 'PyjabTestApp' }}"
           Start-Sleep -Seconds 15
-          python tools/verify_m0.py --title "${{ inputs.title }}" --json |
+          python tools/verify_m0.py --title "${{ inputs.title || 'PyjabTestApp' }}" --json |
             Tee-Object -FilePath m0.json
           $code = $LASTEXITCODE
           Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue
           exit $code
 
       - name: "task=xpath"
-        if: inputs.task == 'xpath'
+        if: (inputs.task || 'gui-suite') == 'xpath'
         shell: pwsh
         run: |
           # Launches and owns its own application; needs no external title.
@@ -181,14 +193,14 @@ jobs:
           exit $LASTEXITCODE
 
       - name: "task=table-selection"
-        if: inputs.task == 'table-selection'
+        if: (inputs.task || 'gui-suite') == 'table-selection'
         shell: pwsh
         run: |
           python tools/verify_table_selection.py 2>&1 | Tee-Object -FilePath table-selection.log
           exit $LASTEXITCODE
 
       - name: "task=dpi"
-        if: inputs.task == 'dpi'
+        if: (inputs.task || 'gui-suite') == 'dpi'
         shell: pwsh
         run: |
           # Without --hold: the tool's interactive mode never returns.
@@ -196,31 +208,31 @@ jobs:
           exit $LASTEXITCODE
 
       - name: "task=test-app"
-        if: inputs.task == 'test-app'
+        if: (inputs.task || 'gui-suite') == 'test-app'
         shell: pwsh
         run: |
           python tools/verify_test_app.py 2>&1 | Tee-Object -FilePath test-app.log
           exit $LASTEXITCODE
 
       - name: "task=soak"
-        if: inputs.task == 'soak'
+        if: (inputs.task || 'gui-suite') == 'soak'
         shell: pwsh
         run: |
           javac -d tests/java/classes tests/java/PyjabTestApp.java
           $app = Start-Process java -PassThru -ArgumentList `
             '-Duser.language=en','-Duser.country=US','-cp','tests/java/classes','PyjabTestApp',`
-            "--title=${{ inputs.title }}"
+            "--title=${{ inputs.title || 'PyjabTestApp' }}"
           Start-Sleep -Seconds 15
           # --interval 5 keeps a short run meaningful; the default 60 is for the
           # two-hour run the roadmap asks for.
-          python tools/soak.py --title "${{ inputs.title }}" --minutes ${{ inputs.minutes }} `
+          python tools/soak.py --title "${{ inputs.title || 'PyjabTestApp' }}" --minutes ${{ inputs.minutes || '1' }} `
             --interval 5 2>&1 | Tee-Object -FilePath soak.txt
           $code = $LASTEXITCODE
           Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue
           exit $code
 
       - name: "task=environment"
-        if: inputs.task == 'environment'
+        if: (inputs.task || 'gui-suite') == 'environment'
         shell: pwsh
         run: |
           Write-Host "diagnostics only; see the desktop report above"
@@ -232,7 +244,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: windows-gui-${{ inputs.task }}-jdk${{ inputs.java }}
+          name: windows-gui-${{ inputs.task || 'gui-suite' }}-jdk${{ inputs.java || '17' }}
           if-no-files-found: ignore
           path: |
             *.log
