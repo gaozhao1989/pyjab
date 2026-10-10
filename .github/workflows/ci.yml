@@ -14,6 +14,17 @@ permissions:
   contents: read
 
 jobs:
+  # Every job here is capped at 15 minutes, which is GitHub's 360-minute default
+  # replaced by something that fits. Measured over 12 runs, the longest job in this
+  # file is `tests (windows-latest, py3.9)` at **2.1 minutes**; 15 is seven times
+  # that, so a slow runner is not the thing this turns red. What it turns red is a
+  # hang -- the portable suite has no live JVM and no network, so a job still going
+  # after 15 minutes is stuck rather than busy, and today it would sit there for six
+  # hours blocking every pull request's required checks.
+  #
+  # windows-gui.yml deliberately does *not* use this number: `task=soak` there runs
+  # for 120 minutes by design, and a ceiling that fits a two-minute suite does not
+  # fit a two-hour soak.  The two are set independently and say why.
   # ---------------------------------------------------------------------------
   # The portable test suite.  It covers DLL discovery and touches nothing
   # Windows specific, so it is worth running on every OS and several Python
@@ -22,6 +33,7 @@ jobs:
   tests:
     name: tests (${{ matrix.os }}, py${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -74,6 +86,7 @@ jobs:
   jab-dll-discovery:
     name: JAB DLL discovery (JDK ${{ matrix.java }})
     runs-on: windows-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -126,6 +139,7 @@ jobs:
   windows-import-smoke:
     name: Windows import smoke test
     runs-on: windows-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -216,6 +230,7 @@ jobs:
     name: Contributor sign-off
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -251,6 +266,7 @@ jobs:
   checks:
     name: Licences and documentation
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -315,6 +331,7 @@ jobs:
   package:
     name: build distribution
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 

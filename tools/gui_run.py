@@ -55,8 +55,27 @@ Exit status
 -----------
 
 * ``0``   the run succeeded;
-* ``1``   the run failed, or its artifact refused to be read;
-* ``2``   an unknown task, or the dispatch never appeared before ``--timeout``.
+* ``1``   **the run concluded in failure**, or its artifact refused to be read;
+* ``2``   an unknown task, or the dispatch never appeared before ``--timeout``;
+* ``3``   **``gh`` could not be reached**, so the run's outcome is unknown.
+
+``1`` and ``3`` are deliberately different, and that is the point of ``3``. A run that
+concluded ``failure`` is a **result**: the measurement is on GitHub, the artifact is
+printed, and a caller should read it. A ``gh`` call that fails three times is **not a
+result**: nothing was learned about the run at all. Reporting both as ``1`` tells a caller
+"the GUI suite failed" when what happened is "this machine could not ask GitHub", which is
+the same conflation #190 removed from the log filter.
+
+**Transient ``gh`` failures are retried before either of those is reported.** This machine
+reaches GitHub through a local proxy that flakes -- a TLS handshake timeout mid-run is
+routine, and it was reported as the tool failing while the run was still going and fine.
+So each ``gh`` command is attempted ``GH_ATTEMPTS`` times with ``GH_BACKOFF`` seconds
+between attempts, and a TLS timeout on the run *view* no longer ends the tool.
+
+When it does give up, **the run id and the URL are printed whether or not the run could be
+read**, because the reader has to be able to go and look. The URL is taken from ``gh run
+list`` when that call answered, and otherwise built from the ``origin`` remote -- locally,
+because asking GitHub for it is the one call that cannot be made.
 
 The artifact contents go to stdout; every progress and diagnostic line goes to stderr, so
 ``python tools/gui_run.py m0 --artifact-file m0.json | jq .`` works.
@@ -68,6 +87,7 @@ import argparse
 import contextlib
 import datetime
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -95,6 +115,20 @@ DEFAULT_TASK = "gui-suite"
 POLL_INTERVAL = 5.0
 DEFAULT_TIMEOUT = 1800.0
 
+#: How many times one ``gh`` command is attempted, and the wait between attempts.
+#:
+#: Three, because the failure this is for is the local proxy dropping a connection rather
+#: than GitHub being down: measured on this machine, a TLS handshake timeout is a
+#: one-off, and the same command answers on the next attempt. Two would leave no room for
+#: two flakes in a row; more than three turns a genuinely unreachable GitHub into a long
+#: wait for an answer that is not coming.
+#:
+#: The backoff is short and fixed. An exponential one would be tidier and is not worth it
+#: here: three attempts of a call that answers in well under a second is a few seconds
+#: either way, and the whole budget is visible in one constant.
+GH_ATTEMPTS = 3
+GH_BACKOFF = 2.0
+
 #: The machine's current UTC offset, because a bare ``gh run list`` timestamp is local
 #: time while the ``--json`` one is UTC. Taken as a fixed offset rather than through
 #: ``zoneinfo``: ``ZoneInfo("localtime")`` is not portable, and a single dispatch does not
@@ -104,6 +138,17 @@ LOCAL_OFFSET = datetime.datetime.now().astimezone().tzinfo or datetime.timezone.
 
 class GuiRunError(Exception):
     """Something the caller has to be told about rather than a traceback."""
+
+
+class GhUnreachable(Exception):
+    """``gh`` could not answer, after every attempt.
+
+    Deliberately **not** a :class:`GuiRunError`. The handlers for that one answer ``1``,
+    which means "the run concluded in failure" -- and this is the opposite of a
+    conclusion. Every place that catches a ``GuiRunError`` has to say what it does about
+    an unreachable GitHub instead of inheriting ``1`` by accident, so the two are separate
+    types and the exit code is chosen at each site rather than by the class hierarchy.
+    """
 
 
 # ---------------------------------------------------------------------------
@@ -416,18 +461,122 @@ def print_artifact(root: Path, wanted: str = None) -> int:
 # gh
 # ---------------------------------------------------------------------------
 
-def run_gh(args: list, timeout: float = None) -> str:
-    """Run one ``gh`` command and return its stdout.
+def run_gh(args: list, timeout: float = None, attempts: int = GH_ATTEMPTS,
+           backoff: float = GH_BACKOFF, sleep=time.sleep) -> str:
+    """Run one ``gh`` command, retrying a transient failure, and return its stdout.
 
     A list rather than a shell string: the repository path contains spaces, and every
     argument here is data.
+
+    **Every** command goes through here, so this is the one place the retry belongs. The
+    failure being retried is not "the command was wrong" -- it is the local proxy dropping
+    a connection, which is transient by nature and answered correctly on the next attempt.
+
+    Two things are deliberately not distinguished:
+
+    * a permanent ``gh`` error (``not logged in``, a 404) is retried like a transient one.
+      Telling them apart means matching gh's stderr text, and guessing wrong in the
+      permissive direction costs three attempts of a fast local failure -- a couple of
+      seconds -- while guessing wrong in the strict direction means *not* retrying the
+      flake this exists for. The message is carried through, so ``not logged in`` is still
+      what the reader sees;
+    * ``gh`` missing from ``PATH`` is also three attempts. They fail immediately, so the
+      cost is nothing, and it keeps one code path.
+
+    ``sleep`` is an injectable seam for the same reason the clocks in :func:`main` are: a
+    test that really waited ``GH_BACKOFF`` would slow the suite down for no information.
     """
-    result = subprocess.run(["gh"] + list(args), capture_output=True, text=True,
-                            timeout=timeout)
+    args = list(args)
+    describe = "gh " + " ".join(str(a) for a in args)
+    last = "no output"
+
+    for attempt in range(1, attempts + 1):
+        try:
+            result = subprocess.run(["gh"] + args, capture_output=True, text=True,
+                                    timeout=timeout)
+        except (OSError, subprocess.SubprocessError) as error:
+            # gh not installed, or the call took longer than `timeout`. Both are the same
+            # answer to this loop: this attempt did not produce a usable result.
+            last = f"{type(error).__name__}: {error}"
+        else:
+            if result.returncode == 0:
+                return result.stdout
+            last = (result.stderr or result.stdout or "").strip() or "no output"
+
+        if attempt < attempts:
+            print(f"{describe} failed (attempt {attempt}/{attempts}): {last}",
+                  file=sys.stderr)
+            sleep(backoff)
+
+    raise GhUnreachable(
+        f"could not reach GitHub: {describe} failed on all {attempts} attempts; "
+        f"last failure: {last}"
+    )
+
+
+def parse_remote(text: str) -> str:
+    """``owner/name`` from a git remote URL, or ``""``.
+
+    Both spellings are in use -- HTTPS with an optional ``.git``, and the scp-like
+    ``git@github.com:owner/name`` -- so both are handled. Anything else, including a
+    remote on another host, answers ``""`` rather than a wrong guess.
+    """
+    match = re.search(r"github\.com[:/]+([^/\s]+/[^/\s]+?)(?:\.git)?/?$",
+                      (text or "").strip())
+    return match.group(1) if match else ""
+
+
+def infer_repo() -> str:
+    """``owner/name`` from the ``origin`` remote, or ``""``.
+
+    Local, and that is the whole point: this is called on the path where GitHub could not
+    be reached, so asking ``gh repo view`` for it would be the one call that cannot be
+    made. ``git`` is already a dependency of this tool -- :func:`current_branch` runs it.
+    """
+    try:
+        result = subprocess.run(["git", "remote", "get-url", "origin"],
+                                capture_output=True, text=True)
+    except OSError:
+        return ""
     if result.returncode != 0:
-        message = (result.stderr or result.stdout or "").strip() or "no output"
-        raise GuiRunError(f"gh {' '.join(str(a) for a in args)} failed: {message}")
-    return result.stdout
+        return ""
+    return parse_remote(result.stdout)
+
+
+def run_url(repo: str, run_id=None) -> str:
+    """The page a reader can open for a run, or for the workflow when there is no id.
+
+    Built rather than read, because the case this exists for is the one where reading
+    failed. ``""`` when the repository is not known -- a URL with a missing owner is worse
+    than no URL, because it looks like an answer.
+    """
+    if not repo:
+        return ""
+    if run_id is None:
+        return f"https://github.com/{repo}/actions/workflows/{WORKFLOW_NAME}"
+    return f"https://github.com/{repo}/actions/runs/{run_id}"
+
+
+def where_to_look(run_id=None, url: str = "", repo: str = "") -> str:
+    """One line naming the run, printed when the tool gives up.
+
+    ``url`` wins when it is there: it came from ``gh run list``, so it is what GitHub calls
+    the run -- including on a GitHub Enterprise host, which the built one would get wrong.
+    The run id is printed even when the URL is not, because ``gh run view <id>`` works from
+    any checkout of this repository.
+    """
+    if run_id is None:
+        page = run_url(repo)
+        if page:
+            return f"no run identified; the runs of {WORKFLOW_NAME} are at {page}"
+        return (f"no run identified; `gh run list --workflow={WORKFLOW_NAME}` shows what "
+                "is there")
+    if url:
+        return f"run {run_id}: {url}"
+    page = run_url(repo, run_id)
+    if page:
+        return f"run {run_id}: {page}"
+    return f"run {run_id}: `gh run view {run_id}`"
 
 
 class Gh:
@@ -435,6 +584,11 @@ class Gh:
 
     Everything below is I/O against GitHub. The decisions -- which task, which run, which
     file -- are pure functions above, because those are the parts that are wrong silently.
+
+    ``runner`` is the retrying :func:`run_gh` by default, so every command below inherits
+    the retry. A test that injects a runner replaces the retry with it as well, which is
+    why the retry has tests of its own at the :func:`run_gh` level rather than only through
+    this class.
     """
 
     def __init__(self, repo: str = None, runner=run_gh):
@@ -452,9 +606,11 @@ class Gh:
         self._run(["workflow", "run", WORKFLOW_NAME, "--ref", ref] + fields + self._repo())
 
     def list_runs(self, workflow: str, limit: int = 20) -> list:
+        # `url` is asked for so the give-up path can name the run without a second call,
+        # which is the call that would fail.
         raw = self._run([
             "run", "list", f"--workflow={workflow}", "--limit", str(limit),
-            "--json", "databaseId,createdAt,status,headBranch",
+            "--json", "databaseId,createdAt,status,headBranch,url",
         ] + self._repo())
         return json.loads(raw or "[]")
 
@@ -477,7 +633,16 @@ def parse_args(argv: list, tasks: list) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="gui_run.py",
         description="Dispatch one GUI task to windows-gui.yml and print what it measured.",
-        epilog="valid tasks: " + ", ".join(tasks),
+        epilog=(
+            "valid tasks: " + ", ".join(tasks) + "\n\n"
+            "exit status:\n"
+            "  0  the run succeeded\n"
+            "  1  the run concluded in failure (its artifact is still printed), or the\n"
+            "     artifact could not be read\n"
+            "  2  unknown task, or the dispatch never appeared before --timeout\n"
+            "  3  gh could not be reached after " + str(GH_ATTEMPTS) + " attempts, so the\n"
+            "     run's outcome is unknown -- this is NOT the same as 1\n"
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("task", metavar="<task>",
@@ -537,12 +702,27 @@ def main(argv: list = None, gh=None, sleep=time.sleep, now=None,
     args = parse_args(sys.argv[1:] if argv is None else argv, tasks)
 
     ref = args.ref or current_branch()
+    repo = args.repo or infer_repo()
     client = gh if gh is not None else Gh(args.repo)
     start = (now or (lambda: datetime.datetime.now(datetime.timezone.utc)))()
+
+    # Both are filled in as soon as they are known, and printed by every give-up path
+    # below. A reader told "gh could not be reached" with no run id has to go and work out
+    # which run was meant, which is the half of this that is not a tool's business.
+    run_id = None
+    url = ""
 
     print(f"dispatching task={args.task} java={args.java} on {ref}", file=sys.stderr)
     try:
         client.dispatch(args.task, args.java, ref, minutes=args.minutes)
+    except GhUnreachable as error:
+        # Whether the dispatch landed is unknown: the request may have been sent and its
+        # answer lost. Say so rather than implying it did or did not.
+        print(f"error: {error}", file=sys.stderr)
+        print("the dispatch may or may not have been triggered -- an attempt that timed "
+              "out may still have been delivered", file=sys.stderr)
+        print(where_to_look(repo=repo), file=sys.stderr)
+        return 3
     except GuiRunError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
@@ -551,6 +731,7 @@ def main(argv: list = None, gh=None, sleep=time.sleep, now=None,
         run = poll_for_run(client, ref, start, timeout=args.timeout,
                            interval=args.interval, monotonic=monotonic, sleep=sleep)
         run_id = _field(run, "databaseId", "database_id", "id")
+        url = _field(run, "url") or ""
         if run_id is None:
             raise GuiRunError(f"the run list answered with no id: {run!r}")
         # The id and the three fields that decided it. Two dispatches on one commit is a
@@ -561,6 +742,12 @@ def main(argv: list = None, gh=None, sleep=time.sleep, now=None,
     except TimeoutError as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
+    except GhUnreachable as error:
+        # The run is going -- or has finished -- and this machine cannot ask. That is not
+        # "the run failed", so it is not 1.
+        print(f"error: {error}", file=sys.stderr)
+        print(where_to_look(run_id, url, repo), file=sys.stderr)
+        return 3
     except GuiRunError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
@@ -571,6 +758,12 @@ def main(argv: list = None, gh=None, sleep=time.sleep, now=None,
             into = Path(directory) / name
             client.download_artifact(run_id, name, into)
             print_artifact(into, args.artifact_file)
+    except GhUnreachable as error:
+        # The run's conclusion is known here; its measurement is not. Naming the run is
+        # what lets the reader fetch the artifact by hand.
+        print(f"error: {error}", file=sys.stderr)
+        print(where_to_look(run_id, url, repo), file=sys.stderr)
+        return 3
     except (GuiRunError, ValueError, TypeError) as error:
         # ValueError is a gh answer that is not JSON -- an HTML error page, say -- and
         # TypeError is one that is JSON but not the shape expected. The run's conclusion is
@@ -589,6 +782,9 @@ def main(argv: list = None, gh=None, sleep=time.sleep, now=None,
 def cli() -> int:
     try:
         return main()
+    except GhUnreachable as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 3
     except GuiRunError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1

@@ -54,6 +54,41 @@ Fixed
   A window already in front costs nothing — **no keystroke is sent** — which matters because
   taking the foreground means sending a space bar to whatever currently has focus.
 
+* **``tools/gui_run.py`` reported a flaky network as a failed run.** A TLS handshake timeout
+  on ``gh run view`` exited ``1`` — the same code as "the run concluded in failure" — so a
+  caller could not tell a result from an inability to ask for one, and the dispatch of
+  ``task=jab-return-values`` (run 38071056432) was read as a failure while the run was still
+  going and fine. Reported as #211.
+
+  Every ``gh`` command is now attempted **three times with a two-second backoff**. The
+  failure this is for is this machine's local proxy dropping a connection, not a wrong
+  command: the same call answers on the next attempt. When the attempts run out the tool
+  exits **3**, which is distinct from ``1``; ``3`` means the run's outcome is unknown, and
+  the module docstring and ``--help`` both say so. Giving up prints the **run id and the
+  URL** whether or not the run could be read — taken from ``gh run list``, or built from the
+  ``origin`` remote when even that call failed, because asking GitHub for it is the one call
+  that cannot be made.
+
+* **``windows-gui.yml`` allowed a hung task four hours.** ``timeout-minutes: 240`` was one
+  fixed number doing two unlike jobs. ``task=soak`` runs 120 minutes by design — measured
+  **120m47s** end to end on run 38019806044, the 1102-sample two-hour run the roadmap asks
+  for — while the longest task other than it, over 80 runs, is **1.7 minutes**
+  (``gui-suite``, 2713 passed), and a hung ``jab-return-values`` was still going at **51
+  minutes** on run 38061816617 when a human cancelled it. It would have sat there for four
+  hours. Reported as #211.
+
+  The job is now capped at **150 minutes**: above the soak it has to protect, below the
+  four hours it used to allow. The soak step carries its own, tighter ceiling derived from
+  the duration it was asked for, so an overrun is attributed to the step that hung and the
+  ``if: always()`` upload still runs, rather than the whole job being cancelled.
+
+  ``ci.yml`` gets its own, much smaller ceiling — **15 minutes** against a measured longest
+  job of 2.1 minutes — because a job with a two-minute suite does not want a two-hour
+  allowance, and until now a hung one would hold every required check for GitHub's
+  six-hour default. ``release.yml`` deliberately gets **none**, and says why: a cancelled
+  ``twine upload`` can leave a version half-published, which is the one state PyPI cannot
+  recover from.
+
 Added
 ~~~~~
 

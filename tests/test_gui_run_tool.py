@@ -20,11 +20,31 @@ A note on patching, since this project has been caught by it repeatedly (AGENTS.
 silently does nothing and the test passes for a reason unrelated to its name. This tool has
 no singletons -- the patchable seam is the injectable ``gh`` object -- so the rule does not
 bite here. It is written down because the next person to add one will need it.
+
+The network is a seam too, and the last section of this file is about it. ``gh`` on this
+machine reaches GitHub through a local proxy that flakes -- a TLS handshake timeout is
+routine, and it once ended this tool as exit 1 while the run was still going and fine. So
+every ``gh`` call is retried, and "could not reach GitHub" is exit 3 where "the run
+concluded in failure" is exit 1. Both are tested **without the network**: ``subprocess.run``
+is patched at the point ``run_gh`` calls it, and the ``sleep`` between attempts is injected
+exactly as ``main``'s clocks are, so no test waits out the real backoff.
+
+**If you mutate ``tools/gui_run.py`` to check that a test catches it, run the mutated suite
+with ``PYTHONDONTWRITEBYTECODE=1`` and delete ``tools/__pycache__`` first.** This is not
+theory: it cost an hour here. A same-length edit (``return 3`` -> ``return 1``) leaves the
+file the same size, and a restore that lands in the same second leaves the same
+``st_mtime`` -- so ``.pyc`` validation, which is exactly (mtime, size), accepts the
+**mutated** bytecode against the restored source. ``git status`` is clean, the source reads
+correctly, the restore's sha256 matches, and the tests still report the mutation as if the
+fix were missing. Two tests in this file failed against correct source until
+``tools/__pycache__`` was removed. Restore by content and compare a sha256; do not trust
+``git checkout`` plus ``git status`` for this.
 """
 
 from __future__ import annotations
 
 import datetime
+import functools
 import importlib.util
 import json
 import sys
@@ -100,9 +120,12 @@ class FakeGh:
             target.write_text(text, encoding="utf-8")
 
 
-def a_run(run_id, created, branch="master", status="completed"):
-    return {"databaseId": run_id, "createdAt": created, "headBranch": branch,
-            "status": status}
+def a_run(run_id, created, branch="master", status="completed", url=None):
+    run = {"databaseId": run_id, "createdAt": created, "headBranch": branch,
+           "status": status}
+    if url is not None:
+        run["url"] = url
+    return run
 
 
 #: The flow tests pass ``--ref master`` rather than letting ``main`` read the checkout's
@@ -644,18 +667,294 @@ def test_the_dispatch_carries_the_task_and_the_ref_to_the_workflow():
 
 
 def test_a_gh_failure_is_reported_rather_than_raising_from_subprocess():
-    """One message from the tool, not a traceback from deep inside it."""
+    """One message from the tool, not a traceback from deep inside it.
+
+    ``GhUnreachable`` rather than ``GuiRunError``: the tool has to be able to tell "gh
+    would not answer" from "the run concluded in failure", and the exit codes differ
+    (3 against 1). A single exception type for both is how they got conflated in the
+    first place.
+    """
     with patch.object(gui_run.subprocess, "run") as run:
         run.return_value = MagicMock(returncode=1, stderr="gh: not logged in\n", stdout="")
 
-        with pytest.raises(gui_run.GuiRunError) as error:
-            gui_run.run_gh(["run", "list"])
+        with pytest.raises(gui_run.GhUnreachable) as error:
+            gui_run.run_gh(["run", "list"], sleep=no_sleep)
 
     assert "not logged in" in str(error.value)
+    assert not issubclass(gui_run.GhUnreachable, gui_run.GuiRunError), (
+        "a handler for GuiRunError must not inherit the unreachable case by accident"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Retrying a flaky network, which is what this machine has
+# ---------------------------------------------------------------------------
+#
+# Every ``gh`` command goes through ``run_gh``, so that is where the retry lives and
+# that is what these drive. ``sleep`` is injected exactly as the clocks in ``main``
+# are (and for the same reason): the real ``GH_BACKOFF`` would add seconds to every
+# run of this file, and a test that waits is not measuring anything the assertion
+# does not already say.
+
+def gh_fails(message="net/http: TLS handshake timeout", code=1):
+    """A ``gh`` result that failed, as ``subprocess.run`` would hand it back."""
+    return MagicMock(returncode=code, stdout="", stderr=f"{message}\n")
+
+
+def gh_succeeds(text=""):
+    return MagicMock(returncode=0, stdout=text, stderr="")
+
+
+def test_a_transient_failure_is_retried_and_the_second_attempt_succeeds():
+    """The incident: a TLS handshake timeout reported as the tool failing.
+
+    ``gh run view 38071056432`` answered with a TLS handshake timeout while the run was
+    still going and fine, the tool exited 1, and the run was read as failed. One
+    attempt is not enough when the failure is the local proxy dropping a connection.
+    """
+    with patch.object(gui_run.subprocess, "run") as run:
+        run.side_effect = [gh_fails(), gh_succeeds("[]")]
+
+        assert gui_run.run_gh(["run", "list"], sleep=no_sleep) == "[]"
+
+    assert run.call_count == 2, "the second attempt is the one that has to happen"
+
+
+def test_the_wait_between_attempts_is_taken_and_is_the_documented_one():
+    """A retry with no backoff hammers a proxy that is already dropping connections."""
+    waits = []
+    with patch.object(gui_run.subprocess, "run") as run:
+        run.side_effect = [gh_fails(), gh_fails(), gh_succeeds("{}")]
+
+        gui_run.run_gh(["run", "view", "1"], sleep=waits.append)
+
+    assert waits == [gui_run.GH_BACKOFF, gui_run.GH_BACKOFF]
+    assert run.call_count == 3
+
+
+def test_a_permanent_failure_gives_up_after_the_attempt_bound():
+    """Bounded: an unreachable GitHub must not become an infinite loop.
+
+    Every attempt failed, so there is no result to report -- and the run's outcome is
+    *unknown* rather than failed. This is the case that has to exit 3 and not 1.
+    """
+    with patch.object(gui_run.subprocess, "run") as run:
+        run.return_value = gh_fails("dial tcp: i/o timeout")
+
+        with pytest.raises(gui_run.GhUnreachable) as error:
+            gui_run.run_gh(["run", "view", "1"], sleep=no_sleep)
+
+    assert run.call_count == gui_run.GH_ATTEMPTS
+    assert str(gui_run.GH_ATTEMPTS) in str(error.value), (
+        "the message has to say how many attempts were made"
+    )
+    assert "run view 1" in str(error.value), "and which command it was"
+
+
+def test_a_command_that_cannot_even_start_is_retried_rather_than_traced_back():
+    """``gh`` missing from PATH raises before there is a result to inspect."""
+    with patch.object(gui_run.subprocess, "run") as run:
+        run.side_effect = FileNotFoundError("no gh")
+
+        with pytest.raises(gui_run.GhUnreachable) as error:
+            gui_run.run_gh(["run", "list"], sleep=no_sleep)
+
+    assert run.call_count == gui_run.GH_ATTEMPTS
+    assert "FileNotFoundError" in str(error.value)
+
+
+def test_a_command_that_hangs_past_its_timeout_is_retried():
+    """``subprocess`` raises rather than returning a failed result for a timeout."""
+    with patch.object(gui_run.subprocess, "run") as run:
+        run.side_effect = [
+            gui_run.subprocess.TimeoutExpired("gh", 5), gh_succeeds("ok"),
+        ]
+
+        assert gui_run.run_gh(["run", "list"], timeout=5, sleep=no_sleep) == "ok"
+
+
+def test_the_repo_is_read_from_the_origin_remote_both_ways_it_is_spelled():
+    """``hunter`` for the URL printed when GitHub cannot be reached.
+
+    Local, because the call that would ask GitHub for it is the one that failed.
+    """
+    assert gui_run.parse_remote("https://github.com/gaozhao1989/pyjab.git") == \
+        "gaozhao1989/pyjab"
+    assert gui_run.parse_remote("https://github.com/gaozhao1989/pyjab") == \
+        "gaozhao1989/pyjab"
+    assert gui_run.parse_remote("git@github.com:gaozhao1989/pyjab.git") == \
+        "gaozhao1989/pyjab"
+    assert gui_run.parse_remote("") == ""
+    assert gui_run.parse_remote("https://gitlab.com/someone/other.git") == "", (
+        "a remote on another host must answer nothing rather than a wrong guess"
+    )
+
+
+def test_a_known_run_gets_a_url_and_an_unknown_repo_does_not_get_a_wrong_one():
+    assert gui_run.run_url("owner/name", 12) == \
+        "https://github.com/owner/name/actions/runs/12"
+    assert gui_run.run_url("owner/name") == \
+        "https://github.com/owner/name/actions/workflows/windows-gui.yml"
+    assert gui_run.run_url("", 12) == "", (
+        "https://github.com/actions/runs/12 looks like an answer and is not one"
+    )
+
+
+def test_giving_up_names_the_run_so_the_reader_can_go_and_look(capsys):
+    """The run id and the URL, whether or not the run could be read.
+
+    The URL ``gh run list`` answered with wins over the built one, because it is what
+    GitHub calls the run -- which matters on a GitHub Enterprise host.
+    """
+    assert gui_run.where_to_look(7, "https://ghe.example/o/n/actions/runs/7",
+                                 "o/n").endswith("https://ghe.example/o/n/actions/runs/7")
+    assert "https://github.com/o/n/actions/runs/7" in gui_run.where_to_look(7, "", "o/n")
+    assert gui_run.where_to_look(7, "", "") == "run 7: `gh run view 7`"
+    assert "workflow=windows-gui.yml" in gui_run.where_to_look()
+    assert "actions/workflows/windows-gui.yml" in gui_run.where_to_look(repo="o/n")
+
+
+# ---------------------------------------------------------------------------
+# The two exit paths, which have to be distinguishable
+# ---------------------------------------------------------------------------
+
+
+
+def test_could_not_reach_github_exits_three_and_a_failed_run_exits_one(capsys):
+    """Acceptance criterion: the two answers must not share a code.
+
+    A run that concluded ``failure`` is a **result** -- the measurement is on GitHub and
+    the artifact is printed. ``gh`` failing every attempt is not a result: nothing was
+    learned about the run. Reporting both as 1 is the conflation #190 removed from the
+    log filter, moved into the exit status.
+    """
+    failed_run = FakeGh(runs=[[a_run(80, just_dispatched())]],
+                        statuses=[("completed", "failure")])
+    unreachable = FakeGh(runs=[[a_run(80, just_dispatched())]])
+    unreachable.run_status = MagicMock(side_effect=gui_run.GhUnreachable("no answer"))
+
+    code_failed = gui_run.main(["jvm-discovery", "--ref", "master"], gh=failed_run,
+                               sleep=no_sleep, now=frozen_clock)
+    capsys.readouterr()
+
+    code_unreachable = gui_run.main(["jvm-discovery", "--ref", "master"],
+                                    gh=unreachable, sleep=no_sleep, now=frozen_clock)
+    err = capsys.readouterr().err
+
+    assert code_failed == 1
+    assert code_unreachable == 3
+    assert code_unreachable != code_failed
+    assert "80" in err, "the run id is printed even though the run could not be read"
+    assert "actions/runs/80" in err or "gh run view 80" in err
+
+
+def test_the_url_from_the_run_list_is_what_is_printed_when_the_read_fails(capsys):
+    """The authoritative URL, not a reconstructed one, when the list answered."""
+    url = "https://github.com/gaozhao1989/pyjab/actions/runs/81"
+    gh = FakeGh(runs=[[a_run(81, just_dispatched(), url=url)]])
+    gh.run_status = MagicMock(side_effect=gui_run.GhUnreachable("TLS handshake timeout"))
+
+    code = gui_run.main(["jvm-discovery", "--ref", "master"], gh=gh, sleep=no_sleep,
+                        now=frozen_clock)
+
+    assert code == 3
+    assert url in capsys.readouterr().err
+
+
+def test_a_dispatch_that_could_not_be_reached_says_the_trigger_is_uncertain(capsys):
+    """A dispatch whose answer was lost may or may not have been delivered.
+
+    Saying "the dispatch failed" would be a claim the tool cannot make: the request can
+    reach GitHub and the response be lost, which is exactly what a TLS handshake
+    timeout looks like. So it says which part is unknown and names the workflow page.
+    """
+    gh = FakeGh()
+    gh.dispatch = MagicMock(side_effect=gui_run.GhUnreachable("TLS handshake timeout"))
+
+    code = gui_run.main(["jvm-discovery", "--ref", "master"], gh=gh, sleep=no_sleep,
+                        now=frozen_clock)
+
+    err = capsys.readouterr().err
+    assert code == 3
+    assert "may or may not" in err
+    assert "windows-gui.yml" in err
+
+
+def test_an_artifact_that_could_not_be_fetched_still_names_the_run(capsys):
+    """The conclusion is known and the measurement is not; the reader fetches it."""
+    gh = FakeGh(runs=[[a_run(82, just_dispatched(), url="https://example/runs/82")]])
+    gh.download_artifact = MagicMock(side_effect=gui_run.GhUnreachable("i/o timeout"))
+
+    code = gui_run.main(["jvm-discovery", "--ref", "master"], gh=gh, sleep=no_sleep,
+                        now=frozen_clock)
+
+    err = capsys.readouterr().err
+    assert code == 3
+    assert "82" in err
+
+
+def test_the_help_says_what_exit_three_means(capsys):
+    """Documented where a caller will look for it, not only in the module docstring."""
+    with pytest.raises(SystemExit) as exit_info:
+        gui_run.parse_args(["--help"], ["m0"])
+
+    out = capsys.readouterr().out
+    assert exit_info.value.code == 0
+    assert "exit status" in out
+    assert "gh could not be reached" in out
+    assert "NOT the same as 1" in out
+
+
+def test_a_flaky_gh_is_retried_inside_the_whole_flow_rather_than_only_in_the_unit(capsys):
+    """End to end: one TLS timeout while the run is being watched, and the tool finishes.
+
+    ``Gh``'s default runner is the retrying :func:`run_gh`, so the flow inherits the
+    retry without every call site knowing about it. This drives that wiring rather than
+    the constant: the fake below fails the *first run-list call only* -- the call the
+    incident failed on -- and everything else answers.
+    """
+    url = "https://github.com/gaozhao1989/pyjab/actions/runs/83"
+    seen = []
+
+    def flaky(argv, **kwargs):
+        seen.append(list(argv))
+        lists = sum(1 for call in seen if "list" in call)
+        if "list" in argv and lists == 1:
+            return gh_fails("net/http: TLS handshake timeout")
+        if "download" in argv:
+            into = Path(argv[argv.index("--dir") + 1])
+            into.mkdir(parents=True, exist_ok=True)
+            (into / "jvm-discovery.log").write_text("the log\n", encoding="utf-8")
+            return gh_succeeds("")
+        if "list" in argv:
+            return gh_succeeds(json.dumps([a_run(83, just_dispatched(), url=url)]))
+        if "view" in argv:
+            return gh_succeeds(json.dumps({"status": "completed",
+                                           "conclusion": "success"}))
+        return gh_succeeds("")
+
+    gh = gui_run.Gh("gaozhao1989/pyjab", runner=functools.partial(gui_run.run_gh,
+                                                                 sleep=no_sleep))
+    with patch.object(gui_run.subprocess, "run", side_effect=flaky):
+        code = gui_run.main(["jvm-discovery", "--ref", "master", "--repo",
+                              "gaozhao1989/pyjab"], gh=gh, sleep=no_sleep,
+                            now=frozen_clock)
+
+    out = capsys.readouterr().out
+    assert code == 0, "a flake on the first run-list call must not end the tool"
+    assert "the log" in out
+    assert sum(1 for argv in seen if "list" in argv) == 2, (
+        "the run list was asked twice: once failed, once answered"
+    )
 
 
 def test_the_run_list_asks_for_the_fields_the_picker_reads():
-    """A field the picker reads but ``--json`` does not ask for is always absent."""
+    """A field the picker reads but ``--json`` does not ask for is always absent.
+
+    ``url`` is in the list because the give-up path prints it, and asking for it as a
+    *separate* call -- on the path where GitHub cannot be reached -- is the call that
+    would fail.
+    """
     gh = gui_run.Gh("owner/name", runner=MagicMock(
         return_value=json.dumps([a_run(1, "2026-10-10T10:00:00Z")])))
 
@@ -663,5 +962,5 @@ def test_the_run_list_asks_for_the_fields_the_picker_reads():
 
     argv = gh._run.call_args[0][0]
     requested = argv[argv.index("--json") + 1]
-    for field in ("databaseId", "createdAt", "headBranch"):
+    for field in ("databaseId", "createdAt", "headBranch", "url"):
         assert field in requested, field

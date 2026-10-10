@@ -39,6 +39,15 @@ permissions:
   contents: read
 
 jobs:
+  # Deliberately *not* given a `timeout-minutes`, unlike ci.yml and windows-gui.yml.
+  #
+  # A cap cancels the job, and cancelling `twine upload` part-way can leave a version
+  # half-published -- which is the one state PyPI cannot recover from, because no
+  # version may ever be re-uploaded (AGENTS.md 1.3).  A hang while nothing is being
+  # published is recoverable: the tag is pushed, nothing reached PyPI, and the release
+  # skill's recovery path starts from a known state.  So this workflow keeps GitHub's
+  # 360-minute default, which is the longest leash available, and a stuck run is
+  # handled by the release procedure rather than by a timer.
   build:
     name: Build distribution
     runs-on: ubuntu-latest
