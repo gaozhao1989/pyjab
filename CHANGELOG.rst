@@ -134,6 +134,38 @@ Added
 Fixed
 ~~~~~
 
+* **``tools/verify_xpath.py`` announced a launch it never performed.** The default
+  path -- no ``--no-launch`` -- printed "launching PyjabTestApp ..." and then waited
+  for a window that nothing had started, so it could only ever time out: ``process =
+  None`` was assigned and never read, and the only ``subprocess`` call in the file was
+  ``javac``. Only ``--no-launch``, attaching to an application already running, ever
+  worked. Found by running it on the hosted Windows runner, which is the first time
+  its default path had been run anywhere.
+
+* **``tools/verify_table_selection.py`` reported every table cell as ``None``, and
+  asserted something ``select_row()`` does not promise.** The five row mismatches came
+  from reading ``.text``. A ``JTable`` cell has no Accessible Text interface -- pyjab
+  logs "current JABElement does not support Accessible Text" once per cell and
+  ``.text`` returns ``None`` by its own documented contract -- while Swing puts the
+  rendered value in the accessible *name*. ``tests/test_components.py`` already
+  asserted ``get_cell(0, 0).name == "Kathy"``, and the tool's own scenario 10 prints
+  those same values out of ``.name``.
+
+  The sixth mismatch was ``is_row_selected(1)`` after ``select_row(1)``, which
+  ``select_row()``'s docstring explicitly declines to promise: there is no JAB call
+  that selects a row, it adds each of the row's cells, and "whether the application
+  then reports the *row* as selected is up to its implementation". It is reported
+  rather than judged now. The observation behind it is still worth reading and is
+  flagged in its own words: ``select_row(1)`` left ``selected_rows`` empty and
+  ``selected_columns`` ``[0, 2]``, where ``select_cell(2, 1)`` does select its row.
+
+* **The workflow guard could not see a duplicate key.** ``safe_load`` accepts one and
+  keeps the last value, so ``test_every_workflow_is_valid_yaml`` passed a file that
+  GitHub Actions refuses -- and a refused file is the exact symptom that test exists
+  to prevent: the run ends after 0 seconds as "This run likely failed because of a
+  workflow file issue", with no jobs and no logs. It now walks the node tree and fails
+  with the line and the key, and there is a test that it can find one.
+
 * **Five GUI tests still asserted the root special cases that were removed.** The
   ``test_frame``, ``test_dialog`` and ``test_component_info`` tests in
   ``tests/test_components.py``, and both new-window tests in

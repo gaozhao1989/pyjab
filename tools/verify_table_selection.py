@@ -195,8 +195,16 @@ def run(driver, report: Report, timeout: int) -> None:
     report.expect("accessible_selection", table.accessible_selection, True)
 
     report.scenario(3, "get_cell() reads the cell list")
+    # .name, not .text, which is what this used to read and why it reported every
+    # cell as None.  A JTable cell has no Accessible Text interface -- pyjab logs
+    # "current JABElement does not support Accessible Text" once per cell, and
+    # .text returns None by its own documented contract -- while Swing puts the
+    # rendered cell value in the accessible *name*.  Three things agree:
+    # tests/test_components.py asserts get_cell(0, 0).name == "Kathy", scenario 10
+    # below prints these same values out of .name, and verify_m0.py's cell probe
+    # reads .name too.
     for row in range(len(EXPECTED)):
-        got = [table.get_cell(row, column).text for column in range(len(EXPECTED[0]))]
+        got = [table.get_cell(row, column).name for column in range(len(EXPECTED[0]))]
         report.expect(f"row {row}", got, EXPECTED[row])
 
     report.scenario(4, "Nothing is selected to begin with")
@@ -217,8 +225,24 @@ def run(driver, report: Report, timeout: int) -> None:
     report.observed("is_row_selected(1)", table.is_row_selected(1))
     report.observed("is_row_selected(0)", table.is_row_selected(0))
     report.observed("selected_columns", table.selected_columns)
-    report.expect("is_row_selected(1)", table.is_row_selected(1), True)
     report.expect("is_row_selected(0)", table.is_row_selected(0), False)
+    # is_row_selected(1) is observed above, not judged.  select_row()'s own
+    # docstring says there is no JAB call that selects a row -- it adds each of
+    # the row's cells -- and that "whether the application then reports the *row*
+    # as selected is up to its implementation -- check selected_rows afterwards
+    # rather than assuming".  This used to assert True, i.e. it asserted the one
+    # thing the contract it was checking declines to promise.
+    #
+    # What is still worth flagging is the shape of the answer.  select_cell(2, 1)
+    # in scenario 6 leaves selected_rows == [2]; select_row(1) leaves no rows
+    # selected and reports selected_columns [0, 2].  That is an anomaly rather
+    # than a broken promise, so it is recorded as one, in its own words.
+    if not table.selected_rows:
+        report.mismatches.append(
+            "select_row(1) left selected_rows empty and selected_columns "
+            f"{table.selected_columns!r}; select_cell(2, 1) in scenario 6 does "
+            "select its row, so this is not row selection being off"
+        )
     elements = table.get_selected_elements()
     report.observed("get_selected_elements()", [e.name for e in elements])
     report.observed("  their text", [e.text for e in elements])

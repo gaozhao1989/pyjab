@@ -131,6 +131,65 @@ def test_the_check_passes_on_the_repository():
 # The workflow files, because a bad one fails with no jobs at all
 # ---------------------------------------------------------------------------
 
+def _duplicate_keys(yml, text: str) -> list:
+    """``(line, key)`` for every key that appears twice in one mapping, at any depth.
+
+    Reads the node tree rather than loading the document, because ``safe_load``
+    accepts a duplicate key and silently keeps the last value -- so the object it
+    returns cannot show that a second one was ever there.
+    """
+
+    def mappings(node):
+        if isinstance(node, yml.MappingNode):
+            yield node
+            for key, value in node.value:
+                yield from mappings(key)
+                yield from mappings(value)
+        elif isinstance(node, yml.SequenceNode):
+            for item in node.value:
+                yield from mappings(item)
+
+    found = []
+    for node in mappings(yml.compose(text)):
+        seen = set()
+        for key, _value in node.value:
+            if key.value in seen:
+                found.append((key.start_mark.line + 1, key.value))
+            seen.add(key.value)
+    return found
+
+
+def test_duplicate_keys_are_found_at_any_depth():
+    """The check below is only worth having if it can see the thing it checks for."""
+    yml = pytest.importorskip("yaml")
+
+    # Not `on:` -- PyYAML resolves a bare `on` to the boolean True, so the key
+    # would not be the string this test looks for. (The real check reads
+    # workflow files through compose(), which does not resolve scalars, so it is
+    # unaffected.)
+    text = (
+        "pipeline:\n"
+        "  dispatch:\n"
+        "    inputs:\n"
+        "      title:\n"
+        "        default: one\n"
+        "      title:\n"
+        "        default: two\n"
+        "jobs:\n"
+        "  a:\n"
+        "    steps:\n"
+        "      - run: echo hi\n"
+        "      - run: echo hi\n"
+    )
+
+    assert yml.safe_load(text)["pipeline"]["dispatch"]["inputs"]["title"] == {
+        "default": "two"
+    }, "safe_load is expected to keep the last duplicate silently"
+
+    found = _duplicate_keys(yml, text)
+    assert found == [(6, "title")], found
+
+
 def test_every_workflow_is_valid_yaml():
     """A CI that cannot start reports nothing useful.
 
@@ -147,10 +206,23 @@ def test_every_workflow_is_valid_yaml():
 
     assert workflows, "no workflow files found"
     for path in workflows:
+        text = path.read_text(encoding="utf-8")
         try:
-            yml.safe_load(path.read_text(encoding="utf-8"))
+            yml.safe_load(text)
         except yml.YAMLError as error:
             pytest.fail(f"{path.name} is not valid YAML: {error}")
+
+        # A duplicate key is the same symptom a second way. It is valid YAML and
+        # fatal to Actions: adding a `push:` trigger once duplicated a `title:`
+        # input, and the run died after 0 seconds with "This run likely failed
+        # because of a workflow file issue" -- no jobs, no logs, nothing to read.
+        # safe_load cannot catch it, because it keeps the last value and reports
+        # no error at all.
+        for line, key in _duplicate_keys(yml, text):
+            pytest.fail(
+                f"{path.name}:{line}: duplicate key {key!r} in the same mapping. "
+                "PyYAML keeps the last one; GitHub Actions rejects the file."
+            )
 
 
 def test_every_workflow_step_named_like_a_check_runs_something():

@@ -243,22 +243,39 @@ def main() -> int:
         print(f"\nThis needs Windows.\n\n{exc}")
         return 2
 
-    if not args.no_launch and not compile_test_app():
-        return 2
-
-    print(f"\nlaunching {APP_CLASS} ...")
-    report = Report()
     process = None
-
     if args.no_launch:
-        driver = JABDriver(title=WINDOW_TITLE, timeout=args.timeout)
-        try:
-            run(driver, report)
-        finally:
-            driver.__exit__(None, None, None)
+        print(f"\nattaching to a running {APP_CLASS} ...")
     else:
-        with JABDriver(title=WINDOW_TITLE, timeout=args.timeout) as driver:
-            run(driver, report)
+        if not compile_test_app():
+            return 2
+        # Launch it, which this tool used to announce without doing: it printed
+        # "launching ..." and then waited for a window that nothing had started,
+        # so the default path could only ever time out.  Only --no-launch
+        # worked.  No --title is passed on purpose -- the default title is what
+        # WINDOW_TITLE holds, and "--title NAME" is silently ignored because the
+        # application matches the "--title=" prefix.
+        print(f"\nlaunching {APP_CLASS} ...")
+        process = subprocess.Popen(["java", "-cp", str(JAVA_CLASSES), APP_CLASS])
+        time.sleep(3.0)
+
+    report = Report()
+    try:
+        if args.no_launch:
+            driver = JABDriver(title=WINDOW_TITLE, timeout=args.timeout)
+            try:
+                run(driver, report)
+            finally:
+                driver.__exit__(None, None, None)
+        else:
+            with JABDriver(title=WINDOW_TITLE, timeout=args.timeout) as driver:
+                run(driver, report)
+    finally:
+        # The driver stops a process it is bound to, but it only exists once the
+        # window was found.  On the failure path -- the interesting one -- this
+        # is the only thing that stops the JVM this tool started.
+        if process is not None and process.poll() is None:
+            process.terminate()
 
     print("\n" + "=" * 62)
     if report.failures:
