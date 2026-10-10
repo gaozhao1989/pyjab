@@ -10,11 +10,32 @@ evidence is a hand-run on a real 150% display, archived on the issue.
 
 from __future__ import annotations
 
+import time
+
 import pytest
 
 from pyjab.common.role import Role
 
 pytestmark = pytest.mark.gui
+
+
+def wait_for_dialog(title: str, timeout: float = 15.0):
+    """A driver bound to a dialog that has appeared, or None.
+
+    A dialog is its own top-level window, so it needs its own driver -- and **not** a context
+    manager: `__exit__` terminates the bound process by pid, and the dialog belongs to the
+    same JVM as the main window. See tests/test_components.py.
+    """
+    from pyjab.common.exceptions import JABException
+    from pyjab.jabdriver import JABDriver
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            return JABDriver(title=title, timeout=5)
+        except JABException:
+            time.sleep(0.5)
+    return None
 
 
 @pytest.fixture
@@ -134,24 +155,22 @@ def test_the_accelerator_item_exists_as_a_menu_item(driver):
     assert item.role_en_us == Role.MENU_ITEM
 
 
-def test_clicking_the_accelerated_item_invokes_it(driver):
-    """The control the accelerator test needs, and the cheapest question in #183.
+def test_clicking_the_accelerated_item_invokes_it(driver, test_application):
+    """The control #183 needed: does the item work at all?
 
-    If clicking the item renames it, the item and its listener are fine and the accelerator
-    is the problem. If clicking does not, the item is the problem and the accelerator has
-    never had a chance. Those two lead in different directions, and nothing has tried the
-    first one.
+    The menu is clicked open first -- a `JMenuItem` inside a closed menu is not on screen and
+    may well have nothing to click.
 
-    The menu is clicked open first, because a `JMenuItem` inside a closed menu is not on
-    screen and may well have nothing to click.
+    The observable is a **dialog**, not a rename. The first version of this looked for the
+    item's new name and could not distinguish "the listener never ran" from "the listener ran
+    and the name is not visible through JAB" -- which is exactly what the accelerator test
+    needs to know.
     """
     driver.find_element_by_name("A Menu").click()
+    driver.find_element_by_name("Accelerated item").click()
 
-    item = driver.find_element_by_name("Accelerated item")
-    item.click()
-
-    invoked = driver.find_element_by_name("Accelerated item (invoked)")
-    assert invoked.role_en_us == Role.MENU_ITEM
+    dialog = wait_for_dialog("Accelerated dialog")
+    assert dialog is not None, "clicking the item did not open the dialog it opens"
 
 
 @pytest.mark.xfail(
@@ -183,8 +202,6 @@ def test_the_accelerator_invokes_it_with_the_same_effect_as_clicking(driver):
     to get focus is to click something that *has* an accessible action -- a label does not,
     so "click a label to be harmless" does not even work. See #180.
     """
-    item = driver.find_element_by_name("Accelerated item")
-
     # Foregrounds the window. A **button**, not a label: a JLabel has no accessible action
     # and cannot be clicked at all ("JABElement does not support Accessible Action"), which
     # is the second thing this test found. The toolbar button's own action is inert.
@@ -192,8 +209,5 @@ def test_the_accelerator_invokes_it_with_the_same_effect_as_clicking(driver):
 
     driver.send_keys("alt+y")
 
-    # The item renames itself when invoked, so the effect is observable through the
-    # accessibility tree rather than inferred from the keystroke not raising.
-    invoked = driver.find_element_by_name("Accelerated item (invoked)")
-    assert invoked.role_en_us == Role.MENU_ITEM
-    assert item.name != invoked.name
+    # The observable is the dialog the item opens, not a keystroke that did not raise.
+    assert wait_for_dialog("Accelerated dialog", timeout=3.0) is not None
