@@ -7,16 +7,17 @@ hidden children.
 **A walk uses `children_count`, not the visible one** -- this file said otherwise when it was
 written, and a measurement said otherwise in turn. See #179.
 
+**The visible count cannot detect a refused call.** `getVisibleChildrenCount` answers `0`
+both for an element with no visible children and for a call it refuses, so
+`visible_children_count` returns the number rather than raising. The readable signal is
+`children_count`, whose `getAccessibleContextInfo` check is live. See #191.
+
 The tests here pin the distinction and the reason `as_record()` carries only one of them.
 """
 
 from __future__ import annotations
 
-import pytest
-
 import _win32stubs  # noqa: F401
-
-from pyjab.common.exceptions import JABException
 
 JABElement = _win32stubs.import_jabelement()
 
@@ -56,11 +57,13 @@ def test_the_two_docstrings_point_at_each_other():
     assert "children_count" in visible
 
 
-def test_a_refused_visible_count_raises_rather_than_reporting_zero():
-    """A refused call is not an answer of zero, and this is where that matters most.
+def test_a_zero_visible_count_is_returned_as_zero():
+    """A childless element is not an error, and the bridge answers zero for it.
 
-    It is the same distinction issue #73 is about: a canvas-drawn panel genuinely has no
-    children, and a failed read has no children either, and those must not look alike.
+    Measured on a real JVM (#191): ``getVisibleChildrenCount`` returns ``0`` for a
+    childless self-painting panel, and ``0`` again when it refuses the call -- never the
+    ``-1`` the JAB header documents. So there is no sentinel to raise on, and this
+    property reports the number the bridge returned.
     """
     from unittest.mock import patch
 
@@ -69,5 +72,20 @@ def test_a_refused_visible_count_raises_rather_than_reporting_zero():
     element, _bridge = bind(node("panel", name="p"))
     with patch.object(JABElement, "bridge", create=True,
                       new=type("B", (), {"getVisibleChildrenCount": lambda *a: 0})()):
-        with pytest.raises(JABException):
-            element.visible_children_count
+        assert element.visible_children_count == 0
+
+
+def test_the_visible_count_is_the_bridge_return_passed_through():
+    """Whatever the bridge answered, including a refused-looking value, is the answer.
+
+    The companion to the test above: a non-zero return has to survive too, so a property
+    that returned a constant zero would not pass this pair.
+    """
+    from unittest.mock import patch
+
+    from tests._fakejab import bind, node
+
+    element, _bridge = bind(node("panel", name="p"))
+    with patch.object(JABElement, "bridge", create=True,
+                      new=type("B", (), {"getVisibleChildrenCount": lambda *a: 7})()):
+        assert element.visible_children_count == 7

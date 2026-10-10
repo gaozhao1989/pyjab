@@ -11,19 +11,16 @@ Unreleased
 ----------
 
 * **``visible_children_count``, because there are two answers to "how many children".**
-  ``children_count`` is the **total**, from the accessibility context info. What a
-  traversal yields is the **visible** count, from ``getVisibleChildrenCount``. Both are
-  correct and they differ whenever an element has hidden children — so
-  ``children_count > len(list(element.walk()))`` is a **normal** result, and before this
-  there was nothing to tell it apart from a bug or a truncated walk.
+  ``children_count`` is the **total**, from the accessibility context info;
+  ``visible_children_count`` is the count the bridge calls visible, from
+  ``getVisibleChildrenCount``. Both are correct and they differ whenever an element has
+  hidden children. **Neither is what a walk yields**: ``walk()`` iterates
+  ``children_count``, so it includes hidden children too. An earlier version of this entry
+  said a traversal yields the visible ones; #179 measured that it does not.
 
   ``as_record()`` deliberately still carries only ``children_count``: it is the record a
   walk produces **per node**, and the visible count is a second bridge call per node. A
   caller that needs it asks for it.
-
-  ``visible_children_count`` **raises** rather than returning zero when the bridge refuses
-  the call — a refused count is not an answer of zero, which is the same distinction issue
-  #73 is about.
 
 * **``focus()``, so a caller can bring a window forward and find out whether it worked.**
   ``send_keys()``'s own docstring told callers to bring the window forward first, and there
@@ -62,6 +59,34 @@ Added
   It sends to **whatever has the keyboard focus** and does not focus anything; the
   docstrings say so, because a shortcut only works if the intended window already has
   focus. Gaozhao1989/pyjab#168.
+
+Changed
+~~~~~~~
+
+* **``visible_children_count`` answers with the number the bridge returned, ``0`` included,
+  instead of raising on a refusal.** The property is new in this release, and it was written
+  to raise ``JABException`` when ``getVisibleChildrenCount`` came back falsy — expecting the
+  ``-1`` the JAB header documents for an error. It does not answer ``-1``. Measured on a
+  real JVM (#191), a childless self-painting panel returns **``0``** and a refused call
+  returns **``0``** as well: never the documented sentinel. So the guard raised on a
+  legitimate zero and could not have detected a refusal either — there is nothing to read
+  it from, and "no visible children" and "could not read them" are the same answer coming
+  out of this call.
+
+  The property now returns that number and does not raise. **The readable signal is
+  ``children_count``**, which comes from ``getAccessibleContextInfo`` and has a live failure
+  check: if the context info could not be read, ``children_count`` raises first, and if it
+  could be read, a ``0`` from ``visible_children_count`` is the truth. A caller that needs to
+  tell "no children" from "could not read them" asks ``children_count``.
+
+  .. note::
+
+     **Affects: pyjab-mcp** — first released in **1.11.0**. The raise existed on ``master``
+     but has never been in a release, so nothing on PyPI changes; a dependent that pins
+     ``pyjab@master`` is the one to check. Code written against the raising contract now
+     gets ``0`` for a childless element where it caught ``JABException``, and gets ``0`` for
+     a refused count as well. Ask ``children_count`` for "was it readable", and stop
+     treating ``0`` as a value this property cannot return.
 
 1.10.0 - 2026-10-10
 ------------------

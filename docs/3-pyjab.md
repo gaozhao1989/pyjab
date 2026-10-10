@@ -578,8 +578,18 @@ If a walk was cut short, that is `JABTree.truncated` — a different question fr
 produces for every node, and the visible count is a second bridge call per node. Ask for the
 property when you need it.
 
-`visible_children_count` **raises** if the bridge refuses the call. A refused count is not a
-count of zero, and that distinction is the same one the canvas note below is about.
+`visible_children_count` returns **whatever the bridge returned, including `0`**, and does
+not raise. `getVisibleChildrenCount` has no sentinel to detect a refusal with: measured on a
+real JVM (#191), a childless element and a refused call both come back as `0` -- never the
+`-1` the JAB header documents. So a zero here means "none visible" **or** "could not read
+them", and this call cannot tell those apart.
+
+**The readable signal is `children_count`, not this one.** It comes from
+`getAccessibleContextInfo`, whose failure check is live, so if the context info could not be
+read, `children_count` raises before you get here; if it could be read, a `0` from
+`visible_children_count` is the truth. Ask `children_count` when you need to tell "no
+children" from "could not read the children".
+
 ## Bringing a window forward
 
 ```python
