@@ -448,11 +448,11 @@ every cell is added. Whether the application then reports the *row* as selected 
 own decision — some do, some only ever report cells. Check `selected_rows` after
 selecting rather than building on the assumption.
 
-`select_all()` is the one to watch: on a Swing `JTable` it does **nothing unless
-individual cell selection is enabled**, because
-`AccessibleJTable.selectAllAccessibleSelection()` falls through in row-selection mode.
-It raises nothing, so read `selected_rows` back rather than assuming the table is
-selected.
+`select_all()` closes the same gap from the other side. On a Swing `JTable` the
+bridge's own call does nothing unless individual cell selection is enabled --
+`AccessibleJTable.selectAllAccessibleSelection()` falls through in row-selection mode --
+so the result is read back and the table is walked when nothing was selected. It selects
+every row, every column or every cell, whichever the table allows.
 
 ### The selected cells
 

@@ -269,6 +269,37 @@ def test_select_all_takes_the_selection_the_table_offers():
     assert bridge.count("selectAllAccessibleSelectionFromContext") == 1
     assert element.selected_row_count == 2
     assert element.selected_column_count == 3
+    # The fallback must not run when the bridge's own call worked; this is the
+    # "read the result back" part being cheap rather than doubling the work.
+    assert bridge.count("addAccessibleSelectionFromContext") == 0
+
+
+def test_select_all_is_not_a_no_op_on_a_row_selecting_table():
+    """The bridge's own call falls through there, so the table gets walked.
+
+    ``AccessibleJTable.selectAllAccessibleSelection()`` is
+    ``if (cellSelectionEnabled) { selectAll(); }`` and does nothing otherwise, so on
+    a default Swing table it raises nothing and selects nothing.  One add per row is
+    enough, because on that table the first cell of a row selects the whole row.
+    """
+    element, bridge = a_row_selecting_table(rows=3, columns=4)
+
+    element.select_all()
+
+    assert bridge.count("selectAllAccessibleSelectionFromContext") == 1
+    assert bridge.count("addAccessibleSelectionFromContext") == 3
+    assert element.selected_rows == [0, 1, 2]
+    assert element.selected_row_count == 3
+
+
+def test_select_all_on_a_column_selecting_table_takes_every_column():
+    """The mirror: there one add per column is what selects everything."""
+    element, bridge = a_column_selecting_table(rows=4, columns=3)
+
+    element.select_all()
+
+    assert bridge.count("addAccessibleSelectionFromContext") == 3
+    assert element.selected_columns == [0, 1, 2]
 
 
 def test_clearing_the_selection_empties_it():

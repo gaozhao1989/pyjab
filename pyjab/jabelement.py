@@ -2740,17 +2740,33 @@ class JABElement(object):
     def select_all(self) -> None:
         """Ask the table to select everything it can.
 
-        On a Swing ``JTable`` this does **nothing unless cell selection is
-        enabled**: ``AccessibleJTable.selectAllAccessibleSelection()`` is
-        ``if (cellSelectionEnabled) { selectAll(); }`` and falls through otherwise.
-        A default table is in row-selection mode, so nothing gets selected and no
-        error is raised -- check :attr:`selected_rows` afterwards rather than
-        assuming this worked.
+        On a Swing ``JTable`` the bridge's own call does **nothing unless cell
+        selection is enabled**: ``AccessibleJTable.selectAllAccessibleSelection()``
+        is ``if (cellSelectionEnabled) { selectAll(); }`` and falls through
+        otherwise.  A default table is in row-selection mode, so that call is a
+        no-op which raises nothing.
+
+        So what it did is read back, and when nothing was selected the table is
+        walked instead: every cell that is not already selected is added, which
+        selects every row, every column, or every cell, whichever the table allows.
+        Reading the result costs one call on the path where the bridge's own call
+        worked.
+
+        There is no ``clear`` argument, so a table that already had a selection
+        keeps it and gains the rest.
         """
         self._require_table("select_all")
         self.bridge.selectAllAccessibleSelectionFromContext(
             self.vmid, self.accessible_context
         )
+        if self._get_accessible_selection_count_from_context():
+            return
+        info = self._get_accessible_table_info()
+        for row in range(info.rowCount):
+            for column in range(info.columnCount):
+                index = self._get_accessible_table_index(row, column)
+                if index >= 0 and not self._is_accessible_child_selected(index):
+                    self._select_accessible_table_index(index)
 
     def get_visible_children(self) -> list:
         """The children currently on screen, as :class:`JABElement` objects.
