@@ -70,6 +70,7 @@ on:
           - soak
           - jvm-discovery
           - visible-children-count
+          - jab-return-values
           - screenshot
           - detach
           - environment
@@ -272,6 +273,15 @@ jobs:
           # Launches and owns its own application; needs no external title.
           # It measures what the bridge returns for #191; it does not fix anything.
           python tools/verify_visible_children_count.py 2>&1 | Tee-Object -FilePath visible-children-count.log
+          exit $LASTEXITCODE
+
+      - name: "task=jab-return-values"
+        if: inputs.task == 'jab-return-values'
+        shell: pwsh
+        run: |
+          # Launches and owns its own application; needs no external title.
+          # It measures what each candidate symbol returns for #195; it arms nothing.
+          python tools/verify_jab_return_values.py 2>&1 | Tee-Object -FilePath jab-return-values.log
           exit $LASTEXITCODE
 
       - name: "task=test-app"
