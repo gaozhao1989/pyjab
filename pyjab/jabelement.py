@@ -685,11 +685,11 @@ class JABElement(object):
     ) -> AccessibleTextInfo:
         info = AccessibleTextInfo()
         accessible_context = accessible_context or self.accessible_context
-        result = self.bridge.getAccessibleTextInfo(
+        # No result check: this symbol is armed in SIGNATURES, so the errcheck hook
+        # raises from inside the call. One mechanism per call -- AGENTS.md 2.7.
+        self.bridge.getAccessibleTextInfo(
             self.vmid, accessible_context, byref(info), 0, 0
         )
-        if not result:
-            raise JABException(self.int_func_err_msg.format("getAccessibleTextInfo"))
         return info
 
     def _get_accessible_text_range(
@@ -701,11 +701,10 @@ class JABElement(object):
             accessible_context: JOBJECT64 = None,
     ) -> None:
         accessible_context = accessible_context or self.accessible_context
-        result = self.bridge.getAccessibleTextRange(
+        # Armed in SIGNATURES: a falsy result raises from inside the call.
+        self.bridge.getAccessibleTextRange(
             self.vmid, accessible_context, start, end, text, length
         )
-        if not result:
-            raise JABException(self.int_func_err_msg.format("getAccessibleTextRange"))
 
     def _get_accessible_table_info(
             self, accessible_context: JOBJECT64 = None
@@ -831,13 +830,10 @@ class JABElement(object):
         """
         info = AccessibleTableCellInfo()
         accessible_context = accessible_context or self.accessible_context
-        result = self.bridge.getAccessibleTableCellInfo(
+        # Armed in SIGNATURES: a falsy result raises from inside the call.
+        self.bridge.getAccessibleTableCellInfo(
             self.vmid, accessible_context, row, column, byref(info)
         )
-        if not result:
-            raise JABException(
-                self.int_func_err_msg.format("getAccessibleTableCellInfo")
-            )
         return info
 
     # --- AccessibleTable selection ---------------------------------------
@@ -1623,6 +1619,15 @@ class JABElement(object):
         Default will use JAB Accessible Action.
         Set parameter 'simulate' to True if internal action does not work.
 
+        :Raises:
+            RuntimeError: the bridge refused ``setTextContents`` (it returned falsy).
+                That symbol is armed in ``SIGNATURES``, so the failure arrives from
+                inside the call rather than as a return value -- and **``simulate=True``
+                is the documented workaround**: it clears the field and types the value
+                through the keyboard instead of through the accessibility action. The
+                hook's message carries the symbol name and this same hint; the hint used
+                to live only in a check here that arming made unreachable (#217).
+
         :Args:
             value (str, int): A string for typing.
             simulate (bool, optional): Simulate user input action by keyboard event. Defaults to False.
@@ -1639,14 +1644,12 @@ class JABElement(object):
             self.clear(True, wait_for_text_update)
             self.win32_utils._send_keys(value)
         else:
-            result = self.bridge.setTextContents(
+            # Armed in SIGNATURES: a falsy result raises from inside the call, with
+            # the symbol name and the simulate hint in its message.  Do not add a
+            # result check back -- it cannot run (AGENTS.md 2.7, #217).
+            self.bridge.setTextContents(
                 self.vmid, self.accessible_context, value
             )
-            if result == 0:
-                raise JABException(
-                    self.int_func_err_msg.format("setTextContents")
-                    + ", try set parameter 'simulate' with True"
-                )
         if not wait_for_text_update or self.role != Role.TEXT:
             return
         self._wait_for_value_to_be(
