@@ -62,14 +62,13 @@ def driver(test_application):
 def test_a_painted_panel_has_no_children_and_says_so(driver):
     """`#73`'s conclusion, which pyjab-mcp documents to end users.
 
-    The asymmetry that matters is **"no children" vs "could not read the children"**. So
-    this asserts three things: the count is zero, the *visible* count is zero, and both of
-    those are **answers rather than refusals** — a refusal raises, and if it started
-    returning zero instead, this test would still pass while the distinction #73 is about
-    quietly disappeared.
+    The asymmetry that matters is **"no children" vs "could not read the children"**. It is
+    **not** visible through ``visible_children_count``: measured on a real JVM (#191), the
+    bridge answers ``0`` for a panel with no children and ``0`` again when it refuses the
+    call -- never the ``-1`` the JAB header documents. So both counts are asserted on their
+    **values** here, and the readable signal is ``children_count``, whose
+    ``getAccessibleContextInfo`` check is live.
     """
-    from pyjab.common.exceptions import JABException
-
     painted = driver.find_element_by_name("Painted panel")
 
     assert painted.role_en_us == Role.PANEL
@@ -77,16 +76,10 @@ def test_a_painted_panel_has_no_children_and_says_so(driver):
     # The total is readable and is zero.
     assert painted.children_count == 0
 
-    # **And the visible count is not readable at all** -- `getVisibleChildrenCount`
-    # refuses for this element, so it raises rather than answering zero. That is the first
-    # measured evidence for the distinction #73 is about, and it arrived by running this
-    # test: the two paths do not agree, and they disagree in the direction that matters.
-    #
-    # It also means "no children" and "could not read the children" are **not yet
-    # distinguishable through one API** -- one says zero, the other refuses, and a caller
-    # has to know which call it made. Reported on #169.
-    with pytest.raises(JABException):
-        painted.visible_children_count
+    # And the visible count is zero too -- the same zero a refusal would give, so this is
+    # the visible number and not evidence either way. It used to raise here; #191 measured
+    # the raw return and found the raise was on a legitimate zero.
+    assert painted.visible_children_count == 0
 
     # A walk over it yields nothing, which is the same answer the readable count gave.
     assert list(painted.walk()) == []

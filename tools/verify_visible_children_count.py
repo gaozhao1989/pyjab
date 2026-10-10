@@ -1,39 +1,27 @@
-"""Does the bridge answer ``0`` or ``-1`` when it refuses ``getVisibleChildrenCount``?
+"""``getVisibleChildrenCount`` has no error sentinel, so this checks what the property does.
 
-Issue #191 asks one question and holds two answers that cannot both be true.
+Issue #191 held two answers that could not both be true. ``JABElement.visible_children_count``
+guarded the call with ``if not result:``, and the JAB header documents
+``getVisibleChildrenCount`` as returning **``-1`` on error** -- so by that contract a refusal
+returning ``-1`` is truthy and the property returns ``-1`` as a count, while a legitimate
+``0`` is falsy and the property **raises** on an element that simply has no children.
 
-``JABElement.visible_children_count`` refuses the count when the bridge refuses the call,
-with the check ``if not result:``. The JAB header documents ``getVisibleChildrenCount`` as
-returning **``-1`` on error**, which makes that check wrong in both directions:
+This tool was written to read the raw number, because the property was what raised and the
+raise hid it. It measured what settles the question:
 
-* a refusal returning ``-1`` is **truthy**, so ``if not result:`` lets it through and the
-  property **returns ``-1`` as a count** rather than raising;
-* a **legitimate count of ``0``** is falsy, so ``if not result:`` **raises** on an element
-  that simply has no children.
+* **"Painted panel"** -- the childless self-painting ``JPanel`` in
+  ``tests/java/PyjabTestApp.java`` -- raw return **``0``**;
+* **"Main panel"** -- the control, a panel that really does have children -- raw return
+  ``171``.
 
-A GUI run measured one half of that: a ``JPanel`` that paints its own content and has no
-child components made ``visible_children_count`` **raise**. Under the current code a raise
-means the return was falsy -- i.e. ``0``, not ``-1``. So an inference from a raise contradicts
-the documented sentinel, and **nobody has read the raw number**, because the property is
-what raises and the raise is what hides it.
+**The bridge answers ``0`` for a refusal and never ``-1``**, so there is no sentinel, and
+``if not result:`` was wrong in both directions: it raised on a legitimate zero and could not
+have detected a refusal. ``visible_children_count`` now returns the bridge's number, ``0``
+included, and does not raise; the readable signal is ``children_count``, whose
+``getAccessibleContextInfo`` check is live.
 
-So this tool calls the bridge function **directly** -- the same symbol with the same
-arguments the property passes, through the ``getVisibleChildrenCount`` registration in
-``pyjab/jabfixedfunc.py`` -- and prints the raw return for two elements:
-
-1. **"Painted panel"** -- the childless self-painting ``JPanel`` in
-   ``tests/java/PyjabTestApp.java``, the element whose ``visible_children_count`` raises
-   today. What matters is the number underneath, so this never goes through the property.
-2. **"Main panel"** -- the **control**, a panel that really does have children. Without it,
-   a bridge that answered one number for everything would look exactly like an answer.
-
-It also prints ``children_count`` beside the raw value, and whether
-``visible_children_count`` returned a number or raised, so one run says everything #191
-needs: the total the bridge reports, the visible count it refuses to report, and the raw
-return the refusal is made of.
-
-**This measures and does not fix.** ``pyjab/jabelement.py`` is deliberately untouched: which
-of the two checks is the wrong one depends on the number this prints.
+So this tool's job is now to confirm that on a real JVM: it prints both raw returns, and
+``visible_children_count`` has to equal its element's raw value and must not raise.
 
 Windows, a JDK and an interactive desktop. Dispatched, never run locally:
 
@@ -56,13 +44,13 @@ JAVA_CLASSES = REPO_ROOT / "tests" / "java-classes"
 APP_CLASS = "PyjabTestApp"
 WINDOW_TITLE = "PyjabTestApp"
 
-#: The element whose visible count is refused (or is a genuine zero -- that is the question).
+#: The element whose visible count the bridge refuses. Measured: the raw return is ``0``.
 PAINTED_NAME = "Painted panel"
 #: The control: a panel with children, so a raw number here has to be non-zero.
 CONTROL_NAME = "Main panel"
 
-#: The two sentinels #191 is choosing between. ``-1`` is what the JAB header documents;
-#: ``0`` is what the raise on the painted panel implies.
+#: The sentinel the JAB header documents and this JVM does not use. Named because seeing it
+#: here would contradict the measurement #191 recorded.
 DOCUMENTED_ERROR = -1
 
 
@@ -126,11 +114,11 @@ def behaviour(value, error: Optional[str]) -> str:
 
 
 def probe(element, label: str) -> dict:
-    """Everything #191 needs about one element, without anything raising out of here.
+    """Everything needed about one element, without anything raising out of here.
 
-    **The raw call is made before ``visible_children_count``.** That property is the thing
-    under test and it raises, so asking it first would let the raise hide the number this
-    tool exists to read.
+    **The raw call is made before ``visible_children_count``.** The raw return is what the
+    property has to agree with, so it is read first and a failure there is reported rather
+    than being confused with the property's own answer.
     """
     found = {
         "label": label,
@@ -177,39 +165,40 @@ def report(found: dict) -> None:
 
 
 def disagreement(found: dict) -> Optional[str]:
-    """Whether the property and the direct call can be the same call.
+    """Whether the property returned the direct call's number, without raising.
 
-    ``visible_children_count`` raises exactly when the raw return is falsy, because its
-    check is ``if not result:``. If the two disagree about one element, this tool is not
-    measuring the call the property makes and the run says nothing.
+    The contract since #191 is that ``visible_children_count`` is the raw return, ``0``
+    included. A raise, or a different number, means the property is not the pass-through it
+    is documented to be.
     """
     if found["raw_error"] is not None:
         return (f"the direct call for '{found['label']}' itself raised: "
                 f"{found['raw_error']}")
 
     if found["visible_error"] is not None:
-        if found["raw"]:
-            return (f"'{found['label']}': the raw value {found['raw']!r} is truthy, so "
-                    f"visible_children_count's 'if not result:' should not have raised, "
-                    f"but it did")
-    elif found["visible"] != found["raw"]:
+        return (f"'{found['label']}': visible_children_count raised "
+                f"{found['visible_error']} for a raw return of {found['raw']!r}; it is "
+                f"documented to return that number and not raise (#191)")
+
+    if found["visible"] != found["raw"]:
         return (f"'{found['label']}': the property returned {found['visible']!r} while the "
                 f"raw call returned {found['raw']!r}; they are not the same call")
     return None
 
 
 def finding_for(raw) -> str:
-    """What the painted panel's raw value decides, in one sentence."""
+    """What the painted panel's raw value says about the contract, in one sentence."""
     if raw == DOCUMENTED_ERROR:
-        return ("the bridge answers -1 for the childless panel, so the header contract is "
-                "what this JVM does and 'if not result:' would return -1 as a count instead "
-                "of raising")
+        return ("the bridge answered -1, the documented error, which contradicts what #191 "
+                "measured and means the property now returns -1 as a count -- a refusal a "
+                "caller cannot see")
     if raw == 0:
-        return ("the bridge answers 0 and never -1, so 'if not result:' cannot tell a "
-                "refusal from a legitimate zero -- and the childless panel is the "
-                "legitimate zero it raises on")
-    return (f"the bridge answers {raw!r}, which is neither documented sentinel, so neither "
-            f"guard is right about this element")
+        return ("the bridge answers 0 and never -1, so there is no sentinel to detect a "
+                "refusal with: visible_children_count returns that 0 unchanged, and "
+                "children_count is what says whether the read succeeded")
+    return (f"the bridge answers {raw!r}, which is neither 0 nor the documented -1; the "
+            f"property returns it unchanged, and what a refusal looks like on this JVM has "
+            f"to be re-measured")
 
 
 def main() -> int:
@@ -297,8 +286,8 @@ def main() -> int:
         if failures:
             print("FAILED: " + "; ".join(failures))
             return 1
-        print(f"PASSED: the raw return was measured for both elements, and it settles "
-              f"#191 -- {finding}")
+        print(f"PASSED: visible_children_count matched the raw return for both elements and "
+              f"did not raise -- {finding}")
         return 0
     finally:
         if proc is not None:

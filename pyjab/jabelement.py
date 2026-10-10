@@ -161,18 +161,24 @@ class JABElement(object):
         So the two numbers answer different questions and this one is not the one a
         snapshot renders. Nothing currently reads both; #179 was closed with that finding.
 
-        Raises:
-            JABException: the bridge refused the call. **A refused count is not a count of
-                zero**, which is why this does not quietly return one — see
-                :meth:`walk`, whose ``truncated`` is the other half of the same question.
+        **This returns what the bridge returned, including ``0``, and does not raise.**
+        ``getVisibleChildrenCount`` has no sentinel to detect a refusal with: measured on a
+        real JVM, a childless self-painting panel and a refused call both come back as
+        ``0`` — never ``-1``, whatever the JAB header documents. So a ``0`` here means "no
+        visible children" *or* "the bridge would not read them", and this call cannot tell
+        those apart.
+
+        **The readable signal lives in** :attr:`children_count`, not here. It comes from
+        ``getAccessibleContextInfo``, which has a live hand-written failure check
+        (AGENTS.md 2.7: ``errorcheck=True`` is inert, so the checks run). If that context
+        info could be read, a ``0`` from this call is the truth; if it could not,
+        :attr:`children_count` raises first. A caller that needs "no children" versus
+        "could not read them" asks :attr:`children_count`; this property is just the
+        visible number. Issue #191.
         """
-        # The same call _generate_childs_from_element makes, and the same check: the
-        # symbol is registered without errorcheck, so a falsy return is a refused call
-        # rather than an answer. AGENTS.md 2.7.
-        result = self.bridge.getVisibleChildrenCount(self.vmid, self.accessible_context)
-        if not result:
-            raise JABException(self.int_func_err_msg.format("getVisibleChildrenCount"))
-        return int(result)
+        return int(
+            self.bridge.getVisibleChildrenCount(self.vmid, self.accessible_context)
+        )
 
     @property
     def bounds(self) -> dict:
