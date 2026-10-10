@@ -55,6 +55,10 @@ def a_full_pair():
         "cell": {"index": 6, "role": "Text", "text": "row3col2", "of": 9},
         "tree": {"count": 4, "named": 4, "sample": ["root", "child"]},
         "button": {"count": 3, "sample": "Button", "patterns": "invoke"},
+        # The control: the same client enumerating the desktop. Healthy, so the
+        # verdicts in these tests are about Java rather than about the client.
+        "_control": {"elements": 420, "named": 300, "roles": 24,
+                     "reached_limit": False, "role_counts": {"Pane": 100}},
     }
     return jab, uia
 
@@ -128,6 +132,13 @@ def the_real_run():
     has no table at all. Before Absent existed this shape came back INCONCLUSIVE,
     because UIA's absent table counted as an unanswered question -- which put
     verdict()'s clear-win branch out of reach for the one case it was written for.
+
+    The control came later, measured in a second dispatch of the same branch. It is part
+    of this fixture because without it the numbers above cannot be told apart from a UIA
+    client that simply cannot enumerate -- and the first version of this fixture had no
+    control, so it asserted a conclusion the recorded run did not support. The run is
+    real either way; what changed is that it now carries the evidence that makes it
+    mean something.
     """
     jab = {
         "windows": {"java": 1, "sample": ["PyjabTestApp"]},
@@ -139,8 +150,17 @@ def the_real_run():
         "button": {"count": 35, "sample": "push button", "states": "enabled,showing"},
     }
     uia = {
-        "windows": {"top_level": 5, "sample": ["Taskbar", "PyjabTestApp"]},
+        "windows": {"top_level": 6, "sample": ["Taskbar", "PyjabTestApp"]},
         "elements": 6, "roles": 4, "named": 5, "depth": 3,
+        # The control, measured in the same run on 2026-10-10 and added afterwards --
+        # the first dispatch of it came back without one, which is what showed that the
+        # function was being defined and never called. 147 elements across the desktop
+        # with reached_limit false, so the client walks a UIA tree of real size; the six
+        # it reports for the Java window are therefore about Java rather than about the
+        # client.
+        "_control": {"elements": 147, "named": 99, "roles": 17,
+                     "reached_limit": False,
+                     "role_counts": {"ButtonControl": 45, "TextControl": 41}},
         "role_counts": {"ButtonControl": 3, "TitleBarControl": 1},
         "table": verify_m0.Absent("no UIA element with 'table' in its type"),
         "cell": verify_m0.Absent("no UIA table, so no cell to read"),
@@ -331,3 +351,90 @@ def test_each_side_actually_measures_every_question_asked(side):
 
     missing = asked - measured
     assert not missing, f"{side} never measures {sorted(missing)}"
+
+
+# ---------------------------------------------------------------------------
+# The control, without which a win cannot be told from a broken client
+# ---------------------------------------------------------------------------
+
+def test_a_client_that_cannot_enumerate_is_not_a_win_for_pyjab():
+    """The confound, made explicit.
+
+    UIA reaches Java through the MSAA proxy. If that is not wired up on the machine, the
+    client sees a window frame and nothing inside it -- which is *exactly* what "UIA
+    cannot see Java content" looks like. So a small UIA tree only means something when
+    the same client has demonstrated it can enumerate something else.
+    """
+    jab, uia = a_full_pair()
+    uia["elements"] = 6
+    uia["_control"] = {"elements": 6, "named": 5, "roles": 4}
+
+    conclusion = verify_m0.verdict(jab, uia, complete=True)
+
+    assert "INCONCLUSIVE" in conclusion
+    assert "CLEARLY BETTER" not in conclusion
+    assert "cannot enumerate much of anything" in conclusion
+
+
+def test_a_healthy_control_lets_the_comparison_stand():
+    """And the same numbers with a working client are a real finding."""
+    jab, uia = a_full_pair()
+    uia["elements"] = 6
+    uia["_control"] = {"elements": 420, "named": 300, "roles": 24}
+
+    conclusion = verify_m0.verdict(jab, uia, complete=True)
+
+    assert "INCONCLUSIVE" not in conclusion
+
+
+def test_a_missing_control_is_inconclusive_rather_than_assumed_fine():
+    """No control cannot be read as a healthy one."""
+    jab, uia = a_full_pair()
+    uia.pop("_control")
+
+    conclusion = verify_m0.verdict(jab, uia, complete=True)
+
+    assert "INCONCLUSIVE" in conclusion
+    assert "control" in conclusion
+
+
+def test_an_unavailable_control_is_inconclusive():
+    jab, uia = a_full_pair()
+    uia["_control"] = verify_m0.Unavailable("could not walk the desktop through UIA")
+
+    conclusion = verify_m0.verdict(jab, uia, complete=True)
+
+    assert "INCONCLUSIVE" in conclusion
+
+
+def test_the_control_is_shown_in_the_report():
+    """A conclusion that depends on the control has to display it."""
+    jab, uia = a_full_pair()
+    lines, _complete = verify_m0.report(jab, uia)
+    rendered = "\n".join(lines)
+
+    assert "UIA control" in rendered
+    assert "420" in rendered
+
+
+def test_main_actually_measures_the_control():
+    """The function being written is not the same as the function being called.
+
+    The first version of the control defined it and never called it. No test noticed,
+    because every test here calls verdict() directly with a fixture that already had a
+    control in it -- so the suite proved the analysis worked and said nothing about
+    whether the measurement ran. This checks the call site, from the source.
+    """
+    import ast
+
+    source = (REPO_ROOT / "tools" / "verify_m0.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    main = next(node for node in ast.walk(tree)
+                if isinstance(node, ast.FunctionDef) and node.name == "main")
+
+    called = {node.func.id for node in ast.walk(main)
+              if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)}
+
+    assert "uia_control" in called, (
+        "main() never calls uia_control(), so no run carries a control"
+    )
