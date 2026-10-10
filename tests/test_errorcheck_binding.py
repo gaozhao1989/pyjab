@@ -129,16 +129,54 @@ def test_no_signature_row_is_flagged():
     armed = [name for name, _restype, _argtypes, errorcheck in SIGNATURES
              if errorcheck]
 
-    assert armed == [], (
-        "these rows install the errcheck hook, which is a per-row change that "
-        "needs a measurement behind it (#195): " + ", ".join(armed)
+    unexpected = sorted(set(armed) - ARMED)
+    assert unexpected == [], (
+        "these rows install the errcheck hook without a measurement behind them "
+        "(#195): " + ", ".join(unexpected)
     )
 
 
-def test_every_signature_row_reads_false():
-    """``False`` rather than any falsy value, so the column stays a bool."""
+#: The symbols a real run measured as returning truthy, so arming them cannot turn an
+#: ordinary call into a ``RuntimeError``. See AGENTS.md 2.7 and issue #195.
+ARMED = {
+    "getAccessibleTextInfo",
+    "getAccessibleTextRange",
+    "getAccessibleTableCellInfo",
+    "getVisibleChildren",
+    "getTopLevelObject",
+    "setTextContents",
+    "getVersionInfo",
+}
+
+#: Reached from all twelve ``except JABException`` blocks -- including two search loops that
+#: today ``continue`` past a bad item. Armed, a falsy read would end the search and the caller
+#: would get an exception instead of the partial result it used to get. Deliberately unarmed.
+NEVER_ARMED = {"getAccessibleContextInfo"}
+
+
+def test_only_the_measured_symbols_are_flagged():
+    """``False`` rather than any falsy value, so the column stays a bool.
+
+    Every row is either one of the seven a measurement cleared, or ``False``. A row flipped
+    without a measurement fails here.
+    """
     for name, _restype, _argtypes, errorcheck in SIGNATURES:
-        assert errorcheck is False, f"{name} is flagged {errorcheck!r}"
+        expected = name in ARMED
+        assert errorcheck is expected, (
+            f"{name} is flagged {errorcheck!r}, expected {expected!r}"
+        )
+
+
+def test_the_symbol_on_every_except_path_is_never_armed():
+    """The decision that is easiest to undo by accident.
+
+    ``getAccessibleContextInfo`` is read by every property through ``_acc_info``, so it is
+    reachable from every ``except JABException`` in the package -- two of which are search
+    loops that would give up rather than skip. Nothing measured clears it.
+    """
+    for name, _restype, _argtypes, errorcheck in SIGNATURES:
+        if name in NEVER_ARMED:
+            assert errorcheck is False, f"{name} must never be armed"
 
 
 def test_applying_the_table_installs_no_hook_on_any_symbol():
@@ -156,4 +194,8 @@ def test_applying_the_table_installs_no_hook_on_any_symbol():
     armed = sorted(name for name, func in bridge._funcs.items()
                    if func.errcheck is not None)
 
-    assert armed == [], f"hooks were installed on: {', '.join(armed)}"
+    # Exactly the measured seven, and nothing else -- not "none", which was the old
+    # invariant, and not "at least these", which would let a row be armed in passing.
+    assert armed == sorted(ARMED), (
+        f"hooks were installed on {armed}; expected {sorted(ARMED)}"
+    )

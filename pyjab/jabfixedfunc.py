@@ -47,18 +47,32 @@ from pyjab.common.types import JOBJECT64
 #: order is the one this table has always had -- the event callbacks first, then
 #: the lookups -- and is kept only so it reads in groups; ctypes does not care.
 #:
-#: **Every row carries ``False``, so no hook is installed on any symbol.**  The
-#: flag is a real mechanism -- ``True`` installs :meth:`JABFixedFunc._check_error`
-#: as ctypes' ``errcheck`` -- but arming it is a **per-row decision** that has to
-#: be gated on a measurement of what the JVM actually returns for that call
-#: (#195).  It is not free: the hook makes the caller's own ``if not result:``
-#: check unreachable, and it turns a falsy result into ``RuntimeError`` from
-#: inside the call, so the ``except JABException`` blocks in ``jabelement.py``
-#: and ``jabdriver.py`` stop catching.  It is also not yet proven on a real JVM.
-#: Flip one row to ``True`` only with a measurement behind it.
+#: **Seven rows carry ``True``, and each one is there because a real run measured
+#: that symbol returning truthy at pyjab's own call site.**  ``getVersionInfo``,
+#: ``getAccessibleTextInfo``, ``getAccessibleTextRange``, ``getTopLevelObject``,
+#: ``getAccessibleTableCellInfo``, ``setTextContents`` and ``getVisibleChildren``
+#: were measured by the ``windows-gui.yml`` task ``jab-return-values`` (run
+#: 38071056432, JDK 17): six read ``1`` and ``getTopLevelObject`` handed back a
+#: non-null ``JOBJECT64``.  That run is the measurement #195 requires; it is cited
+#: here rather than inferred.
 #:
-#: ``tests/test_errorcheck_binding.py`` asserts the mechanism and that every row
-#: is still unarmed.
+#: **Every other row carries ``False``**, because arming is a per-row decision and
+#: a row is only armed against that measurement.  ``getAccessibleContextInfo`` is
+#: the deliberate exception even though the same run read it truthy: it is reached
+#: from all twelve ``except JABException`` blocks -- including the two search loops
+#: in ``find_element_by_xpath`` / ``find_elements_by_xpath`` that ``continue`` past
+#: a bad item -- and ``_acc_info`` reads it for every property, so a falsy read
+#: there would end a search that is meant to keep going.
+#:
+#: Arming is not free.  The hook makes the caller's own ``if not result:`` check
+#: unreachable, and it turns a falsy result into ``RuntimeError`` **from inside the
+#: call**, so the ``except JABException`` blocks in ``jabelement.py``,
+#: ``jabdriver.py`` and ``inspector.py`` stop catching.  It also covers only a
+#: falsy ``0``: ``-1`` is truthy and is how some calls report an error.  Flip one
+#: row to ``True`` only with a measurement behind it.
+#:
+#: ``tests/test_errorcheck_binding.py`` asserts the mechanism, the armed set, and
+#: that ``getAccessibleContextInfo`` is not in it.
 SIGNATURES = (
     ("Windows_run", None, (), False),
     ("setFocusGainedFP", None, (c_void_p,), False),
@@ -69,7 +83,7 @@ SIGNATURES = (
     ("setPropertyCaretChangeFP", None, (c_void_p,), False),
     ("setPropertyActiveDescendentChangeFP", None, (c_void_p,), False),
     ("releaseJavaObject", None, (c_long, JOBJECT64), False),
-    ("getVersionInfo", BOOL, (c_long, POINTER(AccessBridgeVersionInfo)), False),
+    ("getVersionInfo", BOOL, (c_long, POINTER(AccessBridgeVersionInfo)), True),
     ("isJavaWindow", BOOL, (HWND,), False),
     ("isSameObject", BOOL, (c_long, JOBJECT64, JOBJECT64), False),
     ("getAccessibleContextFromHWND", BOOL, (HWND, POINTER(c_long), POINTER(JOBJECT64)), False),
@@ -87,7 +101,9 @@ SIGNATURES = (
     ("getAccessibleParentFromContext", JOBJECT64, (c_long, JOBJECT64), False),
     ("getParentWithRole", JOBJECT64, (c_long, JOBJECT64, POINTER(c_wchar)), False),
     ("getAccessibleRelationSet", BOOL, (c_long, JOBJECT64, POINTER(AccessibleRelationSetInfo)), False),
-    ("getAccessibleTextInfo", BOOL, (c_long, JOBJECT64, POINTER(AccessibleTextInfo), c_int, c_int), False),
+    # Armed: measured 1 under jab-return-values.  Reached only from
+    # JABElement.text, and no except JABException block sits on that path.
+    ("getAccessibleTextInfo", BOOL, (c_long, JOBJECT64, POINTER(AccessibleTextInfo), c_int, c_int), True),
     ("getAccessibleTextItems", BOOL, (c_long, JOBJECT64, POINTER(AccessibleTextItemsInfo), c_int), False),
     ("getAccessibleTextSelectionInfo", BOOL, (c_long, JOBJECT64, POINTER(AccessibleTextSelectionInfo)), False),
     ("getAccessibleTextAttributes", BOOL, (
@@ -98,7 +114,9 @@ SIGNATURES = (
         ), False),
     ("getAccessibleTextRect", BOOL, (c_long, JOBJECT64, POINTER(AccessibleTextRectInfo), c_int), False),
     ("getAccessibleTextLineBounds", BOOL, (c_long, JOBJECT64, c_int, POINTER(c_int), POINTER(c_int)), False),
-    ("getAccessibleTextRange", BOOL, (c_long, JOBJECT64, c_int, c_int, POINTER(c_char), c_short), False),
+    # Armed: measured 1 under jab-return-values, and reached from JABElement.text
+    # -- the same path as getAccessibleTextInfo above.
+    ("getAccessibleTextRange", BOOL, (c_long, JOBJECT64, c_int, c_int, POINTER(c_char), c_short), True),
     ("getCurrentAccessibleValueFromContext", BOOL, (c_long, JOBJECT64, POINTER(c_wchar), c_short), False),
     ("selectTextRange", BOOL, (c_long, JOBJECT64, c_int, c_int), False),
     ("getTextAttributesInRange", BOOL, (
@@ -109,7 +127,11 @@ SIGNATURES = (
             POINTER(AccessibleTextAttributesInfo),
             POINTER(c_short),
         ), False),
-    ("getTopLevelObject", JOBJECT64, (c_long, JOBJECT64), False),
+    # Armed: measured a non-null JOBJECT64 under jab-return-values.  Reachable
+    # from the xpath union loops in find_element_by_xpath / find_elements_by_xpath,
+    # from _search_from_root and from wait_until_element_exist, via
+    # _xpath_search_root; those blocks keep their except JABException untouched.
+    ("getTopLevelObject", JOBJECT64, (c_long, JOBJECT64), True),
     ("getObjectDepth", c_int, (c_long, JOBJECT64), False),
     ("getActiveDescendent", JOBJECT64, (c_long, JOBJECT64), False),
     ("requestFocus", BOOL, (c_long, JOBJECT64), False),
@@ -123,13 +145,15 @@ SIGNATURES = (
             POINTER(c_int),
         ), False),
     ("getAccessibleTableInfo", BOOL, (c_long, JOBJECT64, POINTER(AccessibleTableInfo)), False),
+    # Armed: measured 1 under jab-return-values.  Reached only from get_cell,
+    # which no except JABException block wraps.
     ("getAccessibleTableCellInfo", BOOL, (
             c_long,
             JOBJECT64,
             c_int,
             c_int,
             POINTER(AccessibleTableCellInfo),
-        ), False),
+        ), True),
     ("getAccessibleTableRowHeader", BOOL, (c_long, JOBJECT64, POINTER(AccessibleTableInfo)), False),
     ("getAccessibleTableColumnHeader", BOOL, (c_long, JOBJECT64, POINTER(AccessibleTableInfo)), False),
     # These two were called from JABElement without ever being declared here, so
@@ -175,7 +199,9 @@ SIGNATURES = (
     # first cell instead of toggling the row back off.  See JABElement.select_row.
     ("isAccessibleChildSelectedFromContext", BOOL, (c_long, JOBJECT64, c_int), False),
     ("getAccessibleKeyBindings", BOOL, (c_long, JOBJECT64, POINTER(AccessibleKeyBindings)), False),
-    ("setTextContents", BOOL, (c_long, JOBJECT64, POINTER(c_wchar)), False),
+    # Armed: measured 1 under jab-return-values.  Reached only from send_text;
+    # spin's except JABException wraps the role lookup above that call, not it.
+    ("setTextContents", BOOL, (c_long, JOBJECT64, POINTER(c_wchar)), True),
     ("clearAccessibleSelectionFromContext", None, (c_long, JOBJECT64), False),
     ("addAccessibleSelectionFromContext", None, (c_long, JOBJECT64, c_int), False),
     ("getAccessibleSelectionFromContext", JOBJECT64, (c_long, JOBJECT64, c_int), False),
@@ -187,7 +213,12 @@ SIGNATURES = (
     ("removeAccessibleSelectionFromContext", None, (c_long, JOBJECT64, c_int), False),
     ("selectAllAccessibleSelectionFromContext", None, (c_long, JOBJECT64), False),
     ("getVisibleChildrenCount", c_int, (c_long, JOBJECT64), False),
-    ("getVisibleChildren", BOOL, (c_long, JOBJECT64, c_int, POINTER(VisibleChildrenInfo)), False),
+    # Armed: measured 1 under jab-return-values, at get_visible_children().  It is
+    # reached from a search only on the visible=True branch of
+    # _generate_childs_from_element, which the xpath union loops, _search_from_root
+    # and step_report can reach; their except JABException blocks are left as they
+    # were, because the measurement is what says this call does not fail there.
+    ("getVisibleChildren", BOOL, (c_long, JOBJECT64, c_int, POINTER(VisibleChildrenInfo)), True),
 )
 
 
@@ -202,12 +233,13 @@ class JABFixedFunc(object):
     def _check_error(result, func, args):
         """ctypes ``errcheck`` hook: turn a falsy result into a loud failure.
 
-        Installed on a symbol whose :data:`SIGNATURES` row carries ``True``.
-        **No row does at present**: the flag is a mechanism that is deliberately
-        left unarmed while arming it is decided per row, against a measurement on
-        a real JVM (#195).  ``errcheck`` is the name ctypes reads -- spelled
-        ``errorcheck`` the assignment set an inert Python attribute and no hook
-        was ever installed, which is the defect this spelling fixes.
+        Installed on the seven symbols whose :data:`SIGNATURES` row carries
+        ``True`` -- the ones a real run measured returning truthy at pyjab's own
+        call sites (``windows-gui.yml`` task ``jab-return-values``, run
+        38071056432).  Every other row stays ``False``: arming is decided per row,
+        against that measurement (#195).  ``errcheck`` is the name ctypes reads --
+        spelled ``errorcheck`` the assignment set an inert Python attribute and no
+        hook was ever installed, which is the defect this spelling fixes.
 
         Careful when arming a row: this makes any ``if not result:`` written
         downstream dead code, because the exception arrives first.  Pick one
