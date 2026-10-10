@@ -127,6 +127,14 @@ class CountingBridge:
             item.handle = handle
             self.by_handle[handle] = item
         self.calls = collections.Counter()
+        #: The JVM id every call carries. One window, one VM.
+        #:
+        #: Set as an attribute rather than left to __getattr__, which returns a function
+        #: that raises only when it is *called* -- so reading self.vmid without setting it
+        #: would have handed out that function silently.
+        self.vmid = 1
+        #: What getAccessibleContextWithFocus should report, or None for nothing focused.
+        self.focus = None
         #: Outstanding references per handle. Java Access Bridge returns an
         #: object reference from every call that hands one out, and each of
         #: those must be released once -- obtaining the same Java object twice
@@ -198,6 +206,34 @@ class CountingBridge:
         if index >= len(children) or index < 0:
             return JOBJECT64(0)
         return JOBJECT64(self._take(children[index].handle))
+
+    def getAccessibleContextFromHWND(self, hwnd, vmid_by_ref, context_by_ref):
+        """Hand out the window's own context, the way the bridge does.
+
+        Takes a reference, so the caller owns one. JABDriver.init_jab stores it and holds
+        it for the driver's lifetime, which is the disposition recorded for this symbol in
+        tools/check_jab_object_sites.py.
+        """
+        self.calls["getAccessibleContextFromHWND"] += 1
+        vmid_by_ref._obj.value = self.vmid
+        context_by_ref._obj.value = self._take(self.root.handle)
+        return 1
+
+    def getAccessibleContextWithFocus(self, hwnd, vmid_by_ref, context_by_ref):
+        """Report whatever ``focus`` is set to, and hand out a reference only if there is
+        something focused.
+
+        A window with nothing focused is an ordinary answer rather than a failure, so this
+        returns 0 and leaves both out-parameters alone -- the path that must not leak the
+        reference it did not take.
+        """
+        self.calls["getAccessibleContextWithFocus"] += 1
+        target = getattr(self, "focus", None)
+        if target is None:
+            return 0
+        vmid_by_ref._obj.value = self.vmid
+        context_by_ref._obj.value = self._take(target.handle)
+        return 1
 
     def Windows_run(self):
         """Arms the bridge. A no-op here, counted so the cost stays visible.

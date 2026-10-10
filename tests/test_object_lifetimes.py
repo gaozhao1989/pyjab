@@ -71,6 +71,12 @@ class StandInDriver:
         self.serv = _Service()
         self._root_element = root_element
 
+    # The real methods for the other two reference-producing sites, so their reference
+    # handling is exercised rather than described.
+    _get_accessible_context_from_hwnd = JABDriver._get_accessible_context_from_hwnd
+    _focused_context = JABDriver._focused_context
+    get_focused_element = JABDriver.get_focused_element
+
     # The stubs init_jab needs from the real class. _pump_messages is overridden so
     # that no part of the real Windows message pump is reached.
     def _pump_messages(self):
@@ -181,4 +187,80 @@ def test_a_child_the_search_does_not_keep_is_the_callers(
     )
     for child in children:
         child.release_jabelement()
+    assert not outstanding(before, bridge)
+
+
+# ---------------------------------------------------------------------------
+# The other two sites that hand out a reference
+# ---------------------------------------------------------------------------
+#
+# tools/check_jab_object_sites.py records seven call sites and says which are exercised
+# and which were only read. Two were only read, so the checker's own note said so --
+# which is honest and not good enough. Both can be reached with the stand-in above, and
+# now are, so the note can say the same thing about all seven.
+
+def test_the_window_context_is_the_callers_reference(
+        a_driver_built_from_a_vmid):
+    """``_get_accessible_context_from_hwnd`` hands out one reference.
+
+    Its only caller is ``init_jab``, which stores it as the driver's own context and
+    holds it for the driver's lifetime. So the assertion is that exactly one reference
+    comes back -- not zero, which would mean it was released out from under the driver.
+    """
+    driver, bridge, _element = a_driver_built_from_a_vmid
+    before = dict(bridge.refs)
+
+    _context, vmid = JABDriver._get_accessible_context_from_hwnd(driver, 0x1234)
+
+    assert vmid == bridge.vmid
+    assert len(outstanding(before, bridge)) == 1, (
+        "the window context should come back as exactly one reference for the caller"
+    )
+
+
+def test_focus_with_nothing_focused_leaves_no_reference(a_driver_built_from_a_vmid):
+    """The path that must not leak what it did not take.
+
+    ``getAccessibleContextWithFocus`` reports "nothing focused" with a falsy return --
+    an ordinary answer about a window, not a failure. Nothing was handed out on that
+    path, so nothing may be left outstanding, and the out-parameters must not be read.
+    """
+    driver, bridge, _element = a_driver_built_from_a_vmid
+    bridge.focus = None
+    before = dict(bridge.refs)
+
+    assert JABDriver._focused_context(driver) is None
+
+    assert not outstanding(before, bridge), (
+        "an unfocused window left a reference outstanding"
+    )
+
+
+def test_focus_hands_the_caller_one_reference(a_driver_built_from_a_vmid):
+    """And when something is focused, it is the caller's -- as get_focused_element's
+    contract says."""
+    driver, bridge, _element = a_driver_built_from_a_vmid
+    bridge.focus = bridge.root
+    before = dict(bridge.refs)
+
+    focused = JABDriver._focused_context(driver)
+
+    assert focused is not None
+    vmid, _context = focused
+    assert vmid == bridge.vmid
+    assert len(outstanding(before, bridge)) == 1
+
+
+def test_get_focused_element_gives_the_caller_a_releaseable_element(
+        a_driver_built_from_a_vmid):
+    """The end of that path: the element the caller gets is theirs to release."""
+    driver, bridge, _element = a_driver_built_from_a_vmid
+    bridge.focus = bridge.root
+    before = dict(bridge.refs)
+
+    element = JABDriver.get_focused_element(driver)
+
+    assert element is not None
+    assert len(outstanding(before, bridge)) == 1
+    element.release_jabelement()
     assert not outstanding(before, bridge)

@@ -113,6 +113,28 @@ Added
 Fixed
 ~~~~~
 
+* **Every error message printed as the repr of a tuple.** ``CommonException`` passed
+  ``status`` to ``Exception.__init__`` as a second argument, so ``str()`` of every
+  exception pyjab raises was ``('the message', None)`` -- in a terminal, in a log line, and
+  quoted in an issue. ``status`` is still there as an attribute; it is no longer a second
+  value in the same tuple.
+
+Changed
+~~~~~~~
+
+* **A search that fails because the window itself matches now says so.** Removing the
+  root special cases made ``driver.find_element_by_name(window_title)`` raise where it
+  used to return the window, and the message was a bare "not found" -- which tells the
+  person whose code just broke nothing about what to do. When the window's own name, role
+  or description is what would have matched, the exception now names
+  ``driver.root_element`` and says that earlier versions returned the window.
+
+  Only on that path: if a descendant matches, the search succeeded and there is nothing
+  to explain.
+
+Fixed
+~~~~~
+
 * **A second Java object leak, in ``JABDriver``'s vmid construction path.**
   ``init_jab()`` calls ``getTopLevelObject`` to turn a vmid and a context into an hwnd,
   and never released the object it was handed. One Java object per driver built that way

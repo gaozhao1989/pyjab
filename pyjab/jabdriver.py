@@ -348,29 +348,73 @@ class JABDriver(object):
             sleep(WINDOW_POLL_INTERVAL)
 
     # jab driver functions: similar with webdriver
+    #: Which attribute of the window each locator strategy compares against, for the
+    #: explanation in :meth:`_search_from_root`.  Only the four a driver-level search
+    #: used to special-case: for those, code written before they were removed can now
+    #: fail where it used to succeed, and the message has to say so.  The other find
+    #: methods never had the special case and need no note.
+    _ROOT_ATTRIBUTE = {
+        "name": "name",
+        "description": "description",
+        "role": "role",
+        "states": "states",
+    }
+
+    def _search_from_root(self, method: str, attribute: str, value, visible: bool):
+        """A driver-level search, delegated to the root element.
+
+        A search looks at **descendants**, on both objects.  That is the contract now and
+        it was not before: ``find_element_by_name`` here returned the window itself when
+        the name matched, and its three siblings did the same for their attribute, while
+        every other find method delegated.  So ``find_element_by_name(window_title)``
+        returned the window while the same call on an element raised -- and what came
+        back was an object the driver owns for its lifetime and the caller must not
+        release, from a method whose documented contract is the opposite.
+
+        Removing that is a behaviour change for anyone who relied on it.  When a search
+        finds nothing and the window itself would have matched, the message says so, so
+        that code which used to work is told what to do instead of just "not found".
+        """
+        try:
+            return getattr(self.root_element, method)(value=value, visible=visible)
+        except JABException as exc:
+            mine = getattr(self.root_element, self._ROOT_ATTRIBUTE.get(attribute, ""), None)
+            if attribute and value == mine:
+                # args[0] rather than str(exc): JABException is sometimes raised with a
+                # second argument, and str() of that is the repr of the whole tuple --
+                # which is how the first version of this message read.
+                original = exc.args[0] if exc.args else str(exc)
+                raise JABException(
+                    f"{original}. The window itself matches {attribute} {value!r}, and a "
+                    f"search looks at descendants only, so the window is never its own "
+                    f"answer -- it is already to hand as `driver.root_element`. In "
+                    f"earlier versions this call returned the window instead."
+                ) from exc
+            raise
+
     def find_element_by_name(self, value: str, visible: bool = False) -> JABElement:
         """
         Find an JABElement given a name locator.
         """
-        return self.root_element.find_element_by_name(value=value, visible=visible)
+        return self._search_from_root("find_element_by_name", "name", value, visible)
 
     def find_element_by_description(self, value: str, visible: bool = False) -> JABElement:
         """
         Find an JABElement given a description locator.
         """
-        return self.root_element.find_element_by_description(value=value, visible=visible)
+        return self._search_from_root("find_element_by_description", "description", value, visible)
 
     def find_element_by_role(self, value: str, visible: bool = False) -> JABElement:
         """
         Find an JABElement given a role locator.
         """
-        return self.root_element.find_element_by_role(value=value, visible=visible)
+        return self._search_from_root("find_element_by_role", "role", value, visible)
 
     def find_element_by_states(self, value: str, visible: bool = False) -> JABElement:
         """
         Find an JABElement given a state locator.
         """
-        return self.root_element.find_element_by_states(value=value, visible=visible)
+        return self._search_from_root("find_element_by_states", "states", value, visible)
 
     def find_element_by_object_depth(
             self, value: int, visible: bool = False
@@ -443,7 +487,7 @@ class JABDriver(object):
         """
         Find list of JABElement given a name locator.
         """
-        return self.root_element.find_elements_by_name(value=value, visible=visible)
+        return self._search_from_root("find_elements_by_name", "name", value, visible)
 
     def find_elements_by_description(
             self, value: str, visible: bool = False
@@ -451,7 +495,7 @@ class JABDriver(object):
         """
         Find list of JABElement given a description locator.
         """
-        return self.root_element.find_elements_by_description(value=value, visible=visible)
+        return self._search_from_root("find_elements_by_description", "description", value, visible)
 
     def find_elements_by_role(
             self, value: str, visible: bool = False
@@ -459,7 +503,7 @@ class JABDriver(object):
         """
         Find list of JABElement given a role locator.
         """
-        return self.root_element.find_elements_by_role(value=value, visible=visible)
+        return self._search_from_root("find_elements_by_role", "role", value, visible)
 
     def find_elements_by_states(
             self, value: str, visible: bool = False
@@ -467,7 +511,7 @@ class JABDriver(object):
         """
         Find list of JABElement given a state locator.
         """
-        return self.root_element.find_elements_by_states(value=value, visible=visible)
+        return self._search_from_root("find_elements_by_states", "states", value, visible)
 
     def find_elements_by_object_depth(
             self, value: int, visible: bool = False
