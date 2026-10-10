@@ -39,7 +39,7 @@ letting a green line imply more.
 Usage
 -----
 
-    java -cp tests/java/classes PyjabTestApp --title "PyjabTestApp"
+    java -cp tests/java/classes PyjabTestApp --title=PyjabTestApp
     python tools/soak.py --title PyjabTestApp --minutes 120
 
 `--minutes 1` is a smoke run: it checks the harness works rather than the library.

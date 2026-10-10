@@ -35,7 +35,7 @@ Usage
 -----
 
     pip install uiautomation          # the UIA side; JAB needs pyjab on Windows
-    java -cp tests/java/classes PyjabTestApp --title "PyjabTestApp"
+    java -cp tests/java/classes PyjabTestApp --title=PyjabTestApp
     python tools/verify_m0.py --title PyjabTestApp
 
 Add `--json` for a machine-readable report. Exit status is 0 if every measurement was
