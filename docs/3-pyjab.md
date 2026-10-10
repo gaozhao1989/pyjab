@@ -344,6 +344,42 @@ Every element a search returns is yours to release with `release_jabelement`. Th
 is the exception, because the driver holds it for its lifetime — which is part of why
 the search does not hand it back.
 
+### Reading a whole subtree
+
+`walk()` gives you a bounded view of everything under an element:
+
+```python
+tree = element.walk(max_depth=2, limit=200)
+for depth, item in tree:
+    print("  " * depth, item["role"], repr(item["name"]))
+
+if tree.truncated:
+    print("(partial: the first", len(tree), "only)")
+```
+
+Each `item` is a plain dict — `role`, `name`, `description`, `index_in_parent`,
+`children_count`, `object_depth`, `states`, `bounds` — which is the set a locator can
+match on, so `as_record()` gives you exactly what you need to write one.
+
+**Nothing you receive holds a reference.** The walk releases each JAB reference before
+yielding the next, so there is nothing to release and nothing to leak. That is why it
+yields dicts rather than `JABElement`s, and it is the reason to prefer it over
+`get_children()` recursion in your own code.
+
+**Check `truncated` before believing you saw the whole tree.** A walk that hit `limit` and
+one that genuinely ends there produce the same records; only the walk knows which
+happened. Acting on a half-read window that looked complete is the failure this exists to
+prevent:
+
+| attribute | meaning |
+|---|---|
+| `truncated` | a limit stopped it — **this is the one to check** |
+| `limit_hit` | `limit` was reached |
+| `max_depth_hit` | a node was not descended into because of `max_depth`. **Not** truncation: a walk asked for two levels and given two levels did what it was asked |
+
+`max_depth=0` yields only the immediate children. The order is **depth-first**: a node is
+followed by its own subtree, which is what a caller rendering a tree needs.
+
 ### Screenshots
 
 ```python

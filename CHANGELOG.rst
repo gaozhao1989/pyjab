@@ -275,6 +275,38 @@ Fixed
   tests that need a live application and a desktop — worth having now that
   ``windows-gui.yml`` can actually run them.
 
+Added
+~~~~~
+
+* **``JABElement.walk()``, a public way to read a subtree.**
+  ``max_depth`` and ``limit`` bound it, and each step yields a plain dict —
+  ``role``, ``name``, ``description``, ``index_in_parent``, ``children_count``,
+  ``object_depth``, ``states``, ``bounds`` — so a caller can write a locator without
+  holding anything with a lifetime. ``as_record()`` gives the same dict for one element.
+
+  It moved out of ``pyjab.inspector``, where it was written for the ``pyjab-inspect`` CLI
+  and had never promised to be stable. Traversal is something an element can do and the
+  CLI was only its first caller; a second project needing it is what settled the question.
+
+  **A truncated walk can now be told from a complete one.** They produce identical
+  records, and the old signature — a bare generator — had nowhere to put the answer, so a
+  caller could not know whether the window had that much in it or whether they had stopped
+  reading. The return value is a ``JABTree`` with ``truncated``, ``limit_hit`` and
+  ``max_depth_hit``.
+
+  **Two bugs found while writing its tests**, both pre-existing in the CLI version:
+
+  * ``get_children()`` materialises every child, and each carries a JAB reference. A walk
+    that stopped early had taken references to children it would never reach, and nothing
+    released them — asking for the first two of twenty **leaked eighteen**. It now uses the
+    lazy child generator, so an abandoned walk has taken only what it released.
+  * the ``limit`` check sat inside the recursion, where ``return`` ends one frame while the
+    parent's loop calls back in. The count was right and the walk re-entered once per
+    remaining sibling to discover it had enough.
+
+  Both are covered by ``tests/test_tree_walk.py``, including the case a count cannot
+  distinguish: a walk that ends exactly at ``limit``.
+
 Changed
 ~~~~~~~
 
