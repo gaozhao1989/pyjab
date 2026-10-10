@@ -183,7 +183,6 @@ jobs:
         run: |
           # Windows only, and deliberately not in pyproject.toml because one
           # tool uses it.  verify_m0 attaches to a window it does not own.
-          python -m pip install uiautomation
           javac -d tests/java/classes tests/java/PyjabTestApp.java
           $app = Start-Process java -PassThru -ArgumentList `
             '-Duser.language=en','-Duser.country=US','-cp','tests/java/classes','PyjabTestApp',`
