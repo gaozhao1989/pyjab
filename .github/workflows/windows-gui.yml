@@ -27,6 +27,22 @@ name: Windows GUI tests
 #     gh workflow run windows-gui.yml --ref master -f task=gui-suite
 #     gh run watch
 #
+# `--ref` takes any branch, and that turned out to be the useful half: now that
+# this file is on the default branch, a workflow being tried out on a branch can
+# be dispatched directly --
+#
+#     gh workflow run windows-gui.yml --ref my-probe -f task=environment
+#
+# -- which is how the select_row root cause was found. Before this file was on
+# master there was no way to dispatch from a branch at all (GitHub answers
+# "HTTP 404: workflow not found on the default branch"), so the first landing
+# needed a temporary `push:` trigger. Do not add one back; use --ref.
+#
+# `task=dpi` is the one that cannot do its job here: the runner's display scale is
+# 1.0, and the script says so itself -- "To test issue #62 this has to run on a
+# display set to 125% or 150%". It is kept because it still proves the coordinate
+# path does not crash at 1.0, but a green run is not evidence about #62.
+#
 # That is the whole point of this file: the tests run somewhere the maintainer
 # can read the log from, instead of on a second machine whose results have to be
 # carried back by hand.
@@ -191,6 +207,10 @@ jobs:
         if: inputs.task == 'dpi'
         shell: pwsh
         run: |
+          # The runner's display scale is 1.0, so this cannot test issue #62 --
+          # the script's own verdict says it needs 125% or 150%. A green run here
+          # is not evidence about DPI; it only shows the path does not crash.
+          Write-Host "::notice::display scale is 1.0 on this runner; a green dpi run is not evidence about #62"
           # Without --hold: the tool's interactive mode never returns.
           python tools/verify_dpi.py 2>&1 | Tee-Object -FilePath dpi.log
           exit $LASTEXITCODE
