@@ -26,6 +26,7 @@ recursive-include docs *.md
 # themselves not in the sdist.
 exclude docs/VERIFY_M0_AND_SOAK.md
 exclude docs/DEPENDENCY_ANALYSIS.md
+exclude docs/MCP_ENABLING_PLAN.md
 exclude docs/TRIAGE.md
 exclude docs/ROADMAP.md
 exclude docs/PYJAB_MCP_PLAN.md
