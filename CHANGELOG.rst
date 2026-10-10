@@ -16,8 +16,8 @@ Added
 * **``pyjab.list_java_windows()`` — every Java window the bridge can see.** A caller could
   not find out what was available to attach to: ``JABDriver`` binds to one window and cannot
   enumerate, and the only listing was behind the ``pyjab-inspect`` console script. Returns
-  one dict per window with ``hwnd``, ``title``, ``pid`` and ``vmid``; ``pid`` and ``vmid``
-  are ``None`` when they cannot be read, because a window can close between being listed and
+  one dict per window with ``hwnd``, ``title`` and ``pid``; ``pid`` is ``None`` when it
+  cannot be read, because a window can close between being listed and
   being asked about and that is a race rather than an error.
 
   Defined in ``pyjab/__init__.py`` as a wrapper that imports the Windows body inside the

@@ -23,7 +23,7 @@ def list_java_windows():
     ``ImportError`` that ``pyjab.jabdriver`` gives, rather than a bare missing-module one.
 
     Returns:
-        list: dicts with ``hwnd``, ``title``, ``pid`` and ``vmid``.
+        list: dicts with ``hwnd``, ``title`` and ``pid``.
     """
     from pyjab.jabdriver import list_java_windows as _list_java_windows
 

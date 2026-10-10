@@ -877,9 +877,14 @@ def list_java_windows() -> List[dict]:
     could be attached to.
 
     Returns:
-        list: one dict per window, with ``hwnd``, ``title``, ``pid`` and ``vmid``. ``vmid``
-        and ``pid`` are ``None`` when they cannot be read — a window can disappear between
-        being listed and being asked about, and that is not an error.
+        list: one dict per window, with ``hwnd``, ``title`` and ``pid``. ``pid`` is ``None``
+        when it cannot be read — a window can disappear between being listed and being asked
+        about, and that is not an error.
+
+        Deliberately **not** ``vmid``: reading it means taking an accessible context and
+        releasing it again, which is a second reference to account for, and the listing that
+        was asked for needs hwnd, title and pid. A caller that wants the context gets it by
+        attaching with :class:`JABDriver`.
 
     :Usage:
         for window in pyjab.list_java_windows():
@@ -916,12 +921,7 @@ def list_java_windows() -> List[dict]:
                 continue
         except Exception:                                # pragma: no cover - JAB
             continue
-        found.append({
-            "hwnd": hwnd,
-            "title": title,
-            "pid": _pid_of_hwnd(hwnd),
-            "vmid": _vmid_of_hwnd(bridge, hwnd),
-        })
+        found.append({"hwnd": hwnd, "title": title, "pid": _pid_of_hwnd(hwnd)})
     return found
 
 
@@ -936,22 +936,4 @@ def _pid_of_hwnd(hwnd: HWND) -> Optional[int]:
         return None
 
 
-def _vmid_of_hwnd(bridge, hwnd: HWND) -> Optional[int]:
-    """The JVM id behind *hwnd*, or None.
-
-    Best effort on purpose: a window that closed between being listed and being asked
-    about is a normal race, not an error, and reporting the window with a null vmid is
-    more useful than dropping it.
-    """
-    try:
-        vm_id = c_long()
-        context = JOBJECT64()
-        if bridge.getAccessibleContextFromHWND(
-            hwnd, byref(vm_id), byref(context)
-        ):
-            if context.value:
-                bridge.releaseJavaObject(vm_id.value, context)
-            return vm_id.value
-    except Exception:                                    # pragma: no cover - JAB
-        return None
     return None

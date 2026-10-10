@@ -73,7 +73,11 @@ def test_calling_it_off_windows_explains_itself():
 
 
 def test_it_returns_mappings_with_the_fields_the_requirement_names():
-    """The shape asked for: mappings with `hwnd`, `title` and an optional `pid`."""
+    """The shape asked for: mappings with `hwnd`, `title` and an optional `pid`.
+
+    No `vmid` -- the requirement does not ask for one, and reading it means taking an
+    accessible context and releasing it again, which is a second reference to account for.
+    """
     import pyjab.jabdriver as jabdriver
 
     fake_bridge = type("B", (), {
@@ -88,13 +92,12 @@ def test_it_returns_mappings_with_the_fields_the_requirement_names():
          patch("pyjab.common.win32utils.Win32Utils.__wrapped__.enum_windows",
                return_value={10: "One", 20: "Two", 30: "NotJava", 40: ""}), \
          patch.object(jabdriver, "_pid_of_hwnd", return_value=99), \
-         patch.object(jabdriver, "_vmid_of_hwnd", return_value=7), \
          patch("pyjab.jabfixedfunc.JABFixedFunc", autospec=True):
         found = jabdriver.list_java_windows()
 
     assert [w["hwnd"] for w in found] == [10, 20]
     for window in found:
-        assert set(window) == {"hwnd", "title", "pid", "vmid"}
+        assert set(window) == {"hwnd", "title", "pid"}
 
 
 # ---------------------------------------------------------------------------
