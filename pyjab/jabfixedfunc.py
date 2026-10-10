@@ -46,6 +46,19 @@ from pyjab.common.types import JOBJECT64
 #: Each entry is ``(symbol, result type, argument types, errorcheck)``.  The
 #: order is the one this table has always had -- the event callbacks first, then
 #: the lookups -- and is kept only so it reads in groups; ctypes does not care.
+#:
+#: **Every row carries ``False``, so no hook is installed on any symbol.**  The
+#: flag is a real mechanism -- ``True`` installs :meth:`JABFixedFunc._check_error`
+#: as ctypes' ``errcheck`` -- but arming it is a **per-row decision** that has to
+#: be gated on a measurement of what the JVM actually returns for that call
+#: (#195).  It is not free: the hook makes the caller's own ``if not result:``
+#: check unreachable, and it turns a falsy result into ``RuntimeError`` from
+#: inside the call, so the ``except JABException`` blocks in ``jabelement.py``
+#: and ``jabdriver.py`` stop catching.  It is also not yet proven on a real JVM.
+#: Flip one row to ``True`` only with a measurement behind it.
+#:
+#: ``tests/test_errorcheck_binding.py`` asserts the mechanism and that every row
+#: is still unarmed.
 SIGNATURES = (
     ("Windows_run", None, (), False),
     ("setFocusGainedFP", None, (c_void_p,), False),
@@ -56,38 +69,38 @@ SIGNATURES = (
     ("setPropertyCaretChangeFP", None, (c_void_p,), False),
     ("setPropertyActiveDescendentChangeFP", None, (c_void_p,), False),
     ("releaseJavaObject", None, (c_long, JOBJECT64), False),
-    ("getVersionInfo", BOOL, (c_long, POINTER(AccessBridgeVersionInfo)), True),
+    ("getVersionInfo", BOOL, (c_long, POINTER(AccessBridgeVersionInfo)), False),
     ("isJavaWindow", BOOL, (HWND,), False),
     ("isSameObject", BOOL, (c_long, JOBJECT64, JOBJECT64), False),
-    ("getAccessibleContextFromHWND", BOOL, (HWND, POINTER(c_long), POINTER(JOBJECT64)), True),
-    ("getHWNDFromAccessibleContext", HWND, (c_long, JOBJECT64), True),
-    ("getAccessibleContextAt", BOOL, (c_long, JOBJECT64, c_int, c_int, POINTER(JOBJECT64)), True),
-    # No errorcheck, deliberately.  The caller treats a falsy result as "nothing
+    ("getAccessibleContextFromHWND", BOOL, (HWND, POINTER(c_long), POINTER(JOBJECT64)), False),
+    ("getHWNDFromAccessibleContext", HWND, (c_long, JOBJECT64), False),
+    ("getAccessibleContextAt", BOOL, (c_long, JOBJECT64, c_int, c_int, POINTER(JOBJECT64)), False),
+    # Deliberately unarmed.  The caller treats a falsy result as "nothing
     # has focus", which is an ordinary answer about a window rather than a
-    # failure of the call.  With errorcheck=True the hook raises RuntimeError
-    # from inside the call and that branch can never run -- which is what
-    # happened: get_focused_element() raised on a window with nothing focused,
-    # having documented that it returns None.  See the note on _check_error.
+    # failure of the call.  Arming this row would install the hook, the
+    # RuntimeError would arrive from inside the call, and that branch could
+    # never run -- while get_focused_element() documents that it returns None.
+    # See the note on _check_error.
     ("getAccessibleContextWithFocus", BOOL, (HWND, POINTER(c_long), POINTER(JOBJECT64)), False),
-    ("getAccessibleContextInfo", BOOL, (c_long, JOBJECT64, POINTER(AccessibleContextInfo)), True),
-    ("getAccessibleChildFromContext", JOBJECT64, (c_long, JOBJECT64, c_int), True),
+    ("getAccessibleContextInfo", BOOL, (c_long, JOBJECT64, POINTER(AccessibleContextInfo)), False),
+    ("getAccessibleChildFromContext", JOBJECT64, (c_long, JOBJECT64, c_int), False),
     ("getAccessibleParentFromContext", JOBJECT64, (c_long, JOBJECT64), False),
     ("getParentWithRole", JOBJECT64, (c_long, JOBJECT64, POINTER(c_wchar)), False),
-    ("getAccessibleRelationSet", BOOL, (c_long, JOBJECT64, POINTER(AccessibleRelationSetInfo)), True),
-    ("getAccessibleTextInfo", BOOL, (c_long, JOBJECT64, POINTER(AccessibleTextInfo), c_int, c_int), True),
-    ("getAccessibleTextItems", BOOL, (c_long, JOBJECT64, POINTER(AccessibleTextItemsInfo), c_int), True),
-    ("getAccessibleTextSelectionInfo", BOOL, (c_long, JOBJECT64, POINTER(AccessibleTextSelectionInfo)), True),
+    ("getAccessibleRelationSet", BOOL, (c_long, JOBJECT64, POINTER(AccessibleRelationSetInfo)), False),
+    ("getAccessibleTextInfo", BOOL, (c_long, JOBJECT64, POINTER(AccessibleTextInfo), c_int, c_int), False),
+    ("getAccessibleTextItems", BOOL, (c_long, JOBJECT64, POINTER(AccessibleTextItemsInfo), c_int), False),
+    ("getAccessibleTextSelectionInfo", BOOL, (c_long, JOBJECT64, POINTER(AccessibleTextSelectionInfo)), False),
     ("getAccessibleTextAttributes", BOOL, (
             c_long,
             JOBJECT64,
             c_int,
             POINTER(AccessibleTextAttributesInfo),
-        ), True),
-    ("getAccessibleTextRect", BOOL, (c_long, JOBJECT64, POINTER(AccessibleTextRectInfo), c_int), True),
-    ("getAccessibleTextLineBounds", BOOL, (c_long, JOBJECT64, c_int, POINTER(c_int), POINTER(c_int)), True),
-    ("getAccessibleTextRange", BOOL, (c_long, JOBJECT64, c_int, c_int, POINTER(c_char), c_short), True),
-    ("getCurrentAccessibleValueFromContext", BOOL, (c_long, JOBJECT64, POINTER(c_wchar), c_short), True),
-    ("selectTextRange", BOOL, (c_long, JOBJECT64, c_int, c_int), True),
+        ), False),
+    ("getAccessibleTextRect", BOOL, (c_long, JOBJECT64, POINTER(AccessibleTextRectInfo), c_int), False),
+    ("getAccessibleTextLineBounds", BOOL, (c_long, JOBJECT64, c_int, POINTER(c_int), POINTER(c_int)), False),
+    ("getAccessibleTextRange", BOOL, (c_long, JOBJECT64, c_int, c_int, POINTER(c_char), c_short), False),
+    ("getCurrentAccessibleValueFromContext", BOOL, (c_long, JOBJECT64, POINTER(c_wchar), c_short), False),
+    ("selectTextRange", BOOL, (c_long, JOBJECT64, c_int, c_int), False),
     ("getTextAttributesInRange", BOOL, (
             c_long,
             JOBJECT64,
@@ -95,20 +108,20 @@ SIGNATURES = (
             c_int,
             POINTER(AccessibleTextAttributesInfo),
             POINTER(c_short),
-        ), True),
-    ("getTopLevelObject", JOBJECT64, (c_long, JOBJECT64), True),
+        ), False),
+    ("getTopLevelObject", JOBJECT64, (c_long, JOBJECT64), False),
     ("getObjectDepth", c_int, (c_long, JOBJECT64), False),
     ("getActiveDescendent", JOBJECT64, (c_long, JOBJECT64), False),
-    ("requestFocus", BOOL, (c_long, JOBJECT64), True),
-    ("setCaretPosition", BOOL, (c_long, JOBJECT64, c_int), True),
-    ("getCaretLocation", BOOL, (c_long, JOBJECT64, POINTER(AccessibleTextRectInfo), c_int), True),
-    ("getAccessibleActions", BOOL, (c_long, JOBJECT64, POINTER(AccessibleActions)), True),
+    ("requestFocus", BOOL, (c_long, JOBJECT64), False),
+    ("setCaretPosition", BOOL, (c_long, JOBJECT64, c_int), False),
+    ("getCaretLocation", BOOL, (c_long, JOBJECT64, POINTER(AccessibleTextRectInfo), c_int), False),
+    ("getAccessibleActions", BOOL, (c_long, JOBJECT64, POINTER(AccessibleActions)), False),
     ("doAccessibleActions", BOOL, (
             c_long,
             JOBJECT64,
             POINTER(AccessibleActionsToDo),
             POINTER(c_int),
-        ), True),
+        ), False),
     ("getAccessibleTableInfo", BOOL, (c_long, JOBJECT64, POINTER(AccessibleTableInfo)), False),
     ("getAccessibleTableCellInfo", BOOL, (
             c_long,
@@ -116,7 +129,7 @@ SIGNATURES = (
             c_int,
             c_int,
             POINTER(AccessibleTableCellInfo),
-        ), True),
+        ), False),
     ("getAccessibleTableRowHeader", BOOL, (c_long, JOBJECT64, POINTER(AccessibleTableInfo)), False),
     ("getAccessibleTableColumnHeader", BOOL, (c_long, JOBJECT64, POINTER(AccessibleTableInfo)), False),
     # These two were called from JABElement without ever being declared here, so
@@ -133,9 +146,9 @@ SIGNATURES = (
     ("getAccessibleTableIndex", c_int, (c_long, JOBJECT64, c_int, c_int), False),
     # Reading a table's selection.  JAB fills the array and the count comes from
     # getAccessibleTable{Row,Column}SelectionCount above: pass the count you asked
-    # for, get the indices back.  No errorcheck, because a falsy return is how JAB
-    # says it could not answer, and the wrappers turn that into a JABException
-    # carrying the symbol name.
+    # for, get the indices back.  Deliberately unarmed, because a falsy return is
+    # how JAB says it could not answer, and the wrappers turn that into a
+    # JABException carrying the symbol name.
     ("getAccessibleTableRowSelections", BOOL, (
         c_long,
         JOBJECT64,
@@ -148,34 +161,33 @@ SIGNATURES = (
         c_int,
         POINTER(c_int),
     ), False),
-    # No errorcheck, deliberately -- the same reasoning as
-    # getAccessibleContextWithFocus.  False means "this row is not selected", which
-    # is an ordinary answer about a table rather than a failed call.  With
-    # errorcheck the hook would raise RuntimeError on every unselected row, so
-    # "is row 3 selected?" could only ever be answered yes.
+    # Deliberately unarmed -- the same reasoning as getAccessibleContextWithFocus.
+    # False means "this row is not selected", which is an ordinary answer about a
+    # table rather than a failed call.  Arming it would raise RuntimeError on every
+    # unselected row, so "is row 3 selected?" could only ever be answered yes.
     ("isAccessibleTableRowSelected", BOOL, (c_long, JOBJECT64, c_int), False),
     ("isAccessibleTableColumnSelected", BOOL, (c_long, JOBJECT64, c_int), False),
-    # Same reasoning a third time: False means "this cell is not selected", which is
-    # an ordinary answer about a table rather than a failed call.  This is the
-    # predicate that makes addAccessibleSelection's toggle usable -- for a JTable it
-    # is isCellSelected(row, column), which is the same question changeSelection asks
-    # itself, so select_row can stop after the first cell instead of toggling the row
-    # back off.  See JABElement.select_row.
+    # Unarmed for the same reason a third time: False means "this cell is not
+    # selected", which is an ordinary answer about a table rather than a failed
+    # call.  This is the predicate that makes addAccessibleSelection's toggle
+    # usable -- for a JTable it is isCellSelected(row, column), which is the same
+    # question changeSelection asks itself, so select_row can stop after the
+    # first cell instead of toggling the row back off.  See JABElement.select_row.
     ("isAccessibleChildSelectedFromContext", BOOL, (c_long, JOBJECT64, c_int), False),
-    ("getAccessibleKeyBindings", BOOL, (c_long, JOBJECT64, POINTER(AccessibleKeyBindings)), True),
-    ("setTextContents", BOOL, (c_long, JOBJECT64, POINTER(c_wchar)), True),
+    ("getAccessibleKeyBindings", BOOL, (c_long, JOBJECT64, POINTER(AccessibleKeyBindings)), False),
+    ("setTextContents", BOOL, (c_long, JOBJECT64, POINTER(c_wchar)), False),
     ("clearAccessibleSelectionFromContext", None, (c_long, JOBJECT64), False),
     ("addAccessibleSelectionFromContext", None, (c_long, JOBJECT64, c_int), False),
     ("getAccessibleSelectionFromContext", JOBJECT64, (c_long, JOBJECT64, c_int), False),
-    # No errorcheck: 0 means "nothing is selected", which is the answer for every
-    # freshly-opened list and every table.  Declaring it with errorcheck would make
+    # Deliberately unarmed: 0 means "nothing is selected", which is the answer for
+    # every freshly-opened list and every table.  Arming it would make
     # get_selected_elements() raise on exactly the case it is most often asked
-    # about -- the trap in AGENTS.md 2.7, in its purest form.
+    # about -- the trap AGENTS.md section 2.7 describes, in its purest form.
     ("getAccessibleSelectionCountFromContext", c_int, (c_long, JOBJECT64), False),
     ("removeAccessibleSelectionFromContext", None, (c_long, JOBJECT64, c_int), False),
     ("selectAllAccessibleSelectionFromContext", None, (c_long, JOBJECT64), False),
     ("getVisibleChildrenCount", c_int, (c_long, JOBJECT64), False),
-    ("getVisibleChildren", BOOL, (c_long, JOBJECT64, c_int, POINTER(VisibleChildrenInfo)), True),
+    ("getVisibleChildren", BOOL, (c_long, JOBJECT64, c_int, POINTER(VisibleChildrenInfo)), False),
 )
 
 
@@ -188,12 +200,23 @@ class JABFixedFunc(object):
 
     @staticmethod
     def _check_error(result, func, args):
-        """errorcheck hook: turn a falsy result into a loud failure.
+        """ctypes ``errcheck`` hook: turn a falsy result into a loud failure.
 
-        Careful: this makes any ``if not result:`` written downstream dead code,
-        because the exception arrives first.  Pick one mechanism per call --
-        either this, or no errorcheck and a check of the result.  See AGENTS.md
-        section 2.7 for the branches that were written and never run.
+        Installed on a symbol whose :data:`SIGNATURES` row carries ``True``.
+        **No row does at present**: the flag is a mechanism that is deliberately
+        left unarmed while arming it is decided per row, against a measurement on
+        a real JVM (#195).  ``errcheck`` is the name ctypes reads -- spelled
+        ``errorcheck`` the assignment set an inert Python attribute and no hook
+        was ever installed, which is the defect this spelling fixes.
+
+        Careful when arming a row: this makes any ``if not result:`` written
+        downstream dead code, because the exception arrives first.  Pick one
+        mechanism per call -- either this, or no hook and a check of the result.
+
+        It also does not cover everything.  It raises on a falsy ``0``, while
+        some JAB calls answer with a truthy ``-1`` instead (``getObjectDepth``,
+        checked by hand in ``jabelement.py``), so arming a row is not a
+        substitute for knowing what that call returns on failure.
         """
         if not result:
             raise RuntimeError(f"Result {result}")
@@ -209,7 +232,7 @@ class JABFixedFunc(object):
         func.restype = restype
         func.argtypes = argtypes
         if kwargs.get("errorcheck"):
-            func.errorcheck = self._check_error
+            func.errcheck = self._check_error
 
     def _fix_bridge_functions(self):
         """Declare every signature in :data:`SIGNATURES` on the bridge DLL."""
