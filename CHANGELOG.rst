@@ -307,6 +307,18 @@ Added
   Both are covered by ``tests/test_tree_walk.py``, including the case a count cannot
   distinguish: a walk that ends exactly at ``limit``.
 
+* **The thread-affinity rule is now in the user documentation.** Java Access Bridge
+  delivers its events to the thread that called ``Windows_run()``, so a driver has to be
+  created and used on one thread. That rule lived only in the project's internal notes,
+  which are not shipped and not published — so the one thing a caller can get wrong
+  silently was the one thing the documentation did not mention.
+
+  ``docs/3-pyjab.md`` now states it, says what it looks like when it is wrong (a window
+  that opens later is never seen — no exception), and names ``Win32Utils.pump_messages()``
+  as the supported way to keep events arriving from the owning thread between calls.
+
+  No behaviour changed. What changed is that a caller can find out.
+
 Changed
 ~~~~~~~
 

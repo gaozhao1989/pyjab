@@ -536,6 +536,57 @@ and the accessibility action path is the only option — see
 [Selecting](#selecting).
 
 
+## Threads
+
+**Java Access Bridge is COM based, and its events are delivered to the thread that called
+`Windows_run()`.** That thread has to service its own message queue, and pyjab does that
+for you — `pump_messages()` is called at every lookup. **Single-threaded use needs nothing
+from you.**
+
+The rule matters when you introduce a thread of your own:
+
+> **Create the driver on the thread that will use it, and use it only from that thread.**
+
+`MsgWaitForMultipleObjects` and every other message-queue call operate on the **calling**
+thread's queue. So a pump running on a different thread from the one making JAB calls does
+nothing for those calls — and running the pump on a background thread while calling JAB
+from the main one is the single easiest mistake to make here.
+
+**What it looks like when it is wrong.** Not an exception. A window or dialog that opens
+*after* you started is simply never seen: `wait_java_window_by_title` times out, or a
+lookup finds nothing where a control plainly is. This is the bug 1.3.0 fixed, and the
+reason the pump now runs on every lookup rather than only while waiting for the first
+window.
+
+### If you need a worker thread
+
+Make one thread own the driver, the pump and every JAB call, and hand work to it:
+
+```python
+# Sketch: the shape, not a recipe.
+def own_the_bridge(work: "queue.Queue") -> None:
+    driver = JABDriver(title="My App")      # created on THIS thread
+    try:
+        while True:
+            job = work.get()
+            if job is None:
+                return
+            driver.win32utils.pump_messages()   # the supported way to keep events arriving
+            job(driver)
+    finally:
+        driver.__exit__(None, None, None)
+
+# Every other thread submits a callable and waits for its result. It never touches
+# `driver` itself.
+```
+
+`Win32Utils.pump_messages()` is public, is non-blocking, and is cheap when the queue is
+empty. Calling it **from the owning thread** is the supported way to keep events arriving
+between calls; there is nothing else to enable.
+
+**Do not** build a driver on one thread and call it from another. It appears to work —
+until a window opens later and is never found.
+
 ## Windows and screenshots
 
 ```python
