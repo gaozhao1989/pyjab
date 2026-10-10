@@ -94,6 +94,13 @@ exclude = ["build*", "dist*", "docs*", "tests*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+# The four files that drive a live Java application set this. It was used and never
+# registered, so pytest warned about it on every run and `-m gui` selected nothing
+# reliably. Registering it is what makes `-m "gui"` a usable way to run just the tests
+# that need a desktop -- which matters more now that windows-gui.yml can run them.
+markers = [
+    "gui: needs a live Java application and a desktop; not collected by default",
+]
 # A hung Java Access Bridge call is the one failure the portable suite cannot see
 # and CI cannot catch: the GUI suite runs on a developer's Windows machine, and
 # without this a hang costs however long it takes someone to notice and then says

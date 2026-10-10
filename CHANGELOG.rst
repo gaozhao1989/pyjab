@@ -269,6 +269,12 @@ Fixed
   function and never called it, which no test noticed because every test passed a
   fixture that already had a control in it.
 
+* **The ``gui`` marker is registered.** Four test files set it and nothing declared it, so
+  pytest emitted an unknown-mark warning on every run and ``-m gui`` selected nothing
+  reliably. It is declared now, which makes ``-m "gui"`` a usable way to run only the
+  tests that need a live application and a desktop — worth having now that
+  ``windows-gui.yml`` can actually run them.
+
 Changed
 ~~~~~~~
 
