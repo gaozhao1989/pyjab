@@ -46,6 +46,11 @@ import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.ButtonGroup;
 import javax.swing.JButton;
+import java.awt.Graphics;
+import java.awt.event.InputEvent;
+import java.awt.event.KeyEvent;
+import javax.swing.KeyStroke;
+import javax.swing.JTabbedPane;
 import javax.swing.JCheckBox;
 import javax.swing.JCheckBoxMenuItem;
 import javax.swing.JColorChooser;
@@ -283,6 +288,17 @@ public class PyjabTestApp {
         lastOne.setName("Last one");
         aMenu.add(lastOne);
 
+        // Issue #53. `setAccelerator` is a **JMenuItem** method -- a JButton has no such
+        // method, which the first version of this got wrong and javac said so. An
+        // accelerated item is a different accessible path from a plain one, so the test
+        // asserts that invoking it has the same observable effect as clicking it, not
+        // merely that it can be found.
+        JMenuItem accelerated = new JMenuItem("Accelerated item");
+        accelerated.setName("Accelerated item");
+        accelerated.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Y, InputEvent.ALT_DOWN_MASK));
+        accelerated.addActionListener(e -> accelerated.setName("Accelerated item (invoked)"));
+        aMenu.add(accelerated);
+
         JMenu anotherMenu = new JMenu("Another Menu");
         anotherMenu.setName("Another Menu");
         JMenuItem thirdItem = new JMenuItem("Third item");
@@ -328,6 +344,10 @@ public class PyjabTestApp {
         mainPanel.add(buttonColumn, columnConstraints(0, 0.0, 10));
         mainPanel.add(inputColumn, columnConstraints(1, 0.0, 6));
         mainPanel.add(tableColumn, columnConstraints(2, 1.0, 6));
+        // A fourth column for the behaviours that had conclusions but no test.
+        // Added here rather than inside an existing column so that nothing already
+        // relied upon moves -- see issue #169.
+        mainPanel.add(buildRegressionColumn(), columnConstraints(3, 0.0, 6));
         return mainPanel;
     }
 
@@ -349,6 +369,70 @@ public class PyjabTestApp {
      * height so that the vertical glue at the bottom of the column absorbs the
      * frame's spare height instead of the rows being stretched.
      */
+    /**
+     * The three controls issue #169 asks for: a tab whose name collides with text on
+     * another tab's page, a button driven by an accelerator, and a panel that paints
+     * itself.
+     *
+     * They are here so that the conclusions pyjab's closed issues rest on have something
+     * to regress against. Each one is deliberately the *least* convenient shape:
+     */
+    private static JPanel buildRegressionColumn() {
+        JPanel column = new JPanel();
+        column.setName("Regression column");
+        column.setLayout(new BoxLayout(column, BoxLayout.Y_AXIS));
+
+        // ---------------------------------------------------------------- same-name tabs
+        // Issue #63. The tab is *titled* "Collision", and a label *inside the other tab's
+        // page* carries the same text. Selecting by name is therefore ambiguous, and the
+        // failure was landing on the other one -- so both the tab and the label must be
+        // findable and distinguishable by where they are, not only by name.
+        JTabbedPane tabs = new JTabbedPane();
+        tabs.setName("Same-name tabs");
+
+        JPanel tabPage = new JPanel();
+        tabPage.setName("Collision page");
+        JLabel collidingLabel = new JLabel("Collision");
+        collidingLabel.setName("Colliding label");
+        tabPage.add(collidingLabel);
+        tabs.addTab("Collision page", tabPage);
+
+        JPanel otherPage = new JPanel();
+        otherPage.setName("Other page");
+        JLabel otherLabel = new JLabel("Other");
+        otherLabel.setName("Other label");
+        otherPage.add(otherLabel);
+        tabs.addTab("Collision", otherPage);
+
+        tabs.setPreferredSize(new Dimension(BUTTON_COLUMN_WIDTH - 10, 70));
+        addRow(column, tabs);
+
+        // The accelerator lives in the menu bar, not here: `setAccelerator` is a
+        // JMenuItem API and JButton does not have it. See the note in buildMenuBar().
+
+        // ---------------------------------------------------------------------- canvas
+        // Issue #73. This panel paints its own content and has **no child components**, so
+        // there is nothing for an accessibility bridge to describe. That is the point: the
+        // question is whether that is reported as "no children" rather than as a read that
+        // failed, and those two must not look the same.
+        JPanel painted = new JPanel() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                super.paintComponent(g);
+                g.setColor(Color.DARK_GRAY);
+                g.fillRect(10, 10, 60, 30);
+                g.setColor(Color.WHITE);
+                g.drawString("painted", 18, 30);
+            }
+        };
+        painted.setName("Painted panel");
+        painted.setPreferredSize(new Dimension(BUTTON_COLUMN_WIDTH - 10, 60));
+        addRow(column, painted);
+
+        column.add(Box.createVerticalGlue());
+        return column;
+    }
+
     private static void addRow(JPanel column, JComponent row) {
         row.setAlignmentX(Component.LEFT_ALIGNMENT);
         Dimension preferred = row.getPreferredSize();

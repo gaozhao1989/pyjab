@@ -214,6 +214,18 @@ jobs:
           # The runner's *display* scale is 1.0, which is why the plain dpi task cannot
           # test issue #62. This asks the target JVM to scale itself instead, which is the
           # same situation from pyjab's side and needs no display scaling at all.
+          # Can this runner be made to scale its display at all? Issue #169 item 3 needs
+          # 150%, and the uiScale experiment showed that a JVM scaling itself is not the
+          # same thing. This tries the documented way -- the per-user LogPixels value --
+          # and reports whether the display's answer changes.
+          Write-Host "=== before ==="
+          Add-Type -AssemblyName System.Windows.Forms
+          Write-Host "LogPixels: $((Get-ItemProperty 'HKCU:\Control Panel\Desktop' -Name LogPixels -ErrorAction SilentlyContinue).LogPixels)"
+          Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name LogPixels -Value 144 -Type DWord
+          Write-Host "LogPixels now: $((Get-ItemProperty 'HKCU:\Control Panel\Desktop' -Name LogPixels).LogPixels)"
+          Write-Host "=== after (a fresh process, so nothing is cached) ==="
+          python -c "import ctypes; u=ctypes.windll.user32; print('GetDpiForSystem:', u.GetDpiForSystem()); print('implied scale:', u.GetDpiForSystem()/96.0)"
+          Write-Host "::notice::if the scale above is still 1.0, this runner cannot be made to scale without a logoff, and #169 item 3 needs a machine that can"
           python tools/verify_dpi.py --ui-scale 1.5 2>&1 | Tee-Object -FilePath dpi-scaled.log
           exit $LASTEXITCODE
 
