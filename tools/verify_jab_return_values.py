@@ -68,7 +68,7 @@ SITES = {
     "getTopLevelObject": ("jabelement.py:597, jabdriver.py:301", "checks",
                           f"_get_top_level_object() on {LABEL!r}"),
     "setTextContents": ("jabelement.py:1618", "checks", f"send_text() on {FIELD!r}"),
-    "getAccessibleChildFromContext": ("jabelement.py:376", "ignores", "children()"),
+    "getAccessibleChildFromContext": ("jabelement.py:376", "ignores", "get_children()"),
     "getVersionInfo": ("jabdriver.py:374", "ignores", "get_version_info()"),
     "getAccessibleContextFromHWND": ("jabdriver.py:354", "ignores", "JABDriver(hwnd=)"),
     "getHWNDFromAccessibleContext": ("jabdriver.py:304", "ignores",
@@ -314,7 +314,7 @@ def _text_write(ctx):
 
 
 def _children(ctx):
-    found = list(ctx["jab"].root_element.children())
+    found = list(ctx["jab"].root_element.get_children())
     try:
         return f"{SITES['getAccessibleChildFromContext'][2]}: {len(found)} element(s)"
     finally:
