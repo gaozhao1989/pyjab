@@ -131,6 +131,29 @@ Added
   found is the most common report and ``find`` reports which step of the locator stopped
   matching.
 
+Removed
+~~~~~~~
+
+* **``get_screenshot()``, and with it the Pillow dependency.** The method returned a
+  Pillow ``Image``, which made Pillow a runtime dependency for the sake of one
+  convenience — and it was pyjab's own divergence rather than something a Selenium user
+  would expect: Selenium's method of that name returns base64, as the method's own
+  docstring had always pointed out.
+
+  **The capability is not lost.** ``get_screenshot_as_png()`` gives the same pixels as
+  PNG bytes, and an image object is one line on the caller's side, which is where that
+  dependency belongs::
+
+      Image.open(BytesIO(driver.get_screenshot_as_png()))
+
+  This is a **breaking change**, hence 2.0.0. The three Selenium-compatible methods --
+  ``get_screenshot_as_png()``, ``get_screenshot_as_base64()`` and
+  ``get_screenshot_as_file()`` -- keep their signatures and still return the same kind of
+  thing.
+
+  **``pip install pyjab`` no longer installs Pillow.** Screenshots are taken with plain
+  GDI calls (``BitBlt`` and ``GetDIBits``) and written with nothing but ``zlib``.
+
 Fixed
 ~~~~~
 

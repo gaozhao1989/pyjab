@@ -49,7 +49,6 @@ classifiers = [
 # marker keeps `pip install pyjab` from attempting to resolve pywin32 on other
 # platforms, which was a source of confusing resolver errors.
 dependencies = [
-    "Pillow>=8.3.2",
     "pywin32>=302; sys_platform == 'win32'",
 ]
 

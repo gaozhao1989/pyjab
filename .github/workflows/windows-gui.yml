@@ -68,6 +68,7 @@ on:
           - test-app
           - soak
           - jvm-discovery
+          - screenshot
           - environment
       java:
         description: Temurin JDK version
@@ -214,6 +215,13 @@ jobs:
           Write-Host "::notice::display scale is 1.0 on this runner; a green dpi run is not evidence about #62"
           # Without --hold: the tool's interactive mode never returns.
           python tools/verify_dpi.py 2>&1 | Tee-Object -FilePath dpi.log
+          exit $LASTEXITCODE
+
+      - name: "task=screenshot"
+        if: inputs.task == 'screenshot'
+        shell: pwsh
+        run: |
+          python tools/verify_screenshot.py 2>&1 | Tee-Object -FilePath screenshot.log
           exit $LASTEXITCODE
 
       - name: "task=jvm-discovery"

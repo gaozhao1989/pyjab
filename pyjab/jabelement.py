@@ -13,7 +13,6 @@ if sys.platform != "win32":  # pragma: no cover - platform dependent
     )
 
 import base64
-from io import BytesIO
 from time import monotonic, sleep
 
 from pyjab.common.logger import Logger
@@ -26,8 +25,8 @@ import re
 from ctypes import Array, byref, CDLL, c_char, c_long, create_string_buffer
 from ctypes.wintypes import HWND
 from typing import Any, Generator, Optional, Union
-from PIL import Image, ImageGrab
 from pyjab.common.by import By
+from pyjab.common.png import bgra_to_png
 from pyjab.common.exceptions import JABException
 from pyjab.common.types import jint, JOBJECT64
 from pyjab.common.win32utils import Win32Utils, physical_point
@@ -2530,38 +2529,14 @@ class JABElement(object):
                 rarely what a test wants.
 
         Returns:
-            None.  Pillow raises if the file cannot be written; there is no
+            None.  Raises OSError if the file cannot be written; there is no
             True/False to check.
 
-        Use :meth:`get_screenshot` instead if you want the image rather than a
-        file.
+        The bytes are the same ones :meth:`get_screenshot_as_png` returns, so a
+        caller who wants them in hand rather than on disk should ask for those.
         """
-        im = self.get_screenshot()
-        im.save(filename)
-
-    def get_screenshot(self) -> Image:
-        """A Pillow ``Image`` of this element's rectangle on screen.
-
-        The element is grabbed from the screen rather than from the application,
-        so it shows whatever is actually there -- including anything drawn over
-        it.  The window is brought to the foreground first, because otherwise the
-        rectangle would hold whatever was covering it.
-        """
-        self.win32_utils._set_window_foreground(hwnd=self.hwnd)
-        x = self.bounds.get("x")
-        y = self.bounds.get("y")
-        width = self.bounds.get("width")
-        height = self.bounds.get("height")
-        return ImageGrab.grab(
-            bbox=(
-                x,
-                y,
-                x + width,
-                y + height,
-            ),
-            include_layered_windows=False,
-            all_screens=True,
-        )
+        with open(filename, "wb") as handle:
+            handle.write(self.get_screenshot_as_png())
 
     @property
     def parent(self):
@@ -2871,9 +2846,11 @@ class JABElement(object):
         Returns:
             bytes: a complete PNG file, magic number and all.
         """
-        buffer = BytesIO()
-        self.get_screenshot().save(buffer, format="PNG")
-        return buffer.getvalue()
+        bounds = self.root_element.bounds if hasattr(self, "root_element") else self.bounds
+        x, y = bounds["x"], bounds["y"]
+        width, height = bounds["width"], bounds["height"]
+        win32 = self.win32utils if hasattr(self, "win32utils") else self.win32_utils
+        return bgra_to_png(win32.grab_rect(x, y, width, height), width, height)
 
     def get_screenshot_as_base64(self) -> str:
         """The screenshot as a base64-encoded PNG, for embedding in HTML or JSON.

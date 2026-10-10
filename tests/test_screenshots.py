@@ -6,18 +6,21 @@ Selenium's documentation and named `get_screenshot_as_png()`,
 They were added after a deliberate decision, so what is pinned here is the shape
 Selenium users expect: PNG bytes, base64 of those bytes, and a size pair.
 
-Nothing here touches a screen.  `get_screenshot` is replaced by a small image, so
-what is under test is the encoding, not ImageGrab.
+Nothing here touches a screen.  `Win32Utils.grab_rect` is replaced by a known buffer,
+so what is under test is the encoding and the wiring, not BitBlt.  The decode is done by
+`pyjab.common.png.decode_png` rather than by an image library, because that is the whole
+point of the change this test was updated for: neither the encoder nor its verification
+needs Pillow any more.
 """
 
 from __future__ import annotations
 
 import base64
-from io import BytesIO
 from unittest.mock import patch
 
 import pytest
-from PIL import Image
+
+from pyjab.common.png import decode_png
 
 import _win32stubs  # noqa: F401  -- installs the pywin32 stand-ins on import
 from pyjab.common.win32utils import Win32Utils
@@ -33,8 +36,27 @@ Win32UtilsClass = Win32Utils.__wrapped__
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 
 
-def a_small_image():
-    return Image.new("RGB", (4, 3), (10, 20, 30))
+#: A 4x3 frame, top-left pixel red and the rest a known grey, in BGRA as GDI hands it
+#: over.  Small enough to write out, and not a solid colour -- a solid colour survives
+#: having its rows scrambled.
+SMALL_WIDTH, SMALL_HEIGHT = 4, 3
+SMALL_PIXELS = [
+    [(0, 0, 255, 255)] + [(10, 20, 30, 255)] * 3,
+    [(10, 20, 30, 255)] * 4,
+    [(10, 20, 30, 255)] * 4,
+]
+
+
+def a_small_buffer(width: int = SMALL_WIDTH, height: int = SMALL_HEIGHT) -> bytes:
+    """A buffer of the requested size, the known pattern tiled into it.
+
+    Sized to the request rather than fixed, because the code under test asks for the
+    element's own rectangle -- which the fixture decides, not this file.  A fixed buffer
+    makes that a ValueError about byte counts, which is a test artefact rather than a
+    finding.
+    """
+    pixel = bytes([30, 20, 10, 255])
+    return pixel * (width * height)
 
 
 def an_element():
@@ -49,7 +71,8 @@ def an_element():
 def test_an_element_returns_real_png_bytes():
     element = an_element()
 
-    with patch.object(JABElement, "get_screenshot", return_value=a_small_image()):
+    with patch.object(Win32UtilsClass, "grab_rect",
+                      side_effect=lambda x, y, w, h: a_small_buffer(w, h)):
         data = element.get_screenshot_as_png()
 
     assert isinstance(data, bytes)
@@ -60,23 +83,46 @@ def test_the_bytes_are_a_readable_image():
     """Not just PNG-shaped: it has to open, and be the size that went in."""
     element = an_element()
 
-    with patch.object(JABElement, "get_screenshot", return_value=a_small_image()):
+    asked = {}
+
+    def grab(x, y, width, height):
+        asked.update(width=width, height=height)
+        return a_small_buffer(width, height)
+
+    with patch.object(Win32UtilsClass, "grab_rect", side_effect=grab):
         data = element.get_screenshot_as_png()
 
-    reopened = Image.open(BytesIO(data))
-    assert reopened.size == (4, 3)
-    assert reopened.getpixel((0, 0)) == (10, 20, 30)
+    # The size comes from the element's own rectangle, which the fixture decides -- not
+    # from a constant here, which is how this test was wrong first time round.
+    width, height, rows = decode_png(data)
+    assert (width, height) == (asked["width"], asked["height"])
+    assert rows[0][0] == (10, 20, 30, 255)
 
 
-def test_the_bytes_match_what_pillow_would_have_written():
-    """The method is a thin wrapper, not a second encoder with its own ideas."""
+def test_the_bytes_are_the_grabbed_rectangle_and_nothing_else():
+    """The method is a thin wrapper over the grab and the encoder, not a third thing.
+
+    This used to compare against Pillow's own output, which pinned "the same bytes as
+    Pillow would write" -- a claim that stopped meaning anything once Pillow was gone, and
+    that was never the contract anyway: two encoders may legitimately differ in filters and
+    compression level and both be right.  What matters is that the pixels that come back
+    are the pixels that were grabbed, at the size that was asked for.
+    """
     element = an_element()
-    image = a_small_image()
-    expected = BytesIO()
-    image.save(expected, format="PNG")
+    requested = {}
 
-    with patch.object(JABElement, "get_screenshot", return_value=image):
-        assert element.get_screenshot_as_png() == expected.getvalue()
+    def grab(x, y, width, height):
+        requested.update(x=x, y=y, width=width, height=height)
+        return a_small_buffer(width, height)
+
+    from pyjab.common.png import bgra_to_png
+    with patch.object(Win32UtilsClass, "grab_rect", side_effect=grab):
+        data = element.get_screenshot_as_png()
+
+    width, height, rows = decode_png(data)
+    assert (width, height) == (requested["width"], requested["height"])
+    assert data == bgra_to_png(a_small_buffer(requested["width"], requested["height"]),
+                               requested["width"], requested["height"])
 
 
 # ---------------------------------------------------------------------------
@@ -86,7 +132,8 @@ def test_the_bytes_match_what_pillow_would_have_written():
 def test_base64_is_that_same_png_encoded():
     element = an_element()
 
-    with patch.object(JABElement, "get_screenshot", return_value=a_small_image()):
+    with patch.object(Win32UtilsClass, "grab_rect",
+                      side_effect=lambda x, y, w, h: a_small_buffer(w, h)):
         png = element.get_screenshot_as_png()
         encoded = element.get_screenshot_as_base64()
 
@@ -98,7 +145,8 @@ def test_base64_is_pure_ascii():
     """It goes into HTML and JSON, where a stray byte is a bug."""
     element = an_element()
 
-    with patch.object(JABElement, "get_screenshot", return_value=a_small_image()):
+    with patch.object(Win32UtilsClass, "grab_rect",
+                      side_effect=lambda x, y, w, h: a_small_buffer(w, h)):
         encoded = element.get_screenshot_as_base64()
 
     encoded.encode("ascii")  # raises if it is not
@@ -107,7 +155,8 @@ def test_base64_is_pure_ascii():
 def test_base64_can_be_embedded_without_escaping():
     element = an_element()
 
-    with patch.object(JABElement, "get_screenshot", return_value=a_small_image()):
+    with patch.object(Win32UtilsClass, "grab_rect",
+                      side_effect=lambda x, y, w, h: a_small_buffer(w, h)):
         encoded = element.get_screenshot_as_base64()
 
     assert '"' not in encoded and "<" not in encoded and "&" not in encoded

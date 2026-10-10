@@ -9,5 +9,4 @@
 # a deprecated shim that pins `pywin32==223`, so having both made dependency
 # resolution fail for every released version.  Do not re-add it.
 
-Pillow>=8.3.2
 pywin32>=302; sys_platform == "win32"
