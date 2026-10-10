@@ -390,6 +390,19 @@ class JABElement(object):
         """
         self.win32_utils.send_keys(keys)
 
+    def focus(self) -> bool:
+        """Bring this element's window to the foreground, and say whether it got there.
+
+        Returns:
+            bool: whether the window **is** the foreground window afterwards. **False is a
+            normal answer** -- Windows refuses foreground activation from a service session,
+            which is why this returns rather than raises. See #68.
+
+        See :meth:`JABDriver.focus`. The element version exists because an element is what a
+        caller usually has in hand after a lookup, and its ``hwnd`` is the same window.
+        """
+        return self.win32_utils.set_window_foreground(hwnd=self.hwnd)
+
     def as_record(self) -> dict:
         """This element's identity and geometry, as plain data.
 

@@ -113,6 +113,27 @@ class JABDriver(object):
         """
         self.win32utils.send_keys(keys)
 
+    def focus(self) -> bool:
+        """Bring the bound window to the foreground, and say whether it got there.
+
+        Returns:
+            bool: whether the window **is** the foreground window afterwards. **False is a
+            normal answer**: Windows refuses foreground activation from a service session,
+            which is why this returns rather than raises. See #68.
+
+        Note:
+            Every interactive method already does this as a side effect, so a caller about to
+            click something does not need it. It is here for the case that has no such
+            method: **sending a shortcut**. ``send_keys`` deliberately does not foreground
+            anything, because that would act on a window the caller did not choose -- so a
+            caller that wants a shortcut to land calls this first and reads the answer.
+
+        :Usage:
+            if driver.focus():
+                driver.send_keys("alt+y")
+        """
+        return self.win32utils.set_window_foreground(hwnd=self.root_element.hwnd)
+
     def detach(self) -> None:
         """Release the bound window **without terminating its process**.
 

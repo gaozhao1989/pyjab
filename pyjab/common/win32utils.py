@@ -618,11 +618,39 @@ class Win32Utils(object):
     def _get_foreground_window() -> HWND:
         return win32gui.GetForegroundWindow()
 
-    def _set_window_foreground(self, hwnd: HWND) -> None:
+    def set_window_foreground(self, hwnd: HWND) -> bool:
+        """Bring *hwnd* to the foreground, and say whether it got there.
+
+        Returns:
+            bool: whether *hwnd* **is** the foreground window afterwards. Not whether the
+            call was made -- ``SetForegroundWindow`` returns nothing useful, so the only
+            honest answer is the state it left behind, read back.
+
+        Note:
+            **False is a normal answer, not an error.** Windows refuses foreground
+            activation from a service session, and no amount of retrying changes that; the
+            reasoning is recorded on #68. A caller that needs the window in front has to
+            decide what to do about a refusal, and most callers do not need to.
+
+            The space bar is sent first, which is what Windows' own foreground-activation
+            rules require to let a process take the foreground. It goes to the window that
+            currently has focus, so it is not free: a caller that cannot tolerate a stray
+            keystroke somewhere should not call this.
+        """
         if hwnd == self._get_foreground_window():
-            return
-        win32com.client.Dispatch("WScript.Shell").SendKeys(' ')
-        win32gui.SetForegroundWindow(hwnd)
+            return True
+        try:
+            win32com.client.Dispatch("WScript.Shell").SendKeys(' ')
+            win32gui.SetForegroundWindow(hwnd)
+        except Exception:                                    # pragma: no cover - Windows
+            # pywin32 raises rather than returning a status, and a refusal here is the
+            # documented outcome in a service session. The read-back below is the answer.
+            self.logger.debug("SetForegroundWindow refused for hwnd %s", hwnd)
+        return self._get_foreground_window() == hwnd
+
+    def _set_window_foreground(self, hwnd: HWND) -> None:
+        """Kept for the twelve call sites inside this project; see the public method."""
+        self.set_window_foreground(hwnd)
 
     @staticmethod
     def _get_window_size(hwnd: HWND) -> tuple:
@@ -758,10 +786,19 @@ class Win32Utils(object):
                 back — it acts on somebody else's application.
 
         Note:
-            **This sends to whatever has the keyboard focus**; it does not focus anything
-            and it does not bring the window forward. A shortcut only works if the window
-            meant to receive it already has focus, so a caller that has just attached to a
-            window usually has to bring it forward first.
+            **This sends to whatever has the keyboard focus**; it does not focus anything and
+            it does not bring the window forward -- deliberately, because foregrounding would
+            act on a window the caller did not choose.
+
+            A caller that wants the shortcut to land somewhere specific brings it forward
+            first and reads the answer::
+
+                if driver.focus():
+                    driver.send_keys("alt+y")
+
+            :meth:`set_window_foreground` is that call, and it says whether it worked rather
+            than raising, because Windows refuses foreground activation from a service
+            session and that is a normal outcome.
 
         :Usage:
             Win32Utils().send_keys("alt+y")
