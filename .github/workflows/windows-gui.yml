@@ -100,10 +100,28 @@ jobs:
   windows-gui:
     name: ${{ inputs.task }} (JDK ${{ inputs.java }})
     runs-on: windows-latest
-    # The GUI suite drives a real JVM and waits on bounded timeouts; the soak is
-    # the only genuinely long one, and it stops itself at `minutes`.  The cap
-    # keeps a hung JAB call from burning the six hours a hosted job may run.
-    timeout-minutes: 240
+    # 150 minutes, which is the two-hour soak plus headroom -- and less than the four
+    # hours this used to allow.
+    #
+    # Measured, because the number has to clear a real task rather than a hung one:
+    # run 38019806044 ran `task=soak` for **120m47s** end to end, the 1102-sample
+    # two-hour run the roadmap asks for, so anything under about 125 minutes would
+    # break the task it is meant to protect. 150 leaves roughly half an hour of
+    # slack for a slow runner.
+    #
+    # It was 240, which is four hours, and that was one fixed number doing two
+    # unlike jobs. The longest task here other than the soak, measured over 80 runs,
+    # is 1.7 minutes (`gui-suite`, 2713 passed); a hung `jab-return-values` -- 6
+    # minutes when it works (run 38069167939) -- was still going at 51 minutes on run
+    # 38061816617 when a human cancelled it. It would have sat there for four hours.
+    #
+    # This cap is also what makes the `if: always()` upload below reachable at all:
+    # #211 is a run still `in_progress` 28 minutes in with the upload step never
+    # reached, because nothing was counting.
+    #
+    # The soak step carries its own, tighter ceiling so that an overrun is
+    # attributed to the task that hung instead of cancelling the whole job.
+    timeout-minutes: 150
 
     steps:
       - uses: actions/checkout@v4
@@ -293,6 +311,19 @@ jobs:
 
       - name: "task=soak"
         if: inputs.task == 'soak'
+        # Its own ceiling, derived from the duration it was asked for: a soak that
+        # overruns `--minutes` fails as *this step*, so the log names the task that
+        # hung and the `if: always()` upload below still runs -- the job is not
+        # cancelled the way the 150-minute job cap would cancel it.
+        #
+        # 15 minutes of slack over the requested duration, against a measured setup of
+        # under two minutes (run 38019806044: 120m47s of job, of which the soak itself
+        # was the rest).
+        #
+        # `|| '1'` because `minutes` is `required: false`: an empty value would make
+        # `fromJSON` fail at parse time, with a message about an expression rather
+        # than about the input that caused it.
+        timeout-minutes: ${{ fromJSON(inputs.minutes || '1') + 15 }}
         shell: pwsh
         run: |
           javac -d tests/java/classes tests/java/PyjabTestApp.java
