@@ -115,6 +115,30 @@ Changed
      a refused count as well. Ask ``children_count`` for "was it readable", and stop
      treating ``0`` as a value this property cannot return.
 
+Fixed
+~~~~~
+
+* **``errorcheck`` in ``SIGNATURES`` now installs the hook it names, and no row is armed.**
+  ``_fix_bridge_function`` acted on the flag by assigning ``func.errorcheck``, but ctypes'
+  attribute is ``errcheck`` — so the assignment set an inert Python attribute and **no hook
+  was ever installed on any symbol**. With the spelling fixed the mechanism works; **every
+  row's flag is now ``False``**, which is what each row effectively was all along, so
+  **this release changes nothing observable**.
+
+  Arming a row is deliberately left to a later, per-row change. ``True`` installs
+  ``_check_error``, which raises ``RuntimeError`` on a falsy result: that makes a
+  hand-written ``if not result:`` check unreachable, and turns a falsy return into an
+  exception from inside the call — so the ``except JABException`` blocks in
+  ``jabelement.py`` and ``jabdriver.py`` stop catching, and a recoverable lookup miss
+  becomes an uncaught ``RuntimeError``. It is also not yet measured on a real JVM, and the
+  hook covers a falsy ``0`` but not the truthy ``-1`` that ``getObjectDepth`` uses as its
+  error answer. See Gaozhao1989/pyjab#195.
+
+  ``tests/test_errorcheck_binding.py`` asserts the mechanism — ``errcheck`` is set on a
+  flagged symbol, a ``False`` row gets no hook, and ``_check_error`` raises on ``0`` while
+  passing ``-1`` through — and that no row is armed, because the portable suite cannot
+  observe a behaviour that does not happen.
+
 1.10.0 - 2026-10-10
 ------------------
 
