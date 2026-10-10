@@ -547,21 +547,19 @@ def reproduction(outcome: dict, aware_outcome: dict) -> str:
 def main() -> int:
     global UI_SCALE
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--no-launch", action="store_true",
+                        help="attach to an application that is already running")
+    parser.add_argument("--hold", action="store_true",
+                        help="leave the application running on exit")
     parser.add_argument(
         "--ui-scale", type=float, default=None, metavar="N",
         help="launch the test application with -Dsun.java2d.uiScale=N, so that issue #62's "
              "situation can be produced on a display whose own scale is 1.0",
     )
-    cli = parser.parse_args()
-    UI_SCALE = cli.ui_scale
+    args = parser.parse_args()
+    UI_SCALE = args.ui_scale
     if UI_SCALE is not None:
         print(f"launching with -Dsun.java2d.uiScale={UI_SCALE}")
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--no-launch", action="store_true",
-                        help="attach to an application that is already running")
-    parser.add_argument("--hold", action="store_true",
-                        help="leave the application running on exit")
-    args = parser.parse_args()
 
     if not sys.platform.startswith("win"):
         sys.exit("this needs Windows: it is about DPI awareness and the Win32 mouse APIs")
