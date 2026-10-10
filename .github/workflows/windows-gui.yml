@@ -116,6 +116,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
 
       # Every run records the thing that makes it possible, so a future "pyjab
       # cannot see the window in CI" is answerable from the log rather than by
