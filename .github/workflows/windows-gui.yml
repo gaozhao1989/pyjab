@@ -69,6 +69,7 @@ on:
           - soak
           - jvm-discovery
           - screenshot
+          - detach
           - environment
       java:
         description: Temurin JDK version
@@ -215,6 +216,13 @@ jobs:
           Write-Host "::notice::display scale is 1.0 on this runner; a green dpi run is not evidence about #62"
           # Without --hold: the tool's interactive mode never returns.
           python tools/verify_dpi.py 2>&1 | Tee-Object -FilePath dpi.log
+          exit $LASTEXITCODE
+
+      - name: "task=detach"
+        if: inputs.task == 'detach'
+        shell: pwsh
+        run: |
+          python tools/verify_detach.py 2>&1 | Tee-Object -FilePath detach.log
           exit $LASTEXITCODE
 
       - name: "task=screenshot"
