@@ -7,8 +7,8 @@ This project adheres to `Semantic Versioning`_ and `Keep a Changelog`_.
 .. _Semantic Versioning: https://semver.org/
 .. _Keep a Changelog: https://keepachangelog.com/
 
-Unreleased
-----------
+1.10.0 - 2026-10-10
+------------------
 
 Added
 ~~~~~

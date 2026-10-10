@@ -550,6 +550,53 @@ and the accessibility action path is the only option — see
 [Selecting](#selecting).
 
 
+## Attaching, listing, and letting go
+
+`JABDriver` binds to **one** window and holds it. Two things follow, and both are here
+because callers kept needing them.
+
+### Which windows are there?
+
+```python
+import pyjab
+
+for window in pyjab.list_java_windows():
+    print(window["title"], hex(window["hwnd"]), window["pid"])
+```
+
+Every top-level window the bridge recognises as Java, as dicts with `hwnd`, `title` and
+`pid`. It **does not bind anything** — the windows are left exactly as they were — so it is
+the thing to call *before* you know which one you want.
+
+`pid` is `None` when it cannot be read: a window can close between being listed and being
+asked about, and that is a race rather than an error.
+
+This is defined on the package (`pyjab.list_java_windows`) and needs the bridge like
+everything else, so it works on Windows only — but `import pyjab` stays harmless everywhere
+and only *calling* it raises the sentence about Windows.
+
+### Letting go of a window without ending it
+
+`JABDriver` is a context manager, and leaving the `with` block sends `SIGTERM` to the
+application. That is right for an application you launched and wrong for one you attached
+to:
+
+```python
+driver = JABDriver(title="Some App")   # attaches; does not launch
+try:
+    ...
+finally:
+    driver.detach()                    # the application keeps running
+```
+
+`detach()` releases the reference the driver holds and forgets the window, the JVM id and
+the pid. **Forgetting the pid is what makes the following exit harmless** — so calling
+`detach()` and then leaving a `with` block does not kill anything. It is idempotent, and
+safe on a driver whose construction failed before it bound a window.
+
+What it does **not** do is unload the bridge. That is process-wide, several drivers may
+share it, and arming it is not something pyjab undoes.
+
 ## Threads
 
 **Java Access Bridge is COM based, and its events are delivered to the thread that called
