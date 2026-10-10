@@ -130,7 +130,47 @@ class JABElement(object):
 
     @property
     def children_count(self) -> int:
+        """How many children the element has, **visible or not**.
+
+        Read from the accessibility context info, so it costs nothing extra on an element
+        whose info has already been fetched -- which is why it is the one :meth:`as_record`
+        carries.
+
+        **Not the same number as** :attr:`visible_children_count`, which is what a
+        traversal yields and can be smaller when some children are hidden. Both are
+        correct; a caller comparing this against ``len(list(element.walk()))`` and finding
+        them different has found that difference rather than a bug.
+        """
         return self._acc_info().childrenCount
+
+    @property
+    def visible_children_count(self) -> int:
+        """How many children the bridge says are **visible**.
+
+        Not the same number as :attr:`children_count`, and the difference is the point.
+
+        * :attr:`children_count` comes from ``getAccessibleContextInfo`` and is the
+          **total**, visible or not.
+        * this one comes from ``getVisibleChildrenCount``, and it is what a traversal
+          yields — :meth:`walk` steps through the visible children.
+
+        So for an element with hidden children, ``children_count`` is larger than either
+        this or ``len(list(element.walk()))``, and **both are correct**. Before this
+        existed, a caller reading one and walking the other had no way to tell that apart
+        from a bug or a truncated walk.
+
+        Raises:
+            JABException: the bridge refused the call. **A refused count is not a count of
+                zero**, which is why this does not quietly return one — see
+                :meth:`walk`, whose ``truncated`` is the other half of the same question.
+        """
+        # The same call _generate_childs_from_element makes, and the same check: the
+        # symbol is registered without errorcheck, so a falsy return is a refused call
+        # rather than an answer. AGENTS.md 2.7.
+        result = self.bridge.getVisibleChildrenCount(self.vmid, self.accessible_context)
+        if not result:
+            raise JABException(self.int_func_err_msg.format("getVisibleChildrenCount"))
+        return int(result)
 
     @property
     def bounds(self) -> dict:
@@ -370,6 +410,11 @@ class JABElement(object):
             "name": self.name or "",
             "description": self.description or "",
             "index_in_parent": self.index_in_parent,
+            # `children_count` and not `visible_children_count`, deliberately. This is
+            # the record a walk produces per node, and `children_count` comes from the
+            # context info the walk has already fetched; the visible count is a second
+            # bridge call per node. See visible_children_count for what the difference is
+            # and why a caller that needs it should ask for it.
             "children_count": self.children_count,
             "object_depth": self.object_depth,
             "states": ",".join(self.states_en_us or []),
