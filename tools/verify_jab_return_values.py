@@ -21,6 +21,13 @@ Each drive runs under a wall-clock watchdog, so a call that never returns costs 
 ``getAccessibleContextInfo`` on the root element; the NOTE records that ``-1`` is **truthy**,
 so a symbol whose failure answer is ``-1`` is not made safe by arming it.
 
+**A dead target is reported as a dead target.**  Run 38069167939's artifact shows the JVM
+dying with ``EXCEPTION_ACCESS_VIOLATION`` 13.6s in, with ``javaaccessbridge.dll`` loaded and
+the frame in ``jvm.dll``.  That is what "the harness cannot drive the application" looks like
+from the inside: the window goes away and every later row reads as unreachable.  The sweep
+stops when the target is gone, and the summary carries the ``hs_err`` signal, frame and
+faulting module, so an INCONCLUSIVE from this tool says which of the two happened.
+
 Windows, a JDK and an interactive desktop.  Dispatched, never run locally:
 
     gh workflow run windows-gui.yml -f task=jab-return-values
@@ -428,7 +435,7 @@ def report(rows: list, row_control: dict, crash: dict = None) -> int:
     print("summary")
     print("=" * 78)
     print(f"  {'ok' if control_ok else 'FAIL'} control: direct getAccessibleContextInfo on "
-          "the root element")
+          f"the root element -> {row_control['raw']!r}")
     print(f"  {'ok' if crash is None else 'FAIL'} {jvm}")
     print(f"  reached: {len(rows) - len(unreached)} of {len(SYMBOLS)} symbols measured "
           "through the pyjab call site that makes them")
