@@ -17,6 +17,7 @@ module installs fakes.
 from __future__ import annotations
 
 import importlib.util
+import re
 import sys
 import types
 from pathlib import Path
@@ -253,7 +254,12 @@ def test_a_measured_symbol_carries_its_raw_return_and_truthiness():
     row = tool.measure(FakeJab(FakeBridge({"getAccessibleContextInfo": 1})),
                        "getAccessibleContextInfo", 5.0)
 
-    assert (row["symbol"], row["site"]) == ("getAccessibleContextInfo", "jabelement.py:632")
+    assert row["symbol"] == "getAccessibleContextInfo"
+    # The site is where the drive below really makes the call, so read that line from the
+    # source rather than pinning a number that #208/#217 already moved once.
+    module, line = row["site"].rsplit(":", 1)
+    source = (REPO_ROOT / "pyjab" / module).read_text(encoding="utf-8").splitlines()
+    assert "getAccessibleContextInfo" in source[int(line) - 1]
     assert (row["raw"], row["falsy"], row["reason"]) == (1, False, None)
     assert row["outcome"], "the report has to say how it was reached"
 
@@ -323,7 +329,7 @@ def test_every_widget_the_sweep_names_exists_in_the_test_application():
 
 def test_the_seven_sites_that_ignore_the_result_are_marked_as_such():
     """#195's split decides the blast radius, so it is asserted rather than assumed."""
-    ignoring = [symbol for symbol, (_site, what, _why) in tool.SITES.items()
+    ignoring = [symbol for symbol, (what, _why) in tool.SITES.items()
                 if what == "ignores"]
 
     assert len(ignoring) == 7
@@ -335,6 +341,41 @@ def test_the_drives_reach_the_driver_through_a_context_not_a_name():
     source = (REPO_ROOT / "tools" / "verify_jab_return_values.py").read_text(encoding="utf-8")
 
     assert "driver._" not in source
+
+
+# ---------------------------------------------------------------------------
+# The call site is derived from the source, never stored in the table
+# ---------------------------------------------------------------------------
+
+def test_the_reported_line_is_the_line_that_really_makes_the_call():
+    """Read the source at the resolved position, independently of the resolver's AST walk.
+
+    The table used to store these numbers and 12 of the 14 had rotted after #208/#217, so a
+    frozen value is exactly the defect: ``jabelement.py:632`` names a line with no call on it.
+    """
+    for symbol in tool.SYMBOLS:
+        site = tool.call_sites(symbol)
+        assert "not found" not in site, f"{symbol} has no call site: {site}"
+        for entry in site.split(", "):
+            module, line = entry.rsplit(":", 1)
+            source = (REPO_ROOT / "pyjab" / module).read_text(encoding="utf-8").splitlines()
+            assert symbol in source[int(line) - 1], f"{symbol} is not called on {entry}"
+
+
+def test_a_symbol_the_package_never_calls_is_reported_as_not_found():
+    """Silence is what let the stored positions rot, so the not-found case has to say so."""
+    site = tool.call_sites("getNoSuchAccessibleThingAtAll")
+
+    assert site.startswith("not found in ")
+    for module in tool.JAB_CALL_MODULES:
+        assert module in site
+
+
+def test_no_position_is_stored_in_the_table_any_more():
+    """The fix is that the table has no position in it -- keep it that way."""
+    for symbol, entry in tool.SITES.items():
+        assert len(entry) == 2, f"{symbol} still carries a stored position: {entry!r}"
+        assert not any(re.search(r"\.py:\d+", field) for field in entry), entry
 
 
 # ---------------------------------------------------------------------------
@@ -357,8 +398,8 @@ def rows_for(falsy_symbol=None, unreached_symbol=None, control_raw=1):
     rows = []
     for symbol in tool.SYMBOLS:
         bad, gone = symbol == falsy_symbol, symbol == unreached_symbol
-        rows.append(dict(symbol=symbol, site=tool.SITES[symbol][0], expects="checks",
-                         reached_by=tool.SITES[symbol][2],
+        rows.append(dict(symbol=symbol, site=tool.call_sites(symbol), expects="checks",
+                         reached_by=tool.SITES[symbol][1],
                          raw=None if gone else (0 if bad else 1), type="int",
                          falsy=None if gone else bad, outcome=None,
                          reason="not reached: no such component" if gone else None))
