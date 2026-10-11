@@ -1,22 +1,46 @@
-# Keep the action pins current.
+# Keep the action pins current -- in one pull request, not five, and not the one pair
+# that cannot be verified before it is used.
 #
-# Why this file exists: there was none, so every `uses:` tag in `.github/workflows/`
-# was hand-maintained. `actions/checkout@v4`, `setup-java@v4`, `setup-python@v5` and
-# `upload-artifact@v4` are the pins a security advisory is most likely to touch, and
-# nothing was watching them (#231).
+# Why this file exists: there was none, so every `uses:` tag in `.github/workflows/` was
+# hand-maintained and nothing was watching them (#231). The first run after it landed
+# opened five pull requests within a minute, which is its own small problem: five
+# reviews, five CI runs, and no way to tell from the list which of them a pull request
+# can actually verify.
 #
-# What this does NOT cover, so nobody expects it to:
+# What a pull request can verify, and what it cannot (checked 2026-10-11 against the
+# workflows' own triggers):
+#
+#   action                     used by                          coverable by PR CI?
+#   ------------------------------------------------------------------------------
+#   actions/checkout           ci, release, windows-gui          yes (ci.yml)
+#   actions/setup-python       ci, release, windows-gui          yes (ci.yml)
+#   actions/setup-java         ci, windows-gui                   temurin path only
+#   actions/upload-artifact    ci, release, windows-gui          the upload side
+#   actions/download-artifact  release.yml only                  NEVER
+#
+# `release.yml` is triggered by `push: tags: [v*]` and nothing else, so no part of it
+# runs on a pull request. `download-artifact` appears only there, which makes a bump of
+# it unverifiable before the release that would use it -- and that release is the one
+# workflow in this repository that can half-publish a version. It is also half of a
+# pair: the same file uploads `dist/` and downloads it again, and moving one end alone
+# leaves the handoff spanning two majors, which neither action promises to support.
+#
+# Hence the `ignore` below: the pair's **major** updates are not proposed. They are worth
+# taking deliberately, both ends in one change, at a moment when a failed release costs
+# nothing -- and the release after that is their test. Patch and minor updates still flow,
+# which is what a security advisory would arrive as.
+#
+# Still not covered, so nobody expects it to be:
 #
 #   * `docker://rhysd/actionlint:1.7.12` in `ci.yml`. Dependabot's `github-actions`
-#     ecosystem skips `docker://` references outright -- dependabot-core's parser has
+#     ecosystem skips `docker://` references outright -- dependabot-core's parser carries
 #     a `# TODO: Support Docker references` and returns early on
-#     `string.start_with?(".", "docker://")`. That pin stays manual, deliberately, and
-#     `ci.yml` says so next to it.
-#   * `pywin32` and the `[project.optional-dependencies].dev` extras. A `pip` entry
-#     could cover them, but this project has exactly one runtime dependency
-#     (`pywin32>=302`, Windows only) and the dev extras are test tooling, so the daily
-#     pull requests would cost more attention than they save. Add the ecosystem here if
-#     that judgement changes.
+#     `string.start_with?(".", "docker://")`. That pin stays manual, and `ci.yml` says so
+#     next to it.
+#   * `pywin32` and the `[project.optional-dependencies].dev` extras. A `pip` entry could
+#     cover them, but this project has exactly one runtime dependency (`pywin32>=302`,
+#     Windows only) and the dev extras are test tooling, so the pull requests would cost
+#     more attention than they save. Add the ecosystem here if that judgement changes.
 version: 2
 
 updates:
@@ -24,8 +48,20 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     commit-message:
       # Matches this repository's convention for repository-internal CI work
       # (#204, #205, #206, #223 all use a `ci:` subject and carry no changelog entry).
       prefix: "ci"
+    # One pull request for the whole ecosystem: one review, one CI run, and anything that
+    # has to move as a pair moves as a pair.
+    groups:
+      actions:
+        patterns: ["*"]
+    ignore:
+      # The header explains why. Both entries are deliberate: naming only one would let
+      # Dependabot propose exactly the half-a-pair change this is here to prevent.
+      - dependency-name: actions/upload-artifact
+        update-types: ["version-update:semver-major"]
+      - dependency-name: actions/download-artifact
+        update-types: ["version-update:semver-major"]
