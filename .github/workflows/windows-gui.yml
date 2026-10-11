@@ -309,6 +309,24 @@ jobs:
           python tools/verify_test_app.py 2>&1 | Tee-Object -FilePath test-app.log
           exit $LASTEXITCODE
 
+      # GitHub Actions expressions have **no arithmetic operators** -- not `+`, not
+      # `-`. A `+` is a syntax error, and a workflow file is validated whole, so one
+      # of them makes every task undispatched and turns every push into a 0-job
+      # failed run (#221).
+      #
+      # Nothing run locally reads this file's expressions, so the ceiling is derived
+      # here and the soak step below only has to consume it. It runs for every task
+      # rather than only for `soak`, so that the output it reads is always defined.
+      - name: Work out the soak ceiling
+        id: soak-ceiling
+        shell: pwsh
+        run: |
+          $minutes = "${{ inputs.minutes }}"
+          if ($minutes -notmatch '^\d+$') { $minutes = 1 }  # `minutes` is optional
+          $ceiling = [int]$minutes + 15
+          Write-Host "soak ceiling: $ceiling minutes"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "minutes=$ceiling"
+
       - name: "task=soak"
         if: inputs.task == 'soak'
         # Its own ceiling, derived from the duration it was asked for: a soak that
@@ -319,11 +337,7 @@ jobs:
         # 15 minutes of slack over the requested duration, against a measured setup of
         # under two minutes (run 38019806044: 120m47s of job, of which the soak itself
         # was the rest).
-        #
-        # `|| '1'` because `minutes` is `required: false`: an empty value would make
-        # `fromJSON` fail at parse time, with a message about an expression rather
-        # than about the input that caused it.
-        timeout-minutes: ${{ fromJSON(inputs.minutes || '1') + 15 }}
+        timeout-minutes: ${{ fromJSON(steps.soak-ceiling.outputs.minutes) }}
         shell: pwsh
         run: |
           javac -d tests/java/classes tests/java/PyjabTestApp.java
