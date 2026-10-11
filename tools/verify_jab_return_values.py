@@ -36,11 +36,13 @@ Windows, a JDK and an interactive desktop.  Dispatched, never run locally:
 from __future__ import annotations
 
 import argparse
+import ast
 import shutil
 import subprocess
 import sys
 import threading
 import time
+from functools import lru_cache
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -52,30 +54,71 @@ LABEL, FIELD, TABLE, BUTTON = "A Label", "1122233455", "Sports table", "Middle b
 #: so a falsy test never notices it -- see the NOTE the report prints.
 DOCUMENTED_ERROR = -1
 
-#: One row per symbol: ``(where the code calls it, what that site does with the result, how
-#: this tool reaches it)``.  ``checks`` means the site reads the return itself, so arming the
-#: row would make that check unreachable; ``ignores`` means it reads nothing and would start
-#: raising on a falsy return.  **THIS IS THE COMPLETE LIST** -- the sweep runs exactly these
-#: keys, so a symbol cannot be dropped by being forgotten in a second place.  Widget names
-#: are read from ``tests/java/PyjabTestApp.java``.
+#: The package modules that make JAB calls.  ``jabelement.py`` is listed first, so a symbol
+#: called in both reads ``jabelement.py:...`` before ``jabdriver.py:...``.
+JAB_CALL_MODULES = ("jabelement.py", "jabdriver.py")
+
+
+@lru_cache(maxsize=None)
+def _call_lines(module: str) -> dict:
+    """``{called name: (line, ...)}`` for one package module, read from its own source.
+
+    Cached per process so the sweep's fourteen rows parse each large file once.  It is read
+    when :func:`call_sites` asks rather than at import, which is what makes the position a
+    run-time fact rather than something frozen into this file.
+    """
+    path = REPO_ROOT / "pyjab" / module
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    found: dict = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
+        if name:
+            found.setdefault(name, []).append(node.lineno)
+    return {name: tuple(sorted(lines)) for name, lines in found.items()}
+
+
+def call_sites(symbol: str) -> str:
+    """Where in the package the bridge call for *symbol* is made, read from the source.
+
+    A stored position is wrong the moment anything above it moves, and nothing re-derived
+    this one: 12 of the 14 entries here had rotted after #208/#217 shifted lines, so the
+    single fact the tool exists to report was the single fact it got wrong.  The source
+    cannot rot, so it is read instead.
+
+    A symbol with no such call says so rather than printing a blank -- or a stale number,
+    which is how the last set went unnoticed.
+    """
+    found = [f"{module}:{line}"
+             for module in JAB_CALL_MODULES
+             for line in _call_lines(module).get(symbol, ())]
+    return ", ".join(found) if found else f"not found in {', '.join(JAB_CALL_MODULES)}"
+
+
+#: One row per symbol: ``(what that site does with the result, how this tool reaches it)``.
+#: ``checks`` means the site reads the return itself, so arming the row would make that check
+#: unreachable; ``ignores`` means it reads nothing and would start raising on a falsy return.
+#: **The position is deliberately not here** -- :func:`call_sites` derives it from the source.
+#: **THIS IS THE COMPLETE LIST** -- the sweep runs exactly these keys, so a symbol cannot be
+#: dropped by being forgotten in a second place.  Widget names are read from
+#: ``tests/java/PyjabTestApp.java``.
 SITES = {
-    "getAccessibleContextInfo": ("jabelement.py:632", "checks", f".name of {LABEL!r}"),
-    "getAccessibleTextInfo": ("jabelement.py:664", "checks", f".text of {FIELD!r}"),
-    "getAccessibleTextRange": ("jabelement.py:680", "checks", f".text of {FIELD!r}"),
-    "getAccessibleTableCellInfo": ("jabelement.py:810", "checks",
-                                   f"get_cell(0, 0) on {TABLE!r}"),
-    "getVisibleChildren": ("jabelement.py:988", "checks", "get_visible_children()"),
-    "getTopLevelObject": ("jabelement.py:597, jabdriver.py:301", "checks",
-                          f"_get_top_level_object() on {LABEL!r}"),
-    "setTextContents": ("jabelement.py:1618", "checks", f"send_text() on {FIELD!r}"),
-    "getAccessibleChildFromContext": ("jabelement.py:376", "ignores", "get_children()"),
-    "getVersionInfo": ("jabdriver.py:374", "ignores", "get_version_info()"),
-    "getAccessibleContextFromHWND": ("jabdriver.py:354", "ignores", "JABDriver(hwnd=)"),
-    "getHWNDFromAccessibleContext": ("jabdriver.py:304", "ignores",
-                                     "JABDriver(vmid=, accessible_context=)"),
-    "requestFocus": ("jabelement.py:530", "ignores", f"_request_focus() on {FIELD!r}"),
-    "getAccessibleActions": ("jabelement.py:1005", "ignores", f"click() on {BUTTON!r}"),
-    "doAccessibleActions": ("jabelement.py:1036", "ignores", f"click() on {BUTTON!r}"),
+    "getAccessibleContextInfo": ("checks", f".name of {LABEL!r}"),
+    "getAccessibleTextInfo": ("checks", f".text of {FIELD!r}"),
+    "getAccessibleTextRange": ("checks", f".text of {FIELD!r}"),
+    "getAccessibleTableCellInfo": ("checks", f"get_cell(0, 0) on {TABLE!r}"),
+    "getVisibleChildren": ("checks", "get_visible_children()"),
+    "getTopLevelObject": ("checks", f"_get_top_level_object() on {LABEL!r}"),
+    "setTextContents": ("checks", f"send_text() on {FIELD!r}"),
+    "getAccessibleChildFromContext": ("ignores", "get_children()"),
+    "getVersionInfo": ("ignores", "get_version_info()"),
+    "getAccessibleContextFromHWND": ("ignores", "JABDriver(hwnd=)"),
+    "getHWNDFromAccessibleContext": ("ignores", "JABDriver(vmid=, accessible_context=)"),
+    "requestFocus": ("ignores", f"_request_focus() on {FIELD!r}"),
+    "getAccessibleActions": ("ignores", f"click() on {BUTTON!r}"),
+    "doAccessibleActions": ("ignores", f"click() on {BUTTON!r}"),
 }
 SYMBOLS = tuple(SITES)
 
@@ -209,9 +252,10 @@ def measure(jab, symbol: str, seconds: float) -> dict:
     binding rows and the focus row need.
     """
     global ACTIVE
-    site, expects, reached_by = SITES[symbol]
-    row = dict(symbol=symbol, site=site, expects=expects, reached_by=reached_by, raw=None,
-               type=None, falsy=None, outcome=None, reason=None)
+    expects, reached_by = SITES[symbol]
+    row = dict(symbol=symbol, site=call_sites(symbol), expects=expects,
+               reached_by=reached_by, raw=None, type=None, falsy=None, outcome=None,
+               reason=None)
     recorder = ACTIVE = Recorder(jab.bridge, symbol)
     owners = [owner for owner in (jab, jab.root_element) if owner is not None]
     for owner in owners:
@@ -271,18 +315,18 @@ def _find(ctx, name):
 
 def _name(ctx):
     _find(ctx, LABEL).name                  # every element property funnels through it
-    return SITES["getAccessibleContextInfo"][2]
+    return SITES["getAccessibleContextInfo"][1]
 
 
 def _text(ctx):
     _find(ctx, FIELD).text                  # the info, then the range it describes
-    return SITES["getAccessibleTextInfo"][2]
+    return SITES["getAccessibleTextInfo"][1]
 
 
 def _cell(ctx):
     cell = _find(ctx, TABLE).get_cell(0, 0)
     try:
-        return f"{SITES['getAccessibleTableCellInfo'][2]}, cell name={cell.name!r}"
+        return f"{SITES['getAccessibleTableCellInfo'][1]}, cell name={cell.name!r}"
     finally:
         cell.release_jabelement()           # get_cell hands back a reference we own
 
@@ -290,7 +334,7 @@ def _cell(ctx):
 def _visible(ctx):
     children = ctx["jab"].root_element.get_visible_children()
     try:
-        return f"{SITES['getVisibleChildren'][2]}: {len(children)} child(ren)"
+        return f"{SITES['getVisibleChildren'][1]}: {len(children)} child(ren)"
     finally:
         for child in children:
             child.release_jabelement()
@@ -300,7 +344,7 @@ def _top_level(ctx):
     label = _find(ctx, LABEL)
     top = label._get_top_level_object()
     try:
-        return f"{SITES['getTopLevelObject'][2]} -> {top!r}"
+        return f"{SITES['getTopLevelObject'][1]} -> {top!r}"
     finally:
         if top:
             label.bridge.releaseJavaObject(label.vmid, top)
@@ -316,7 +360,7 @@ def _text_write(ctx):
 def _children(ctx):
     found = list(ctx["jab"].root_element.get_children())
     try:
-        return f"{SITES['getAccessibleChildFromContext'][2]}: {len(found)} element(s)"
+        return f"{SITES['getAccessibleChildFromContext'][1]}: {len(found)} element(s)"
     finally:
         for child in found:
             child.release_jabelement()
@@ -352,7 +396,7 @@ def _focus(ctx):
     field = _find(ctx, FIELD)
     field.win32_utils.set_window_foreground(hwnd=field.hwnd)
     field._request_focus()          # the call clear(simulate=True) makes, minus backspaces
-    return SITES["requestFocus"][2]
+    return SITES["requestFocus"][1]
 
 
 def _actions(ctx):
@@ -475,9 +519,10 @@ def report(rows: list, row_control: dict, crash: dict = None) -> int:
 
 def unmeasured(symbol: str, reason: str) -> dict:
     """A row for a symbol the sweep did not measure, carrying its reason."""
-    site, expects, reached_by = SITES[symbol]
-    return dict(symbol=symbol, site=site, expects=expects, reached_by=reached_by, raw=None,
-                type=None, falsy=None, outcome=None, reason=not_reached(reason))
+    expects, reached_by = SITES[symbol]
+    return dict(symbol=symbol, site=call_sites(symbol), expects=expects,
+                reached_by=reached_by, raw=None, type=None, falsy=None, outcome=None,
+                reason=not_reached(reason))
 
 
 def compile_test_app() -> bool:
