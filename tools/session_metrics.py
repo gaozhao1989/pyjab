@@ -117,7 +117,8 @@ def main() -> int:
     args = parser.parse_args()
 
     since = None if args.since_minutes is None else time.time() - args.since_minutes * 60
-    dirs = workspace_session_dirs(args.workspace.resolve())
+    workspace = args.workspace.resolve()
+    dirs = workspace_session_dirs(workspace)
     files = session_files(dirs, since)
     tools, skills, calls = collect(files)
 
@@ -135,7 +136,8 @@ def main() -> int:
           + (f"  (modified in the last {args.since_minutes:g} min)" if since else ""))
     if not calls:
         print()
-        print("No tool calls found. Check --workspace and that zstd is installed.")
+        print(f"No tool calls found: searched the workspace {workspace}.")
+        print("Check --workspace and that zstd is installed.")
         return 0
 
     print(f"tool calls          : {calls}")
