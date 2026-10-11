@@ -19,6 +19,8 @@ htmlcov/
 # Compiled by the GUI test fixture (tests/conftest.py) from tests/java/*.java.
 # The sources are committed; the .class files are build output.
 tests/java/classes/
+# The JavaFX application, compiled only by the issue #227 task in windows-gui.yml.
+tests/java/fx/classes/
 
 # Editor / OS
 .vscode/

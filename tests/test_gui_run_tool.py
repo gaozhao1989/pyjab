@@ -178,7 +178,7 @@ def test_every_task_the_workflow_offers_is_read():
     assert tasks == [
         "gui-suite", "m0", "xpath", "table-selection", "dpi", "dpi-scaled", "test-app",
         "soak", "jvm-discovery", "visible-children-count", "jab-return-values",
-        "screenshot", "detach", "environment",
+        "screenshot", "detach", "environment", "javafx",
     ]
     assert default == "gui-suite"
 
