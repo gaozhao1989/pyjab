@@ -2304,6 +2304,15 @@ class JABElement(object):
 
         Returns:
             JABElement: The element find by locator
+
+        Raises:
+            JABException: nothing matched.  **Every ``find_element_by_*`` method has the
+                same contract, and so does the ``find_elements*`` family**: a lookup that
+                matches nothing raises rather than returning an empty result.  At the call
+                site an empty result and a locator that matched nothing look identical,
+                and the second one is nearly always the bug.  :meth:`get_children` is the
+                deliberate exception -- it returns ``[]``, because an element with no
+                children is an ordinary state rather than a failed lookup.
         """
         # Every find_element_by_* delegates here, so pumping once at this entry
         # covers the whole lookup API. Without it, pyjab never serviced COM
@@ -2561,6 +2570,12 @@ class JABElement(object):
 
         Returns:
             list: List of JABElement find by locator
+
+        Raises:
+            JABException: nothing matched.  A *list* query raising rather than returning
+                ``[]`` is deliberate and is the whole family's contract; the reasoning is
+                in :meth:`find_element`.  :meth:`get_children` is the one method that
+                returns ``[]`` when there are no children.
         """
         # See find_element(): this is the other choke point every
         # find_elements_by_* funnels through.
