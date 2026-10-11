@@ -7,6 +7,47 @@ This project adheres to `Semantic Versioning`_ and `Keep a Changelog`_.
 .. _Semantic Versioning: https://semver.org/
 .. _Keep a Changelog: https://keepachangelog.com/
 
+1.11.1 - 2026-10-11
+-------------------
+
+Fixed
+~~~~~
+
+* **The README claimed JavaFX support. It was never true, and the claim is gone.**
+  ``README.rst`` (which is the package description on PyPI), ``docs/Home.md`` and
+  ``docs/1-Overview.md`` all said pyjab drives "Swing / AWT / **JavaFX**" through Java
+  Access Bridge. **JavaFX on Windows does not use Java Access Bridge at all** — it
+  publishes its accessibility through UI Automation directly
+  (``com.sun.glass.ui.win.WinAccessible`` implements the UIA provider interfaces and
+  contains no JAB reference) — so a JavaFX window is not a Java window as far as JAB is
+  concerned.
+
+  Measured 2026-10-11 on a hosted Windows runner, against a JavaFX window whose contents
+  were known (11 controls and four table cells):
+
+  ================================================  ==================  ======================
+  what was asked                                    Swing (the control) JavaFX
+  ================================================  ==================  ======================
+  does JAB see it as a Java window?                 **yes**             **no** (``False``)
+  ``JABDriver(hwnd=...)``                           binds               **``RuntimeError``** -- "is not Java Window"
+  ``JABDriver(title=...)``                          binds               **``TimeoutError``** -- never binds
+  elements pyjab can walk                           **614**             **not reached**
+  elements UI Automation finds inside it            —                   **68**
+  ================================================  ==================  ======================
+
+  The UI-Automation figure is not a truncated client: the same client enumerated **180**
+  elements across the desktop and finished. The Swing control in the same run is what
+  makes the result about JavaFX rather than about the machine.
+
+  **Nothing about the library changed; what changed is what it says about itself.** A
+  JavaFX user was being told to install a tool that cannot see their application, and
+  told so in the first sentence of the README. Reported as #227.
+
+  **Affects: pyjab-mcp** — first released in **1.11.1**. That project's README repeats the
+  same claim ("Swing, AWT, JavaFX ... through pyjab"), so it needs the same correction;
+  its contract tests pin behaviour and cannot catch a wrong sentence. Filed on that
+  repository as well.
+
 1.11.0 - 2026-10-11
 -------------------
 

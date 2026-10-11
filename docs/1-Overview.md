@@ -4,9 +4,32 @@ _Is pyjab the right tool for your problem?_
 
 ## What pyjab does
 
-pyjab automates **Java desktop applications on Windows** — Swing, AWT and
-JavaFX — through [Java Access Bridge](https://docs.oracle.com/en/java/javase/21/access/toc.htm),
+pyjab automates **Java desktop applications on Windows** — Swing and AWT —
+through [Java Access Bridge](https://docs.oracle.com/en/java/javase/21/access/toc.htm),
 the accessibility API the JDK exposes on Windows.
+
+**JavaFX is not supported, and this page used to include it in that list.**
+JavaFX on Windows does not go through Java Access Bridge: it publishes its
+accessibility through UI Automation directly
+(`com.sun.glass.ui.win.WinAccessible` implements the UIA provider interfaces and
+contains no JAB reference). So a JavaFX window is not a "Java window" as far as
+JAB is concerned, and `JABDriver` cannot bind it.
+
+That is measured rather than assumed — 2026-10-11, on a hosted Windows runner,
+against a JavaFX application whose contents were known (11 controls plus four
+table cells):
+
+| what was asked | Swing (control) | JavaFX |
+|---|---|---|
+| does JAB see it as a Java window? | **yes** | **no** (`isJavaWindow` → `False`) |
+| can `JABDriver(title=...)` bind it? | yes | **no** — `TimeoutError: no java window found by title ...` |
+| elements pyjab can walk | **614** | **not reached** (no binding, so no tree) |
+| elements UI Automation finds in it | — | **68** (label, both buttons, text field, table with its cells, menu bar, title bar) |
+
+The UI-Automation number is not a truncated client: the same client enumerated
+**180** elements across the desktop and finished. So if your target is JavaFX,
+pyjab is the wrong tool — use a UI Automation client. See
+[issue #227](https://github.com/gaozhao1989/pyjab/issues/227).
 
 Java Access Bridge is the same interface screen readers such as
 [NVDA](https://github.com/nvaccess/nvda) use. That is why pyjab can drive an

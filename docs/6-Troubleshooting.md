@@ -321,6 +321,42 @@ together.
 
 ---
 
+## `RuntimeError: HWND:... is not Java Window` or `TimeoutError: no java window found by title` on a JavaFX application
+
+**If the target application is JavaFX, pyjab cannot drive it, and no option or
+workaround changes that.** JavaFX on Windows publishes its accessibility through **UI
+Automation** directly, not through Java Access Bridge, so JAB does not recognise a
+JavaFX window as a Java window at all. Both entry points refuse it, each with its own
+message:
+
+* `JABDriver(hwnd=...)` raises `RuntimeError: HWND:<number> is not Java Window, please check!`
+* `JABDriver(title=...)` never binds, and times out with
+  `TimeoutError: no java window found by title '<title>'`
+
+Neither is a configuration problem: it is not the DLL, not `jabswitch`, not the JDK
+version and not a 32/64-bit mismatch.
+
+Measured 2026-10-11 on a hosted Windows runner, against a JavaFX window whose contents
+were known (11 controls and four table cells):
+
+| | Swing (the control) | JavaFX |
+|---|---|---|
+| `isJavaWindow` | `True` | **`False`** |
+| elements pyjab walks | **614** | **not reached** — no binding, so no tree |
+| elements UI Automation finds inside it | — | **68** |
+
+The UI Automation count is not a truncated client: the same client enumerated **180**
+elements across the desktop and finished. The Swing control in the same run is what
+makes this about JavaFX rather than about the machine.
+
+**What to use instead:** a UI Automation client — `uiautomation`, FlaUI, or
+WinAppDriver. See [issue #227](https://github.com/gaozhao1989/pyjab/issues/227) for the
+measurement. Note that this is a different failure from *The elements I need are not
+there at all* below: there the window binds and some nodes are missing; here the window
+is not a JAB window at all.
+
+---
+
 ## The elements I need are not there at all
 
 Check with `pyjab-inspect tree "<window title>"` first, or with

@@ -3,12 +3,19 @@
 Python implementation for Java application UI automation with
 [Java Access Bridge](https://docs.oracle.com/en/java/javase/21/access/toc.htm).
 
-pyjab drives **Java desktop applications** (Swing / AWT / JavaFX) on Windows with
+pyjab drives **Java Swing and AWT applications** on Windows with
 an API shaped like the web-automation one you already know. It reads the
 application's accessibility tree through Java
 Access Bridge, so it can find controls, read their text, fill forms, click
 buttons and read tables **without the target application exposing any API of its
 own**.
+
+**JavaFX is not supported**, and this page previously said it was. JavaFX on
+Windows exposes its accessibility through UI Automation directly, not through
+Java Access Bridge, so JAB does not see a JavaFX window as a Java window at all.
+Measured 2026-10-11: UI Automation found 68 elements inside a JavaFX window where
+`JABDriver` could not bind it, while the same run walked 614 elements of a Swing
+window. See [issue #227](https://github.com/gaozhao1989/pyjab/issues/227).
 
 ## Where to start
 
