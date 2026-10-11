@@ -549,6 +549,11 @@ class JABDriver(object):
     ) -> JABElement:
         """
         Find an JABElement given a By strategy and locator.
+
+        Raises:
+            JABException: nothing matched.  The driver and the element answer the same
+                way, this included -- see :meth:`JABElement.find_element` for the contract,
+                and :meth:`JABElement.get_children` for the one method that returns ``[]``.
         """
         dict_find = {
             By.NAME: self.find_element_by_name,
@@ -657,6 +662,10 @@ class JABDriver(object):
     ) -> list[JABElement]:
         """
         Find list of JABElement given a By strategy and locator.
+
+        Raises:
+            JABException: nothing matched.  Same contract as the element-level call, and
+                for the same reason -- see :meth:`JABElement.find_elements`.
         """
         dict_finds = {
             By.NAME: self.find_elements_by_name,
