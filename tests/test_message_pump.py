@@ -23,6 +23,7 @@ bare pytest-only environment and fail on a real Windows checkout -- which is
 exactly what happened the first time they ran with pywin32 present.
 """
 
+import ast
 import contextlib
 import pathlib
 import sys
@@ -30,8 +31,6 @@ import types
 from unittest.mock import MagicMock, patch
 
 import pytest
-
-import pyjab
 
 
 # ---------------------------------------------------------------------------
@@ -76,6 +75,11 @@ def _ensure_win32_available() -> None:
     _install_stub("win32clipboard")
     _install_stub("win32con")
     _install_stub("win32gui")
+    # pyjab.jabdriver imports win32process at module scope, so without this stub the
+    # file could not be collected on its own off Windows: `pytest
+    # tests/test_message_pump.py` raised "No module named 'win32process'" while the
+    # whole-suite run passed, because an earlier module had already stubbed it.
+    _install_stub("win32process")
     win32com = _install_stub("win32com")
     win32com.client = _install_stub("win32com.client")
 
@@ -101,10 +105,23 @@ def _import_jabelement():
     return JABElement
 
 
+def _import_jabdriver():
+    """Import :class:`pyjab.jabdriver.JABDriver`, past its platform guard."""
+
+    real_platform = sys.platform
+    sys.platform = "win32"
+    try:
+        from pyjab.jabdriver import JABDriver
+    finally:
+        sys.platform = real_platform
+    return JABDriver
+
+
 from pyjab.common.exceptions import JABException  # noqa: E402
 from pyjab.common.win32utils import Win32Utils  # noqa: E402
 
 JABElement = _import_jabelement()
+JABDriver = _import_jabdriver()
 
 # Win32Utils is decorated with @singleton, so the name is a wrapper *function*
 # and the real class lives behind __wrapped__.  Class level patching and
@@ -113,6 +130,10 @@ Win32UtilsClass = Win32Utils.__wrapped__
 
 #: The module object whose ``pythoncom`` reference the pump actually calls.
 WIN32UTILS_MODULE = sys.modules["pyjab.common.win32utils"]
+
+#: ``pyjab.jabdriver`` and its file, for the structural checks below.
+JABDRIVER_MODULE = sys.modules["pyjab.jabdriver"]
+JABDRIVER_SRC = pathlib.Path(JABDRIVER_MODULE.__file__)
 
 
 @pytest.fixture
@@ -183,42 +204,128 @@ def test_generator_pump_and_its_events_are_gone():
 
 
 def test_win32utils_no_longer_imports_win32event():
-    """win32event was only needed by the generator pump's blocking wait."""
-    module_file = sys.modules[Win32UtilsClass.__module__].__file__
-    text = pathlib.Path(module_file).read_text(encoding="utf-8")
+    """win32event was only needed by the generator pump's blocking wait.
 
-    assert "win32event" not in text
+    Asserted on the module object rather than on the text of the file.  The text
+    version went red when a *comment* mentioning ``win32event`` was added, which
+    is a false alarm; this one goes red when the import comes back, which is the
+    thing that would actually matter.  The removed pump imported it at module
+    scope, so a module attribute is the name this checks.
+    """
+    assert not hasattr(WIN32UTILS_MODULE, "win32event")
 
 
 def test_jabdriver_stopped_using_the_actor_scheduler():
-    """jabdriver must not resurrect the drip-fed pump."""
-    jabdriver_src = pathlib.Path(pyjab.__file__).parent / "jabdriver.py"
-    text = jabdriver_src.read_text(encoding="utf-8")
+    """jabdriver must not resurrect the drip-fed pump.
 
-    assert "ActorScheduler" not in text
-    assert "_run_actor_sched" not in text
-    assert "setup_msg_pump" not in text
+    Three names, each checked where it would live if it came back: the import is a
+    module attribute of ``pyjab.jabdriver``, and ``_run_actor_sched`` was a method
+    on ``JABDriver``.  ``setup_msg_pump`` was a ``Win32Utils`` method, and
+    ``test_generator_pump_and_its_events_are_gone`` already covers it.
+
+    The text version this replaces went red if the word appeared anywhere in the
+    file -- including a comment explaining why the scheduler was removed.
+    """
+    assert not hasattr(JABDRIVER_MODULE, "ActorScheduler")
+    assert not hasattr(JABDriver, "_run_actor_sched")
 
 
-def test_jabdriver_pumps_in_both_wait_loops():
-    """Waiting is exactly when a new window or dialog has to be noticed."""
-    jabdriver_src = pathlib.Path(pyjab.__file__).parent / "jabdriver.py"
-    text = jabdriver_src.read_text(encoding="utf-8")
+def _pump_is_called(method) -> bool:
+    """True when *method* calls ``self._pump_messages(...)`` in its own body.
 
-    assert text.count("self._pump_messages()") >= 3, (
-        "expected a pump in init_jab, wait_java_window_by_title and "
-        "wait_until_element_exist"
+    A call nested inside another function does not count: a pump in a callback that
+    the loop happens never to invoke is not a pump in the loop.
+    """
+    def walk(node):
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+                continue
+            yield child
+            yield from walk(child)
+
+    for node in walk(method):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if (
+            isinstance(func, ast.Attribute)
+            and func.attr == "_pump_messages"
+            and isinstance(func.value, ast.Name)
+            and func.value.id == "self"
+        ):
+            return True
+    return False
+
+
+def test_every_jabdriver_wait_loop_pumps_messages():
+    """Waiting is exactly when a new window or dialog has to be noticed.
+
+    Read from the syntax tree, not from the text: a comment naming
+    ``self._pump_messages()`` satisfies a substring check while the loop no longer
+    pumps anything, which is a false pass.  An AST call node cannot be faked by
+    prose.
+
+    Every ``wait_*`` method is required, not a remembered list of three, so a wait
+    loop added later is covered the moment it is named ``wait_*`` -- and the pump
+    cannot be dropped from one loop while another keeps the count up, which is what
+    the counted-substring version allowed.  ``init_jab`` is named explicitly
+    because its first pump has to follow ``Windows_run()``, which is what arms COM
+    delivery on this thread; it is not a ``wait_*`` and nothing else would cover it.
+    """
+    source = JABDRIVER_SRC.read_text(encoding="utf-8")
+    methods = {
+        node.name: node
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+
+    wait_loops = [name for name in methods if name.startswith("wait_")]
+    assert wait_loops, "no wait_* method in jabdriver.py; has it been renamed?"
+    assert "init_jab" in methods, "init_jab is gone from jabdriver.py; has it been renamed?"
+
+    missing = [
+        name for name in wait_loops + ["init_jab"] if not _pump_is_called(methods[name])
+    ]
+    assert not missing, (
+        f"{', '.join(missing)} never call self._pump_messages(), so accessibility "
+        "events delivered through COM are not serviced there"
     )
 
 
-def test_wait_until_element_exist_is_not_a_busy_loop():
-    """It used to spin with no sleep at all (issues #29 and #33)."""
-    jabdriver_src = pathlib.Path(pyjab.__file__).parent / "jabdriver.py"
-    text = jabdriver_src.read_text(encoding="utf-8")
+def test_wait_until_element_exist_backs_off_between_polls(monkeypatch):
+    """It used to spin with no sleep at all (issues #29 and #33).
 
-    start = text.index("def wait_until_element_exist")
-    body = text[start:start + 2000]
-    assert "sleep(" in body, "wait_until_element_exist must back off between polls"
+    Behavioural, not textual.  The driver is built with ``__new__`` so ``__init__``
+    never runs -- that connects to the bridge and writes
+    ``~/.accessibility.properties`` -- and its lookup is made to always miss.  The
+    clock and ``sleep`` are the module's own names, replaced here, so a wait that
+    polls without backing off shows up as a missing sleep call rather than as a
+    fixed number of characters read out of the file.
+
+    The window a text check anchored also broke on ``sleep(`` appearing anywhere in
+    the first 2000 characters, which ~4 lines of docstring was enough to do.
+    """
+    driver = JABDriver.__new__(JABDriver)
+    driver.find_element = MagicMock(side_effect=JABException("not found"))
+    driver._pump_messages = MagicMock()
+    driver.logger = MagicMock()
+    driver.latest_log = None
+
+    # start=0.0; first poll's elapsed check 0.0 -> sleep; second poll's 5.0 -> timeout.
+    ticks = iter([0.0, 0.0, 5.0])
+    monkeypatch.setattr(JABDRIVER_MODULE, "time", lambda: next(ticks, 5.0))
+    slept = MagicMock()
+    monkeypatch.setattr(JABDRIVER_MODULE, "sleep", slept)
+
+    with pytest.raises(JABException):
+        driver.wait_until_element_exist(
+            by="name", value="gone", timeout=1, poll_interval=0.25
+        )
+
+    slept.assert_called_once_with(0.25)
+    assert driver._pump_messages.call_count == 2, (
+        "every poll has to service the message queue"
+    )
 
 
 def test_actor_scheduler_is_marked_deprecated():

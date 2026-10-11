@@ -52,20 +52,6 @@ MDT_EFFECTIVE_DPI = 0
 DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = -4
 
 
-def _declare(*functions) -> None:
-    """Set the ctypes signature of a shcore entry point.
-
-    Without ``argtypes`` ctypes masks integer arguments to C ``int``, so a 64-bit
-    handle passed as a Python ``int`` silently becomes 32 bits; without ``restype``
-    a returned handle is truncated the same way.  AGENTS.md 2.8 is about exactly
-    this, and "it happens to work for these particular values" is how the next one
-    gets written.
-    """
-    for function, argtypes in functions:
-        function.argtypes = argtypes
-        function.restype = ctypes.c_long
-
-
 def display_scale(hwnd: int) -> float:
     """The scale factor of the display *hwnd* is on, as a float, 1.0 if unknown.
 
@@ -725,13 +711,6 @@ class Win32Utils(object):
         win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, x, y, 0, 0)
 
     @staticmethod
-    def _get_clipboard() -> str:
-        win32clipboard.OpenClipboard()
-        data = win32clipboard.GetClipboardData(win32con.CF_UNICODETEXT)
-        win32clipboard.CloseClipboard()
-        return data
-
-    @staticmethod
     def _set_clipboard(text: str) -> None:
         win32clipboard.OpenClipboard()
         win32clipboard.EmptyClipboard()
@@ -755,15 +734,6 @@ class Win32Utils(object):
             win32api.keybd_event(
                 self.virtual_key_code[key], 0, win32con.KEYEVENTF_KEYUP, 0
             )
-
-    def _press_and_hold_key(self, *keys) -> None:
-        """
-        press and hold. Do NOT release.\n
-        accepts as many arguments as you want.\n
-        e.g. press_and_hold_key('left_arrow', 'a','b').
-        """
-        for key in keys:
-            win32api.keybd_event(self.virtual_key_code[key], 0, 0, 0)
 
     def send_keys(self, keys: str) -> None:
         """Send a keyboard shortcut, such as ``"alt+y"`` or ``"ctrl+shift+s"``.
@@ -842,17 +812,6 @@ class Win32Utils(object):
                 self.virtual_key_code[key], 0, win32con.KEYEVENTF_KEYUP, 0
             )
             time.sleep(0.1)
-
-    def _release_key(self, *keys) -> None:
-        """
-        release depressed keys\n
-        accepts as many arguments as you want.\n
-        e.g. release_key('left_arrow', 'a','b').
-        """
-        for key in keys:
-            win32api.keybd_event(
-                self.virtual_key_code[key], 0, win32con.KEYEVENTF_KEYUP, 0
-            )
 
     def _send_keys(self, text: str) -> None:
         """Simulate keyboard type for specific text.

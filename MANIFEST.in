@@ -5,7 +5,6 @@ include CONTRIBUTING.rst
 include SUPPORT.md
 include CONTRIBUTORS.txt
 include requirements.txt
-include requirements-dev.txt
 
 recursive-include tests *.py
 # The maintainer scripts the documentation tells people to run. CONTRIBUTING
