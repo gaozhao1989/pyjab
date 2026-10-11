@@ -218,7 +218,7 @@ Changed
   ``ERRCHECK_HINTS`` table. ``setTextContents`` had the only such guidance — *"try set
   parameter 'simulate' with True"* — written for exactly the failure the hook now reports, so
   it is in ``ERRCHECK_HINTS`` and in ``send_text``'s docstring rather than in a check nothing
-  could reach. **No separate ``Affects: pyjab-mcp`` marker is needed**: this is the same
+  could reach. **No second cross-project marker is needed**: this is the same
   ``RuntimeError`` the entry above already marks, with a more specific message.
 
 * **``visible_children_count`` answers with the number the bridge returned, ``0`` included,
@@ -256,14 +256,16 @@ Fixed
   on the strength of a measurement**; see *Changed* above for which, and for the three that
   were deliberately left alone.
 
-  Arming a row is deliberately left to a later, per-row change. ``True`` installs
-  ``_check_error``, which raises ``RuntimeError`` on a falsy result: that makes a
+  Arming stays a per-row decision, and the remaining 60 rows are not armed. ``True``
+  installs ``_check_error``, which raises ``RuntimeError`` on a falsy result: that makes a
   hand-written ``if not result:`` check unreachable, and turns a falsy return into an
   exception from inside the call — so the ``except JABException`` blocks in
   ``jabelement.py`` and ``jabdriver.py`` stop catching, and a recoverable lookup miss
-  becomes an uncaught ``RuntimeError``. It is also not yet measured on a real JVM, and the
-  hook covers a falsy ``0`` but not the truthy ``-1`` that ``getObjectDepth`` uses as its
-  error answer. See Gaozhao1989/pyjab#195.
+  becomes an uncaught ``RuntimeError``. It is also an incomplete signal: the hook covers a
+  falsy ``0`` but not the truthy ``-1`` that ``getObjectDepth`` uses as its error answer.
+  **So the five were armed one at a time**, each because a measurement of what that call
+  returns on a real JVM came back truthy *and* no ``except JABException`` block is
+  reachable from its call sites. See Gaozhao1989/pyjab#195, and #216 for the five.
 
   ``tests/test_errorcheck_binding.py`` asserts the mechanism — ``errcheck`` is set on a
   flagged symbol, a ``False`` row gets no hook, and ``_check_error`` raises on ``0`` while
