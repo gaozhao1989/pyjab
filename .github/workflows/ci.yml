@@ -466,3 +466,44 @@ jobs:
         with:
           name: dist
           path: dist/
+
+  # ---------------------------------------------------------------------------
+  # The one artifact no local check reads. `${{ }}` is its own language and a
+  # YAML string to every parser, so a workflow file can parse cleanly and still
+  # be rejected whole by GitHub -- which arrives as a run concluding `failure`
+  # with **zero jobs** and no check run on the commit, so the commit's check
+  # list stays green and nothing points at the file (#221, #223).
+  #
+  # actionlint parses the expression language, the `needs:` graph, `if:`
+  # contexts, action inputs, globs and the `run:` scripts. It was run over all
+  # three workflow files before this job was added, and the guard itself was
+  # checked by feeding it the `+ 15` expression from #221: it reports
+  # "got unexpected character '+' while lexing expression" and exits 1.
+  # ---------------------------------------------------------------------------
+  actionlint:
+    name: Workflow lint (actionlint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      # The official image, pinned to the release tag upstream's own release
+      # workflow publishes (`tags: rhysd/actionlint:${version}`). Chosen over a
+      # downloaded release binary because the image bundles shellcheck and
+      # pyflakes, so the `run:` blocks are covered here as well; a bare binary
+      # skips both, and says so only under -verbose.
+      #
+      # The tag is hand-maintained, so bump it deliberately: this repository has
+      # no `.github/dependabot.yml`, and Dependabot's `github-actions` ecosystem
+      # skips `docker://` references even when one exists (dependabot-core's
+      # parser is explicit: `return if string.start_with?(".", "docker://")`).
+      #
+      # No file arguments, deliberately: actionlint then checks every workflow
+      # file it finds, so a fourth one is covered without editing this step, and
+      # a missing project or workflows directory is exit 3 rather than a quiet
+      # pass. `-verbose` prints how many files it read, so the log separates
+      # "three files, no findings" from "nothing was checked".
+      - name: Check the workflow files
+        uses: docker://rhysd/actionlint:1.7.12
+        with:
+          args: -verbose
