@@ -386,13 +386,22 @@ jobs:
   #
   # The route: actions/setup-java's `distribution: liberica` with
   # `java-package: jdk+fx` maps to BellSoft's `jdk-full` bundle-type, which
-  # ships JavaFX inside the JDK -- so no SDK download and no --module-path
-  # juggling.  That is verified in the run rather than assumed: the report
-  # step prints `java --list-modules` filtered to javafx and any javafx*.jar
-  # under $JAVA_HOME\lib, the task passes a module path only if such a jar
-  # exists, and the application prints the javafx.version it is running.
-  # If none of that produces a window, the fallback is an OpenJFX SDK
-  # release zip on --module-path.
+  # ships JavaFX inside the JDK, so no SDK download is needed.  Measured, not
+  # assumed -- run 38148949729 downloaded
+  # Java_Liberica_jdk+fx\21.0.12-10\x64 and `java --list-modules` listed
+  # javafx.base@21.0.12 through javafx.web@21.0.12, i.e. all seven JavaFX
+  # modules are in the JDK's own module image.  The report step below prints
+  # that list on every run rather than relying on this comment.
+  #
+  # That run also settled the --module-path question the hard way: it passed
+  # --module-path "$env:JAVA_HOME\lib" (a `javafx*.jar` glob had matched
+  # javafx-swt.jar, which is not a module), and the JVM died in the boot layer
+  # with "Package jdk.internal.jrtfs in both module jrt.fs and module java.base"
+  # because $JAVA_HOME\lib also holds jrt-fs.jar.  There is no module path here:
+  # a JDK whose JavaFX is in the module image resolves it for both javac and the
+  # launcher, and putting lib/ on a module path breaks the JVM.  If a future JDK
+  # does not bundle JavaFX, tools/verify_javafx_access.py takes --module-path and
+  # the fallback is an OpenJFX SDK release zip.
   # ------------------------------------------------------------------
   javafx:
     name: javafx (Liberica jdk+fx, JDK ${{ inputs.java }})
@@ -427,8 +436,8 @@ jobs:
           Write-Host "== javafx modules this JDK resolves =="
           java --list-modules 2>&1 | Select-String -Pattern 'javafx' |
             ForEach-Object { Write-Host $_ }
-          Write-Host "== javafx jars in the JDK's lib =="
-          Get-ChildItem -Path "$env:JAVA_HOME\lib" -Filter "javafx*.jar" `
+          Write-Host "== javafx* entry names in the JDK's lib (javafx-swt.jar is here and is not a module) =="
+          Get-ChildItem -Path "$env:JAVA_HOME\lib" -Filter "javafx*" `
             -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name
           Write-Host "== JAB DLLs this JDK ships =="
           Get-ChildItem -Path $env:JAVA_HOME -Recurse -Filter "WindowsAccessBridge-*.dll" `
@@ -457,20 +466,17 @@ jobs:
       - name: "task=javafx"
         shell: pwsh
         run: |
-          # Liberica's jdk+fx should put JavaFX in the JDK's own module image, in
-          # which case `java -cp ... PyjabFxApp` resolves it and no module path is
-          # needed.  If this JDK instead has javafx*.jar in lib/, pass one.  The
-          # tool prints which route ran, so the log answers this rather than a
-          # later reader guessing.
-          $fxArgs = @()
-          $jars = Get-ChildItem -Path "$env:JAVA_HOME\lib" -Filter "javafx*.jar" -ErrorAction SilentlyContinue
-          if ($jars) {
-            $fxArgs = @('--module-path', "$env:JAVA_HOME\lib")
-            Write-Host "javafx*.jar found in $env:JAVA_HOME\lib; passing --module-path"
-          } else {
-            Write-Host "no javafx*.jar in $env:JAVA_HOME\lib; relying on the JDK's own JavaFX modules"
-          }
-          python tools/verify_javafx_access.py --title "PyjabFxApp-${{ github.run_id }}" $fxArgs 2>&1 |
+          # No --module-path, deliberately.  Run 38148949729 passed one because a
+          # `javafx*.jar` glob matched javafx-swt.jar, and the JVM then failed to
+          # build its boot layer -- $JAVA_HOME\lib also holds jrt-fs.jar, whose
+          # jdk.internal.jrtfs package collides with java.base:
+          #   LayerInstantiationException: Package jdk.internal.jrtfs in both
+          #   module jrt.fs and module java.base
+          # The javafx.* modules are in the JDK's own module image here (see the
+          # report step above), which javac and the launcher both resolve without
+          # any module path.  The tool still takes --module-path for a JDK that
+          # does not bundle JavaFX.
+          python tools/verify_javafx_access.py --title "PyjabFxApp-${{ github.run_id }}" 2>&1 |
             Tee-Object -FilePath javafx.log
           exit $LASTEXITCODE
 
