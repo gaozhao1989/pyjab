@@ -365,7 +365,7 @@ jobs:
       # the measurement is worth reading.
       - name: Upload what the run produced
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: windows-gui-${{ inputs.task }}-jdk${{ inputs.java }}
           if-no-files-found: ignore
@@ -482,7 +482,7 @@ jobs:
 
       - name: Upload what the run produced
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: windows-gui-javafx-jdk${{ inputs.java }}
           # The main job's upload step writes the same name for every task, and for
