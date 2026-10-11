@@ -493,6 +493,11 @@ jobs:
       # pyflakes, so the `run:` blocks are covered here as well; a bare binary
       # skips both, and says so only under -verbose.
       #
+      # The tag is hand-maintained, so bump it deliberately: this repository has
+      # no `.github/dependabot.yml`, and Dependabot's `github-actions` ecosystem
+      # skips `docker://` references even when one exists (dependabot-core's
+      # parser is explicit: `return if string.start_with?(".", "docker://")`).
+      #
       # No file arguments, deliberately: actionlint then checks every workflow
       # file it finds, so a fourth one is covered without editing this step, and
       # a missing project or workflows directory is exit 3 rather than a quiet
