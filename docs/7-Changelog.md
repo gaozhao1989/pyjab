@@ -14,6 +14,7 @@ and is also shown on the GitHub release page for each version.
 
 | Version | What it was about |
 |---|---|
+| **1.11.1** | The README claimed JavaFX, and **JavaFX was never supported**. JavaFX on Windows publishes its accessibility through UI Automation directly, not through Java Access Bridge, so JAB does not see a JavaFX window at all — measured: `isJavaWindow` returns `False`, neither `JABDriver(hwnd=…)` nor `JABDriver(title=…)` can bind it, and the equivalent Swing window walked 614 elements in the same run. The claim is gone from the README, the overview and the troubleshooting page, and the two errors a JavaFX user actually sees are now documented (#227). |
 | **1.11.0** | `send_keys()` for modifier chords, `focus()` for bringing a window forward and reporting whether it worked, and `visible_children_count()` — which is not the number `walk()` yields, because a walk includes hidden children. Five measured JAB calls now raise on failure instead of returning a value to check. |
 | **1.10.0** | `pyjab.list_java_windows()` — every Java window the bridge can see, which a caller previously could not find out at all — and `JABDriver.detach()`. `Logger` no longer configures the host's root logger; it adds a `NullHandler` to pyjab's own. |
 | **1.9.0** | The GUI suite runs in CI on a hosted Windows runner, which turned out to have a real interactive desktop rather than being a service in session 0 — measured, not assumed. Dropped the `Pillow` dependency: screenshots are captured with GDI and written with zlib. |
