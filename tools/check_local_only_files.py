@@ -50,6 +50,7 @@ LOCAL_PATHS = (
     "docs/DEPENDENCY_ANALYSIS.md",
     "docs/MCP_ENABLING_PLAN.md",
     "docs/ISSUE_REPLIES.md",
+    "docs/MARKET_AND_COMPETITIVE_ANALYSIS.md",
     "docs/CONSENT_REQUESTS.md",
     "docs/replies",
 )
