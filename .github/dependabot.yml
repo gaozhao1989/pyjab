@@ -1,0 +1,31 @@
+# Keep the action pins current.
+#
+# Why this file exists: there was none, so every `uses:` tag in `.github/workflows/`
+# was hand-maintained. `actions/checkout@v4`, `setup-java@v4`, `setup-python@v5` and
+# `upload-artifact@v4` are the pins a security advisory is most likely to touch, and
+# nothing was watching them (#231).
+#
+# What this does NOT cover, so nobody expects it to:
+#
+#   * `docker://rhysd/actionlint:1.7.12` in `ci.yml`. Dependabot's `github-actions`
+#     ecosystem skips `docker://` references outright -- dependabot-core's parser has
+#     a `# TODO: Support Docker references` and returns early on
+#     `string.start_with?(".", "docker://")`. That pin stays manual, deliberately, and
+#     `ci.yml` says so next to it.
+#   * `pywin32` and the `[project.optional-dependencies].dev` extras. A `pip` entry
+#     could cover them, but this project has exactly one runtime dependency
+#     (`pywin32>=302`, Windows only) and the dev extras are test tooling, so the daily
+#     pull requests would cost more attention than they save. Add the ecosystem here if
+#     that judgement changes.
+version: 2
+
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      # Matches this repository's convention for repository-internal CI work
+      # (#204, #205, #206, #223 all use a `ci:` subject and carry no changelog entry).
+      prefix: "ci"
