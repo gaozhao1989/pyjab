@@ -220,19 +220,28 @@ def _window_with_title(windows: dict, title: str):
     return None
 
 
-def bind_and_walk(driver_class, title: str, timeout: float) -> dict:
+def bind_and_walk(driver_class, title: str, timeout: float, hwnd=None) -> dict:
     """Bind one window with pyjab and walk it, or report exactly why not.
 
     The exception text is the answer when the bind fails, so it is captured rather than
     allowed to end the run.  ``bound=False`` with no exception cannot happen and is not
     printed as an empty value -- one of the two is always filled in.
+
+    ``hwnd`` is the other public way in: ``JABDriver(title=...)`` finds a window by name,
+    ``JABDriver(hwnd=...)`` is handed one.  A title lookup can fail for reasons a handle
+    never sees (title matching, a window that is not in JAB's list at all), so both are
+    measured and reported separately.
     """
-    row = {"title": title, "bound": False, "exception": None, "hwnd": None,
+    label = f"title={title!r}" if hwnd is None else f"hwnd={int(hwnd)}"
+    row = {"title": label, "bound": False, "exception": None, "hwnd": None,
            "elements": None, "tree": None, "tree_truncated": None, "role_counts": {},
            "named": None, "depth": None, "walk_exception": None}
     driver = None
     try:
-        driver = driver_class(title=title, timeout=timeout)
+        if hwnd is None:
+            driver = driver_class(title=title, timeout=timeout)
+        else:
+            driver = driver_class(hwnd=hwnd, timeout=timeout)
     except Exception as failure:                            # noqa: BLE001 - reported
         row["exception"] = f"{type(failure).__name__}: {failure}"
         return row
@@ -279,8 +288,14 @@ def jab_section(swing_title: str, fx_title: str, timeout: float) -> dict:
         hwnd = _window_with_title(windows, title)
         result[f"{label}_window_present"] = hwnd is not None
         result[f"{label}_is_java_window"] = bool(hwnd) and bool(bridge.isJavaWindow(hwnd))
+    result["javafx_hwnd"] = _window_with_title(windows, fx_title)
     result["swing"] = bind_and_walk(JABDriver, swing_title, timeout)
     result["javafx"] = bind_and_walk(JABDriver, fx_title, timeout)
+    # The other public way in. A window JAB does not list at all fails the title lookup and
+    # this one for two different reasons, and the exception says which.
+    result["javafx_by_hwnd"] = (bind_and_walk(JABDriver, None, timeout,
+                                              hwnd=result["javafx_hwnd"])
+                                if result["javafx_hwnd"] else None)
     return result
 
 
@@ -448,6 +463,13 @@ def print_jdk(info: dict, module_path: str) -> None:
         print(f"  --module-path      : {module_path}")
         print("      (JavaFX is being supplied on the module path, not resolved from the")
         print("       JDK's own module image -- whatever this is, it is not assumed)")
+    elif info["javafx_modules"]:
+        print("  launch route       : JavaFX resolved from the JDK's own module image -- no")
+        print("                       --module-path is passed, and the javafx.* modules listed")
+        print("                       above are the evidence for that rather than an assumption")
+    else:
+        print("  launch route       : NO JavaFX anywhere -- neither in this JDK's module image")
+        print("                       nor on a module path; the application cannot start")
     print()
 
 
@@ -486,7 +508,13 @@ def print_jab(result: dict, problem: str, swing_title: str, fx_title: str) -> No
     print()
 
     print(f"  MEASURED -- the JavaFX application {fx_title!r}")
-    print(f"      {describe_bind(result['javafx'])}")
+    print(f"      by title : {describe_bind(result['javafx'])}")
+    by_hwnd = result.get("javafx_by_hwnd")
+    if by_hwnd is not None:
+        print(f"      by hwnd  : {describe_bind(by_hwnd)}")
+    elif result.get("javafx_hwnd") is None:
+        print("      by hwnd  : not reached -- no top-level window with that exact title "
+              "was on the desktop, so there was no handle to hand over")
     fx = result["javafx"]
     if fx["bound"] and fx["tree"]:
         print(f"      named elements: {fx['named']} of {fx['elements']}; "
@@ -548,7 +576,7 @@ def print_uia(result: dict, control) -> None:
     print()
 
 
-def print_summary(jdk: dict, jab: dict, jab_problem: str, uia: dict, control,
+def print_summary(jdk: dict, jab_result: dict, jab_problem: str, uia: dict, control,
                   module_path: str) -> int:
     """The numbers, and whether every one of them was actually taken.
 
@@ -573,13 +601,16 @@ def print_summary(jdk: dict, jab: dict, jab_problem: str, uia: dict, control,
         print(f"  JAB        : not reached -- {jab_problem}")
         incomplete.append("the JAB section")
     else:
-        swing = jab["swing"]
-        fx = jab["javafx"]
+        swing = jab_result["swing"]
+        fx = jab_result["javafx"]
         for label, row in (("JAB Swing control", swing), ("JAB JavaFX window", fx)):
             if row["bound"] and row["elements"] is not None:
                 print(f"  {label:<17s} : bound, {row['elements']} element(s)")
             else:
                 print(f"  {label:<17s} : {describe_bind(row)}")
+        by_hwnd = jab_result.get("javafx_by_hwnd")
+        if by_hwnd is not None:
+            print(f"  {'JAB JavaFX by hwnd':<17s} : {describe_bind(by_hwnd)}")
         if not (swing["bound"] and swing["elements"] is not None):
             print("  -> the Swing control did not bind and walk, so the JavaFX number above")
             print("     cannot be attributed to JavaFX rather than to JAB on this machine.")
@@ -723,6 +754,7 @@ def main() -> int:
                 "jab_problem": jab_problem,
                 "jab": {key: {k: v for k, v in row.items() if k != "tree"}
                         for key, row in (jab or {}).items() if isinstance(row, dict)},
+                "jab_hwnd": (jab or {}).get("javafx_hwnd"),
                 "uia": {key: value for key, value in uia.items() if key != "tree"},
                 "uia_control": None if isinstance(control, Unavailable) else control,
                 "exit_code": exit_code,
