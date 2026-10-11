@@ -26,11 +26,24 @@ accessibility events.
 
 ## Development
 
-Installing the test tooling:
+Installing the test and release tooling:
 
 ```console
 > pip install -e ".[dev]"
 ```
 
-That adds `pytest`. The GUI test suite drives a small Swing application that lives
-in `tests/java` and is compiled on demand, so nothing is downloaded to run it.
+That adds more than a test runner, and the list is in one place —
+`[project.optional-dependencies].dev` in `pyproject.toml`, which is what CI and the
+release workflow install:
+
+* `pytest` — the suite;
+* `PyYAML` — the workflow checks need it, and **a guard that skips is not a guard**,
+  so it is a dependency rather than an extra nobody installs;
+* `tomli` — only below Python 3.11, where `tomllib` is not in the standard library;
+* `build` and `twine` — the distribution and the upload;
+* `pip-licenses` — the licence check;
+* `uiautomation` — Windows only, for the UI Automation comparison the measurements
+  are made against.
+
+The GUI test suite drives a small Swing application that lives in `tests/java` and
+is compiled on demand, so nothing is downloaded to run it.
