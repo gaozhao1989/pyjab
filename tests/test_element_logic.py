@@ -218,13 +218,13 @@ def test_visible_children_uses_the_count_from_the_array_it_indexes():
     info.children[1] = JOBJECT64(2)
 
     with patch.object(JABElement, "_get_visible_children", return_value=info):
-        # The other call now disagrees on purpose; it must be ignored.
-        with patch.object(JABElement, "_get_visible_children_count", return_value=5):
-            children = list(
-                element._generate_childs_from_element(
-                    jabelement=element, visible=True
-                )
+        # getVisibleChildrenCount is not consulted on this path at all any more,
+        # so there is no second answer left to disagree with.
+        children = list(
+            element._generate_childs_from_element(
+                jabelement=element, visible=True
             )
+        )
 
     assert len(children) == 2
 

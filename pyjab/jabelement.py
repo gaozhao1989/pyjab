@@ -985,21 +985,6 @@ class JABElement(object):
             self.vmid, accessible_context, index
         )
 
-    def _get_visible_children_count(self, accessible_context: JOBJECT64 = None) -> int:
-        """Returns the number of visible children of a component. Returns -1 on error.
-
-        Args:
-            accessible_context (JOBJECT64, optional): Accessible Context. Defaults to None.
-
-        Returns:
-            int: [description]
-        """
-        accessible_context = accessible_context or self.accessible_context
-        result = self.bridge.getVisibleChildrenCount(self.vmid, accessible_context)
-        if result == -1:
-            raise JABException(self.int_func_err_msg.format("getVisibleChildrenCount"))
-        return result
-
     def _get_visible_children(
             self, accessible_context: JOBJECT64 = None
     ) -> VisibleChildrenInfo:
@@ -1498,14 +1483,6 @@ class JABElement(object):
         self._add_accessible_selection_from_context(
             item.index_in_parent, parent.accessible_context
         )
-
-    def _select_from_checkbox(self, simulate: bool = False) -> None:
-        if self.role_en_us != "check box":
-            raise JABException("JABElement is not 'check box'")
-        self._request_focus()
-        if simulate:
-            self.win32_utils._set_window_foreground(hwnd=self.hwnd)
-        self.click(simulate=simulate)
 
     def _select_from_combobox(self, option: str, simulate: bool = False) -> None:
         if self.role_en_us != "combo box":
@@ -2034,31 +2011,6 @@ class JABElement(object):
             ">": actual > expected,
             ">=": actual >= expected,
         }[comparison]
-
-    def _get_node_element(self, jabelement: JABElement = None) -> JABElement:
-        """Get node JABElement.
-
-        Args:
-            jabelement (JABElement, optional): The JABElement. Defaults to None.
-
-        Returns:
-            JABElement: Node JABElement
-        """
-        jabelement = jabelement or JABElement(self.bridge, self.hwnd, self.vmid, self.accessible_context)
-        is_same = self._is_same_object(
-            self.accessible_context, jabelement.accessible_context
-        )
-        if not is_same:
-            return jabelement
-        top_object = self._get_top_level_object(self.accessible_context)
-        is_top_level = self._is_same_object(self.accessible_context, top_object)
-        if is_top_level:
-            return jabelement
-        # An absolute locator issued from a child element searches the whole
-        # window, which is what XPath's '//' means. This used to substitute
-        # self.parent, so a lookup from a child silently began one level up
-        # (issue #54). Use a leading '.' for a search relative to this element.
-        return JABElement(self.bridge, self.hwnd, self.vmid, top_object)
 
     def find_element_by_xpath(self, value: str, visible: bool = False) -> JABElement:
         """Find child JABElement by xpath
