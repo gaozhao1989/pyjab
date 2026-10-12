@@ -53,6 +53,33 @@ def test_git_ignores_says_yes_for_a_local_path_and_no_for_a_shipped_one():
     assert guard.git_ignores("README.rst") is False
 
 
+def test_no_local_path_is_tracked_by_git():
+    """The fact `.gitignore` cannot give you, and the one that has already bitten.
+
+    A set of maintainer notes was added with `git add -f`, and deleting them later
+    did **not** take them out of the repository: they are still readable from the
+    history. An ignore rule is advice to `git add`, not a lock, so the only reliable
+    statement is about what git actually tracks.
+
+    This test deliberately does not name them. A retrieval recipe -- which files,
+    which commit -- is a worse leak than the one it is warning about, and this file
+    ships in the sdist. The names are in `AGENTS.md` §5.0, which does not.
+
+    It asserts the state rather than the mechanism: it fails the moment one of these
+    is force-added, whatever `.gitignore` says.
+    """
+    tracked = guard.tracked_paths()
+    leaked = sorted(
+        path for path in guard.LOCAL_PATHS
+        if path in tracked or any(t.startswith(path.rstrip("/") + "/") for t in tracked)
+    )
+    assert not leaked, (
+        f"tracked by git: {leaked} -- `git rm --cached` takes it out of the tip, but "
+        f"only rewriting the history takes it out of the repository"
+    )
+    assert tracked, "git ls-files returned nothing, so this test proves nothing"
+
+
 def test_a_directory_pattern_is_ignored_even_when_the_directory_is_absent():
     """The bug this guard shipped with, as a test.
 

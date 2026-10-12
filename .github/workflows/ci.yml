@@ -324,6 +324,20 @@ jobs:
         # rather than from a `pip install` in this step.
         run: python tools/check_local_only_files.py
 
+      # The other half of "nothing local reaches the public record": that guard
+      # covers a *list* of known local files, this one covers the two things a
+      # list cannot -- a path that is local or secret by shape (an `.env`, a key,
+      # the harness's config) and content pasted into an ordinary tracked file
+      # (an absolute home path, an iCloud path, a token).
+      #
+      # It exists because something got through: a maintainer's Windows account
+      # name was in `tests/test_bridge_dll.py` and the harness's state directory
+      # was named in `tools/session_metrics.py`'s docstring, both tracked. A file
+      # in a clone is in the published history too -- deleting it later does not
+      # take it out -- so this fails on the PR rather than after a release.
+      - name: No local path or credential in a tracked file
+        run: python tools/check_no_local_content.py
+
   # ---------------------------------------------------------------------------
   # Build the distributions and validate the metadata, so a broken release is
   # caught on the PR rather than at tag time.

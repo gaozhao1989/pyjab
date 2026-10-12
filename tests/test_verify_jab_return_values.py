@@ -484,7 +484,7 @@ HS_ERR = """\
 #
 # siginfo: EXCEPTION_ACCESS_VIOLATION (0xc0000005), reading address 0x0000000074ad73e0
 #
-# Core dump will be written. Default location: C:\\Users\\runneradmin\\hs_err_pid2764.mdmp
+# Core dump will be written. Default location: C:\\hs_err_pid2764.mdmp
 #
 # Register to memory mapping:
 #

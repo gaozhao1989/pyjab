@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 """M0: does JAB actually see more than UIA on a real Java application?
 
-This is the go/no-go for the pyjab-mcp plan (`docs/PYJAB_MCP_PLAN.md` section 2.3). The
+This is the go/no-go for the pyjab-mcp plan -- an internal document, not one of these
+files (section 2.3 of it holds the decision table this reports against). The
 assumption behind the whole second layer is that pyjab's direct Java Access Bridge
 connection is **clearly better** than reading the same application through UIA, which is
 what a generic Windows automation server does. Nothing has ever tested it.
@@ -590,8 +591,8 @@ def verdict(jab_report: dict, uia_report: dict, complete: bool) -> str:
                 "materially more named elements. Downgrade pyjab-mcp to an optional "
                 "backend rather than a product.")
     return ("INCONCLUSIVE from these numbers alone: neither side read the table cell. "
-            "Read the table above against the plan's decision table "
-            "(docs/PYJAB_MCP_PLAN.md section 2.3). What the script cannot judge is "
+            "Read the table above against the decision table in the internal MCP plan, "
+            "section 2.3. What the script cannot judge is "
             "whether the *fields* either side exposes are the ones an agent needs.")
 
 

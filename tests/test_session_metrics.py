@@ -9,8 +9,9 @@ are the kind of mistake the tool exists to find in other people's work, so both 
 here.
 
 Everything is driven through synthetic transcript rows and a fake ``read_transcript``: the
-real transcripts are ``zstd``-compressed under the user's home directory, which a portable
-test must not read.  Nothing here touches ``~/.dsh``.
+real transcripts are ``zstd``-compressed inside the working environment's own state
+directory, which a portable test must not read and must not name.  Nothing here touches
+it, and nothing here needs it.
 """
 
 from __future__ import annotations
