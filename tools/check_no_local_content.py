@@ -119,17 +119,27 @@ def findings_in_text(text: str, path: str) -> list[str]:
     return found
 
 
-def tracked_files(root: Path) -> list[str]:
+def files_to_check(root: Path) -> list[str]:
+    """Every file that would be committed: tracked, plus untracked and not ignored.
+
+    `--others --exclude-standard` is load-bearing rather than thorough. A guard that
+    only looks at `git ls-files` cannot warn about a file that has not been committed
+    yet -- which is exactly when warning is cheap and when the file is still easy to
+    change. The first version of *this tool's own test file* contained a literal
+    private-key header; it was untracked at the time, so the guard passed locally and
+    CI caught it on a commit that had already been pushed.
+    """
     result = subprocess.run(
-        ["git", "ls-files"], cwd=root, capture_output=True, text=True, check=True,
+        ["git", "ls-files", "--cached", "--others", "--exclude-standard"],
+        cwd=root, capture_output=True, text=True, check=True,
     )
     return [line for line in result.stdout.splitlines() if line]
 
 
 def scan(root: Path) -> list[str]:
-    """Findings across every tracked file in *root*."""
+    """Findings across every file in *root* that would be committed."""
     findings: list[str] = []
-    for path in tracked_files(root):
+    for path in files_to_check(root):
         findings.extend(path_findings(path))
         try:
             text = (root / path).read_text(encoding="utf-8")
@@ -147,19 +157,19 @@ def main() -> int:
     args = parser.parse_args()
 
     findings = scan(args.root)
-    print(f"scanned {len(tracked_files(args.root))} tracked files in {args.root}")
+    print(f"scanned {len(files_to_check(args.root))} files that would be committed in {args.root}")
     if findings:
         print()
         for finding in findings:
             print(f"LEAK: {finding}")
         print()
-        print(f"FAILED: {len(findings)} local or secret item(s) in tracked files.")
+        print(f"FAILED: {len(findings)} local or secret item(s) in files that would be committed.")
         print()
-        print("  A tracked file is in every clone and in the published history: deleting")
-        print("  it later does not remove it. Take the content out, and if it is a")
+        print("  Committed means in every clone and in the published history: deleting the")
+        print("  file later does not remove it. Take the content out, and if it is a")
         print("  credential, rotate it -- removing it from the tip does not unsay it.")
         return 1
-    print("PASSED: no tracked file names a local path or carries a secret.")
+    print("PASSED: nothing that would be committed names a local path or carries a secret.")
     return 0
 
 

@@ -71,7 +71,12 @@ def test_ordinary_text_is_not_a_local_path(line):
 # ---------------------------------------------------------------------------
 
 def test_a_private_key_is_found():
-    assert found("-----BEGIN RSA PRIVATE KEY-----")
+    # Built rather than written out, for the same reason as the token below: this file
+    # is scanned too, and a literal header here is a finding in its own right. The
+    # first version of this test *was* a literal and it passed locally -- because the
+    # guard only looked at tracked files and this file was brand new. CI caught it on
+    # an already-pushed commit, which is what the candidate set below now prevents.
+    assert found("-----BEGIN " + "RSA PRIVATE KEY-----")
 
 
 def test_a_github_token_is_found():
@@ -179,6 +184,31 @@ def test_a_planted_leak_makes_it_fail(tmp_path):
     assert result.returncode == 1, result.stdout + result.stderr
     assert "settings.py" in result.stdout
     assert "FAILED" in result.stdout
+
+
+def test_a_leak_is_found_before_it_is_even_added(tmp_path):
+    """The candidate set, which is the reason this guard is worth running locally.
+
+    A `git ls-files`-only guard cannot see a file that has not been added yet, so it
+    passes on the machine where the leak is still cheap to fix and fails in CI on a
+    commit that is already pushed. That is not hypothetical: it is what this tool's
+    own test file did, with a literal private-key header in it.
+    """
+    repo = tmp_path / "unadded"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    (repo / "notes.py").write_text('P = "/Users/someone/notes"\n', encoding="utf-8")
+    # Deliberately NOT `git add`-ed.
+    assert subprocess.run(["git", "ls-files"], cwd=repo, capture_output=True,
+                          text=True, check=True).stdout.strip() == ""
+
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "tools" / "check_no_local_content.py"),
+         "--root", str(repo)],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "notes.py" in result.stdout
 
 
 def test_a_clean_repository_passes(tmp_path):
