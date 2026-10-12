@@ -37,6 +37,16 @@ and is also shown on the GitHub release page for each version.
 
 ## Notable upgrade notes
 
+### Upgrading to 1.12.0
+
+* **The `actorscheduler` module has been removed.** It held a `@singleton` class,
+  `ActorScheduler`, with one public method — `new_actor(name, actor)` — and **nothing in
+  pyjab ever called it**. The message pump it used to drive was replaced in 1.3.0, whose
+  notes said so; this is the removal that deprecation promised. The import path
+  ``pyjab.common.actorscheduler`` no longer works. Nothing needs to move: if you were
+  calling `Win32Utils.pump_messages()` — which is what pyjab itself does — nothing
+  changes. See issue #244.
+
 ### Upgrading to 1.7.0
 
 Nothing in the API changed, but two defects were fixed that could have made working code
@@ -65,8 +75,8 @@ GPL's terms, that reason is gone as of 1.6.0. Nothing in the API changed.
 * `Win32Utils.setup_msg_pump()` has been removed. It was an internal generator
   used to drive the message pump; use `Win32Utils.pump_messages()` if you were
   calling it directly.
-* `pyjab.common.actorscheduler.ActorScheduler` is deprecated and unused. It is
-  still importable, but nothing in pyjab uses it.
+* `ActorScheduler` is deprecated and unused. It is no longer importable as of 1.12.0;
+  nothing in pyjab ever used it.
 * `wait_until_element_exist()` takes a new `poll_interval` argument and now
   sleeps between attempts instead of spinning.
 

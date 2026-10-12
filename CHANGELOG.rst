@@ -7,6 +7,27 @@ This project adheres to `Semantic Versioning`_ and `Keep a Changelog`_.
 .. _Semantic Versioning: https://semver.org/
 .. _Keep a Changelog: https://keepachangelog.com/
 
+Unreleased
+----------
+
+Removed
+~~~~~~~
+
+* **``pyjab.common.actorscheduler``.**  A ``@singleton`` class -- ``ActorScheduler``
+  -- with one public method, ``new_actor(name, actor)``, and **zero callers** anywhere
+  in the package, the tests or the tooling.  It drove the Windows message pump until
+  1.3.0 replaced that with ``Win32Utils.pump_messages()``; 1.3.0's upgrade notes
+  already called it deprecated and unused, and nothing has used it since.
+  ``import pyjab.common.actorscheduler`` stops working.  No documented API changes
+  and no code that drives pyjab through its public interface is affected.  Reported
+  as #244.
+
+  **Affects: pyjab-mcp** — first released in **1.12.0**.  Nothing in that package
+  imports or calls it: its only references are two prose notes, in ``docs/PLAN.md``
+  and ``.agents/skills/pyjab-mcp-bridge-threading/SKILL.md``, telling a reader not to
+  use ``ActorScheduler`` as a thread pool.  No code change is required; reword those
+  two mentions, which now name a module that no longer exists.
+
 1.11.1 - 2026-10-11
 -------------------
 

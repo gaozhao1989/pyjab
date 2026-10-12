@@ -358,8 +358,7 @@ class Win32Utils(object):
         and pyjab cannot see a window that opens later.
 
         This is deliberately a plain, non-blocking call rather than the
-        generator driven by :class:`~pyjab.common.actorscheduler.ActorScheduler`
-        that it replaces:
+        generator-driven scheduler that it replaces:
 
         * the old pump only ran while pyjab was waiting for the *first* window,
           so nothing was serviced once element lookups started;
