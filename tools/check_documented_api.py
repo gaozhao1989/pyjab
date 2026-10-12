@@ -79,6 +79,10 @@ DOCUMENTED_VARIABLES = {
 #: than the check being loosened until it stops noticing anything.
 KNOWN_REMOVED = {
     "setup_msg_pump": "removed in 1.3.0; named only in the upgrade notes",
+    "actorscheduler": (
+        "the module was removed in 1.12.0; the changelog and the upgrade notes name "
+        "it, which is what those notes are for (#244)"
+    ),
 }
 
 #: ``pyjab.something.else`` in prose.  URLs are excluded below, because a link to
@@ -348,6 +352,12 @@ def references_in(path: Path, modules: dict, members: dict) -> list:
         for match in PYJAB_PATH.finditer(line):
             target = match.group(0)
             if target.rsplit(".", 1)[-1] in FILE_SUFFIXES:
+                continue
+            if target.rsplit(".", 1)[-1] in KNOWN_REMOVED:
+                # The two attribute checks below honour this list; this one did not,
+                # so the advice printed on failure -- "add the name to KNOWN_REMOVED"
+                # -- could not be followed for a *module* that was deliberately
+                # removed, which is the case a changelog most often has to name.
                 continue
             if not _resolves(target, modules, members):
                 problems.append((number, target, "no such module or attribute"))
