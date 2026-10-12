@@ -328,14 +328,6 @@ def test_wait_until_element_exist_backs_off_between_polls(monkeypatch):
     )
 
 
-def test_actor_scheduler_is_marked_deprecated():
-    """It is kept only so existing imports keep working."""
-    from pyjab.common import actorscheduler
-
-    doc = actorscheduler.ActorScheduler.__doc__ or ""
-    assert "deprecated" in doc.lower()
-
-
 # ---------------------------------------------------------------------------
 # The pump is wired into every element lookup
 # ---------------------------------------------------------------------------

@@ -63,7 +63,6 @@ def test_the_index_records_properties_as_well_as_methods():
     "pyjab.config",
     "pyjab.config.find_bridge_dll",
     "pyjab.common.by",
-    "pyjab.common.actorscheduler.ActorScheduler",
     "pyjab.jabdriver",
 ])
 def test_a_real_path_resolves(target):
@@ -335,6 +334,29 @@ def test_shortcutkeys_is_gone():
         importlib.import_module("pyjab.common.shortcutkeys")
 
     assert not (REPO_ROOT / "pyjab" / "common" / "shortcutkeys.py").exists()
+
+
+def test_actorscheduler_is_gone():
+    """Removed deliberately, and this is the record.
+
+    ``pyjab/common/actorscheduler.py`` held a ``@singleton`` class with one public
+    method, ``new_actor(name, actor)``, and **zero callers** anywhere in the
+    package, the tests or the tooling.  It drove the message pump until 1.3.0
+    replaced that with ``Win32Utils.pump_messages()``, and 1.3.0's own upgrade
+    notes already called it deprecated and unused -- so this removal is the one
+    that deprecation cycle promised.
+
+    Being importable made removing it a public API change -- a minor bump.
+
+    If this test fails, someone has brought it back. That is allowed; delete this
+    and say why in the changelog.
+    """
+    import importlib
+
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("pyjab.common.actorscheduler")
+
+    assert not (REPO_ROOT / "pyjab" / "common" / "actorscheduler.py").exists()
 
 
 # ---------------------------------------------------------------------------
