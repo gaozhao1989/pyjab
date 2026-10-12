@@ -63,6 +63,24 @@ docs/MCP_ENABLING_PLAN.md
 /docs/CONSENT_REQUESTS.md
 /docs/MARKET_AND_COMPETITIVE_ANALYSIS.md
 
+# The harness's own project configuration.
+#
+# Nothing local belongs in the repository or in a published issue, and that includes
+# the working environment's configuration: which agent runs here, what it is allowed to
+# do, what is in its state directory. None of it is part of the package, none of it is
+# anyone else's business, and it is machine-specific by definition.
+#
+# This is belt to `git add -f`'s braces -- an ignore rule does not stop a forced add.
+# `tools/check_local_only_files.py` checks that none of these is *tracked*, because
+# four local notes were added that way once and deleting them did not take them out of
+# the history. `tools/check_no_local_content.py` scans tracked files for the paths and
+# credentials that should never appear in one.
+/.dsh/
+/.dshrc
+/dsh.toml
+/dsh.json
+/dsh.local.*
+
 # A screenshot downloaded from a CI run for a human to look at; not part of the repository.
 screenshot-from-ci.png
 screenshot.png

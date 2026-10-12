@@ -1,8 +1,11 @@
 """How this project is actually worked on, measured from the session transcripts.
 
 Written because the same three facts had to be re-derived by hand three times, and
-one of them was got wrong twice. The transcript is a `jsonl.zstd` per session under
-`~/.dsh/sessions/<slugified-workspace>/`, and the shape is not what it looks like:
+one of them was got wrong twice. The transcript is a `jsonl.zstd` per session, in the
+working environment's own state directory -- `SESSIONS` below is the only place this
+file names it, because a tool that reads local state has to address it, and everything
+else here is written so that the layout is not repeated in prose: and the shape is not
+what it looks like:
 
 * a call is ``{"type": "tool/call", "data": {"name": ..., "arguments": ...}}`` --
   **the tool name is `data.name`, not `data.toolName`.** Looking for `toolName`

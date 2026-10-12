@@ -1,9 +1,9 @@
 """Binding to a Java window with an explicit bridge DLL.
 
-The previous version of this file hardcoded four absolute paths from one
-developer's machine (``C:\\Users\\garygao\\scoop\\...``), so it could only ever
-pass there.  These tests ask pyjab where the DLL actually is instead, and skip
-when the machine does not have the bitness being exercised.
+The previous version of this file hardcoded four absolute paths into one
+developer's Windows profile, so it could only ever pass there.  These tests ask
+pyjab where the DLL actually is instead, and skip when the machine does not have
+the bitness being exercised.
 
 They run against the Swing application in ``tests/java``, which the ``test_app``
 fixture compiles and launches, so nothing here downloads or installs anything.
