@@ -623,7 +623,9 @@ Win32Utils().send_keys("ctrl+alt+del")
 
 The named keys are **held together** and then released in the same order. Names are the ones
 the key table uses and are **case-insensitive**: `ctrl`, `alt`, `shift`, `tab`, `enter`,
-`escape`, `spacebar`, the arrow keys, a single letter or digit, and about a hundred more.
+`escape`, `spacebar`, `f1`–`f24`, the arrow keys (`up_arrow`, `down_arrow`, …), a single
+letter or digit, and about a hundred more. `driver.send_keys("ctrl+F11")` and
+`driver.send_keys("ctrl+f11")` are the same chord.
 
 **An unknown name raises, naming it.** This is the one place in pyjab where a wrong answer
 does something *irreversible* to somebody else's application, so a chord that cannot be
