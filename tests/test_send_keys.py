@@ -37,12 +37,59 @@ def test_a_chord_becomes_the_keys_it_names(recorder):
 
 
 def test_names_are_case_insensitive(recorder):
-    """The table is lowercase; nobody types it that way."""
+    """Mostly lowercase in the table; nobody types it that way."""
     utils, sent = recorder
 
     utils.send_keys("CTRL+SHIFT+S")
 
     assert sent == [("ctrl", "shift", "s")]
+
+
+@pytest.mark.parametrize("chord,expected", [
+    ("F11", ("F11",)),
+    ("f11", ("F11",)),
+    ("ctrl+F11", ("ctrl", "F11")),
+    ("CTRL+f11", ("ctrl", "F11")),
+    ("shift+F3", ("shift", "F3")),
+    ("volume_down", ("volume_Down",)),
+])
+def test_function_keys_reach_the_table_spelling(recorder, chord, expected):
+    """'F1'..'F24' and 'volume_Down' are not lowercase in the table.
+
+    Lowercasing the input and looking it up as-is refused every one of them, in any
+    spelling -- F11 / Ctrl+F11 (Oracle Forms' Enter / Execute Query) were unreachable.
+    What is pressed is the table's own name, which is what the private helpers expect.
+    """
+    utils, sent = recorder
+
+    utils.send_keys(chord)
+
+    assert sent == [expected]
+
+
+def test_every_key_in_the_table_can_be_sent_in_any_case(recorder):
+    """The whole table, so a mixed-case entry added later cannot be unreachable again.
+
+    '+' is left out: it is the chord separator, so no chord can name it. That is a
+    limit of the syntax rather than of case handling, and not what this guards.
+    """
+    utils, sent = recorder
+
+    for key in (k for k in utils.virtual_key_code if k != "+"):
+        for spelling in (key, key.lower(), key.upper()):
+            sent.clear()
+            utils.send_keys(spelling)
+            assert sent == [(key,)], spelling
+
+
+def test_escape_is_accepted_because_the_error_message_offers_it(recorder):
+    """The table has only 'esc'; refusing the name the refusal suggests is a dead end."""
+    utils, sent = recorder
+
+    utils.send_keys("escape")
+    utils.send_keys("esc")
+
+    assert sent == [("esc",), ("esc",)]
 
 
 def test_whitespace_around_names_is_ignored(recorder):

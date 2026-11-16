@@ -7,6 +7,26 @@ This project adheres to `Semantic Versioning`_ and `Keep a Changelog`_.
 .. _Semantic Versioning: https://semver.org/
 .. _Keep a Changelog: https://keepachangelog.com/
 
+Unreleased
+----------
+
+Fixed
+~~~~~
+
+* **``send_keys()`` refused every function key.**  It lowercased each name and then
+  looked it up as-is, but ``virtual_key_code`` spells ``F1`` .. ``F24`` and
+  ``volume_Down`` with capitals, so ``send_keys("F11")`` -- or ``"f11"``, or
+  ``"ctrl+F11"`` -- raised ``ValueError: unknown key name(s) 'f11'``.  Names are now
+  resolved case-insensitively to the table's own spelling, which is what is pressed.
+  ``escape`` is accepted as ``esc``: the error message had always listed it, and the
+  table never had it.  Unknown names are still refused, and nothing is pressed when
+  they are.  The table and the private ``_press_key`` / ``_press_hold_release_key``
+  helpers are unchanged.  Reported as #251.
+
+  **Affects: pyjab-mcp** -- ``java_send_keys`` goes through this method, so function
+  keys (Oracle Forms' F11 *Enter Query* / Ctrl+F11 *Execute Query*) start working with
+  no change there.
+
 1.12.0 - 2026-10-12
 -------------------
 

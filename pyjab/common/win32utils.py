@@ -782,17 +782,26 @@ class Win32Utils(object):
                 f"{keys!r} has an empty key name; write a chord as 'ctrl+shift+s'"
             )
 
-        unknown = [name for name in names if name not in self.virtual_key_code]
+        # The table is not all lower case -- 'F1'..'F24' and 'volume_Down' are not -- so a
+        # lowercased name is resolved to the table's own spelling rather than looked up
+        # as-is, which made every function key unreachable. Resolving here rather than
+        # lowercasing the table keeps the names the private helpers are called with.
+        # 'escape' is accepted for 'esc' because the message below has always offered it.
+        lookup = {key.lower(): key for key in self.virtual_key_code}
+        lookup.setdefault("escape", "esc")
+        resolved = [lookup.get(name) for name in names]
+        unknown = [name for name, key in zip(names, resolved) if key is None]
         if unknown:
             raise ValueError(
                 "unknown key name(s) {} in {!r}. Names are case-insensitive; the table has "
-                "'ctrl', 'alt', 'shift', 'tab', 'enter', 'escape', 'spacebar', the arrow "
-                "keys and the letters and digits.".format(", ".join(map(repr, unknown)), keys)
+                "'ctrl', 'alt', 'shift', 'tab', 'enter', 'escape', 'spacebar', 'f1'..'f24', "
+                "the arrow keys ('up_arrow', ...) and the letters and digits.".format(
+                    ", ".join(map(repr, unknown)), keys)
             )
 
         # One key is not a chord, but holding and releasing it is still the right thing:
         # a bare 'enter' pressed this way is what the callers of the private helper expect.
-        self._press_hold_release_key(*names)
+        self._press_hold_release_key(*resolved)
 
     def _press_hold_release_key(self, *keys) -> None:
         """
