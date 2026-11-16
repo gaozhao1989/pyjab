@@ -81,6 +81,11 @@ docs/MCP_ENABLING_PLAN.md
 /dsh.json
 /dsh.local.*
 
+# The gui-suite task's own pytest log. It is run output, and the guard that task runs
+# scans untracked, non-ignored files -- its pytest ids name local paths by design, so
+# without this line the job fails on the log it is writing (#258).
+/gui-suite.log
+
 # A screenshot downloaded from a CI run for a human to look at; not part of the repository.
 screenshot-from-ci.png
 screenshot.png
