@@ -49,7 +49,22 @@ jobs:
         # pyjab` works on 3.8 (the wheel needs no build backend) but building
         # from the sdist cannot work there. requires-python still says ">=3.8",
         # which is therefore only true for wheel installs.
+        #
+        # The ubuntu 3.9 leg is pinned to 24.04. `ubuntu-latest` moved to 26.04 in
+        # November 2026 and actions/setup-python has no 3.9 build for it -- "The
+        # version '3.9' with architecture 'x64' was not found for Ubuntu 26.04"
+        # (run 43306201133, 2026-11-16) -- so the job died while installing the
+        # interpreter, before running a single test. The leg has to stay: 3.9 is
+        # the oldest version that can install at all. 24.04 is the previous LTS,
+        # supported into 2029, and does have 3.9. The remaining ubuntu legs stay
+        # on `ubuntu-latest`: they ran on 26.04 in that same run, so the image
+        # itself is fine -- only the one old interpreter is missing.
+        exclude:
+          - os: ubuntu-latest
+            python-version: "3.9"
         include:
+          - os: ubuntu-24.04
+            python-version: "3.9"
           - os: ubuntu-latest
             python-version: "3.10"
           - os: ubuntu-latest
