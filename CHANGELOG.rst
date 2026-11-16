@@ -7,6 +7,23 @@ This project adheres to `Semantic Versioning`_ and `Keep a Changelog`_.
 .. _Semantic Versioning: https://semver.org/
 .. _Keep a Changelog: https://keepachangelog.com/
 
+Unreleased
+----------
+
+Fixed
+~~~~~
+
+* **``send_keys()`` could not send a plus sign.**  ``+`` separates the names in a
+  chord, so the key table's ``"+"`` row could never be selected -- ``split("+")``
+  turns ``"ctrl++"`` into an empty name and refuses it -- and a bare ``0xBB`` without
+  shift types ``=``, not ``+``.  The plus key is now named ``plus``: it expands to
+  holding shift while pressing ``=``, the same pair ``_send_keys()`` already used for
+  the character.  ``send_keys("plus")`` types ``+``, ``send_keys("ctrl+plus")`` is
+  Ctrl+Plus, and a lone ``send_keys("+")`` works too, because with no name beside it a
+  ``+`` cannot be a separator.  The unreachable ``"+"`` row is removed from
+  ``virtual_key_code``; ``"ctrl++"`` is still refused and the refusal now says to
+  write ``plus``.  Reported as #256.
+
 1.12.1 - 2026-11-16
 -------------------
 

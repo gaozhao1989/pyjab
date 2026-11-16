@@ -327,12 +327,11 @@ class Win32Utils(object):
         "play_key": 0xFA,
         "zoom_key": 0xFB,
         "clear_key": 0xFE,
-        # VK_OEM_PLUS is the '='/ '+' key: '=' is the unshifted character, '+'
-        # is shift plus it. Only '+' was in this table, so _send_keys()'s own
-        # entry for '+' -- which expands to ('left_shift', '=') -- raised
-        # KeyError, and typing a plus sign failed.
+        # VK_OEM_PLUS is the '='/ '+' key: '=' is the unshifted character, '+' is
+        # shift plus it. Only '=' can be a name here -- '+' is the chord separator, so
+        # a chord cannot spell it -- and the character is reached through the 'plus'
+        # alias below, which presses the same two keys _send_keys() uses for it.
         "=": 0xBB,
-        "+": 0xBB,
         ",": 0xBC,
         "-": 0xBD,
         ".": 0xBE,
@@ -344,6 +343,13 @@ class Win32Utils(object):
         "]": 0xDD,
         "'": 0xDE,
     }
+
+    #: Names whose character has no key of its own, expanded to the keys that type it.
+    #: A chord is written with ``+``, so the plus key cannot be named ``'+'``: the
+    #: separator eats it. It is called ``'plus'``, and holding shift while pressing
+    #: ``'='`` is what puts a plus sign on the screen -- the same pair ``_send_keys()``
+    #: presses for the character.
+    key_aliases = {"plus": ("left_shift", "=")}
 
     def __init__(self) -> None:
         self.logger = Logger("pyjab")
@@ -746,7 +752,10 @@ class Win32Utils(object):
             keys: the chord, with the keys separated by ``+``. Names are the same ones
                 :attr:`virtual_key_code` uses and are case-insensitive: ``ctrl``, ``alt``,
                 ``shift``, ``tab``, ``enter``, ``escape``, ``spacebar``, ``left_arrow``, a
-                single letter or digit, and about a hundred more.
+                single letter or digit, and about a hundred more. The plus key is
+                ``'plus'`` -- ``+`` is the separator, so it cannot name a key --
+                and ``'plus'`` holds shift and ``'='`` for you: ``send_keys("plus")``
+                types a plus sign and ``send_keys("ctrl+plus")`` is Ctrl+Plus.
 
         Raises:
             ValueError: a name is not in the table, or the argument is empty. **Both are
@@ -776,10 +785,15 @@ class Win32Utils(object):
         if not keys or not keys.strip():
             raise ValueError("send_keys() needs a key or a chord, such as 'alt+y'")
 
+        if keys.strip() == "+":
+            # A '+' with no name beside it cannot be a separator, so it is the key.
+            keys = "plus"
+
         names = [name.strip().lower() for name in keys.split("+")]
         if any(not name for name in names):
             raise ValueError(
-                f"{keys!r} has an empty key name; write a chord as 'ctrl+shift+s'"
+                f"{keys!r} has an empty key name; write a chord as 'ctrl+shift+s'. "
+                "'+' separates the names -- the plus key itself is called 'plus'."
             )
 
         # The table is not all lower case -- 'F1'..'F24' and 'volume_Down' are not -- so a
@@ -789,13 +803,25 @@ class Win32Utils(object):
         # 'escape' is accepted for 'esc' because the message below has always offered it.
         lookup = {key.lower(): key for key in self.virtual_key_code}
         lookup.setdefault("escape", "esc")
-        resolved = [lookup.get(name) for name in names]
-        unknown = [name for name, key in zip(names, resolved) if key is None]
+        resolved = []
+        unknown = []
+        for name in names:
+            key = lookup.get(name)
+            if key is not None:
+                resolved.append(key)
+            elif name in self.key_aliases:
+                # An alias names a character rather than a key, so it expands in place:
+                # 'ctrl+plus' becomes ctrl, shift, '=' -- held together, which is
+                # Ctrl+Plus and not a four-key chord.
+                resolved.extend(self.key_aliases[name])
+            else:
+                unknown.append(name)
         if unknown:
             raise ValueError(
                 "unknown key name(s) {} in {!r}. Names are case-insensitive; the table has "
                 "'ctrl', 'alt', 'shift', 'tab', 'enter', 'escape', 'spacebar', 'f1'..'f24', "
-                "the arrow keys ('up_arrow', ...) and the letters and digits.".format(
+                "the arrow keys ('up_arrow', ...) and the letters and digits, and 'plus' is "
+                "the plus key ('+' separates the names).".format(
                     ", ".join(map(repr, unknown)), keys)
             )
 
