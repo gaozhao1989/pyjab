@@ -627,6 +627,20 @@ the key table uses and are **case-insensitive**: `ctrl`, `alt`, `shift`, `tab`, 
 letter or digit, and about a hundred more. `driver.send_keys("ctrl+F11")` and
 `driver.send_keys("ctrl+f11")` are the same chord.
 
+The plus key has to be called **`plus`**, because `+` separates the names: the key table
+holds `=` (the unshifted character of that key) and no `+` row at all, since a chord could
+never select one. `plus` expands to holding shift while pressing `=`, which is what types a
+plus sign:
+
+```python
+driver.send_keys("plus")       # types +
+driver.send_keys("ctrl+plus")  # Ctrl+Plus
+```
+
+`driver.send_keys("+")` works as well — with no name beside it, a `+` cannot be a separator
+— but `"ctrl++"` is refused, because there the empty name could be either a typo or the
+key. The refusal says to write `plus`.
+
 **An unknown name raises, naming it.** This is the one place in pyjab where a wrong answer
 does something *irreversible* to somebody else's application, so a chord that cannot be
 interpreted says which name it did not recognise rather than pressing part of it.

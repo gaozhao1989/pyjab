@@ -252,6 +252,24 @@ class TestComponents(object):
         text.send_text("4321", simulate=True)
         assert text.text == "4321"
 
+    def test_send_keys_can_type_a_plus(self, test_app: JABDriver):
+        """The plus key is a chord of its own, and only this checks it lands (#256).
+
+        ``'+'`` separates the names in a chord, so the key is called ``'plus'`` and it
+        expands to holding shift while pressing ``'='``. The unit tests stop at "these
+        two keys are pressed"; whether that pair produces a plus sign is a Windows
+        keyboard question, which is what this test asks.
+        """
+        text = test_app.find_element_by_name("Text area contents")
+        assert text
+        text.clear(simulate=True)  # brings the window forward and focuses the field
+        text.send_text("ab", simulate=True)
+        assert text.text == "ab"
+
+        test_app.send_keys("plus")
+
+        assert text.text == "ab+"
+
     def test_password_text(self, test_app: JABDriver):
         password = test_app.find_element_by_role(Role.PASSWORD_TEXT)
         assert password

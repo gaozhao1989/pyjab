@@ -70,16 +70,56 @@ def test_function_keys_reach_the_table_spelling(recorder, chord, expected):
 def test_every_key_in_the_table_can_be_sent_in_any_case(recorder):
     """The whole table, so a mixed-case entry added later cannot be unreachable again.
 
-    '+' is left out: it is the chord separator, so no chord can name it. That is a
-    limit of the syntax rather than of case handling, and not what this guards.
+    The table has no '+' row: '+' is the chord separator, so a chord cannot name it and
+    the row could never have been selected. The plus key is reached through the 'plus'
+    alias instead, which the next test covers.
     """
     utils, sent = recorder
 
-    for key in (k for k in utils.virtual_key_code if k != "+"):
+    for key in utils.virtual_key_code:
         for spelling in (key, key.lower(), key.upper()):
             sent.clear()
             utils.send_keys(spelling)
             assert sent == [(key,)], spelling
+
+
+def test_the_plus_key_is_named_plus(recorder):
+    """'+' is the separator, so the table cannot hold it and the name is 'plus'.
+
+    What is pressed is shift plus '=', held together -- the same pair `_send_keys()`
+    uses for the character -- because a bare 0xBB without shift types '='.
+    """
+    utils, sent = recorder
+
+    utils.send_keys("plus")
+    utils.send_keys("PLUS")
+    utils.send_keys("ctrl+plus")
+
+    assert sent == [
+        ("left_shift", "="),
+        ("left_shift", "="),
+        ("ctrl", "left_shift", "="),
+    ]
+
+
+def test_a_lone_plus_is_the_key(recorder):
+    """With no name beside it a '+' cannot be a separator, so it is unambiguous."""
+    utils, sent = recorder
+
+    utils.send_keys("+")
+
+    assert sent == [("left_shift", "=")]
+
+
+def test_the_empty_name_error_says_the_plus_key_is_called_plus(recorder):
+    """'ctrl++' is the shape a caller reaches for, so the refusal has to say what to write."""
+    utils, sent = recorder
+
+    with pytest.raises(ValueError) as caught:
+        utils.send_keys("ctrl++")
+
+    assert "'plus'" in str(caught.value)
+    assert not sent, "nothing should have been pressed"
 
 
 def test_escape_is_accepted_because_the_error_message_offers_it(recorder):
