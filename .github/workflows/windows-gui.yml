@@ -193,6 +193,11 @@ jobs:
         run: |
           # faulthandler_timeout in pyproject.toml prints every thread's stack
           # after 300s, which names the pyjab call that never returned.
+          #
+          # gui-suite.log is gitignored: this run executes the whole portable suite,
+          # including the local-content guard, which scans untracked, non-ignored
+          # files -- and pytest's verbose ids name local paths by design, so the guard
+          # would read the log this run is writing (#258).
           python -m pytest tests/ -v 2>&1 | Tee-Object -FilePath gui-suite.log
           exit $LASTEXITCODE
 
