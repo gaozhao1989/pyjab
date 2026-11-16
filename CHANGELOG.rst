@@ -7,8 +7,8 @@ This project adheres to `Semantic Versioning`_ and `Keep a Changelog`_.
 .. _Semantic Versioning: https://semver.org/
 .. _Keep a Changelog: https://keepachangelog.com/
 
-Unreleased
-----------
+1.12.1 - 2026-11-16
+-------------------
 
 Fixed
 ~~~~~
@@ -23,9 +23,9 @@ Fixed
   they are.  The table and the private ``_press_key`` / ``_press_hold_release_key``
   helpers are unchanged.  Reported as #251.
 
-  **Affects: pyjab-mcp** -- ``java_send_keys`` goes through this method, so function
-  keys (Oracle Forms' F11 *Enter Query* / Ctrl+F11 *Execute Query*) start working with
-  no change there.
+  **Affects: pyjab-mcp** -- first released in **1.12.1**.  ``java_send_keys`` goes
+  through this method, so function keys (Oracle Forms' F11 *Enter Query* / Ctrl+F11
+  *Execute Query*) start working with no change there.
 
 1.12.0 - 2026-10-12
 -------------------
